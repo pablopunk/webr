@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { BotAvatar } from 'bot-avatars';
-import { PanelLeftClose, PanelLeftOpen, Settings2, X } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Plus, Settings2, X } from 'lucide-react';
 import { type Project, type Thread, harnessName, relativeTime } from '../lib/models';
 import { avatarForThread } from '../lib/avatars';
 import { ProjectIcon } from './ProjectIcon';
@@ -24,6 +24,7 @@ const statusLabel: Record<Thread['status'], string> = {
 
 export function Sidebar({ projects, threads, currentId, mode, collapsed, mobileOpen, onCollapse, onCloseMobile }: Props) {
   const [closedProjects, setClosedProjects] = useState<string[]>([]);
+  const currentProjectId = threads.find((thread) => thread.id === currentId)?.projectId;
   const threadLink = (thread: Thread, showProject: boolean) => {
     const project = projects.find((item) => item.id === thread.projectId);
     return <a key={thread.id} className={`thread-row ${currentId === thread.id ? 'is-current' : ''}`} href={`/threads/${encodeURIComponent(thread.id)}`} aria-current={currentId === thread.id ? 'page' : undefined} title={`${thread.title} · ${project?.name ?? ''} · ${harnessName(thread.agent)} · ${thread.model} · ${statusLabel[thread.status]}`}>
@@ -42,6 +43,9 @@ export function Sidebar({ projects, threads, currentId, mode, collapsed, mobileO
         <button className="icon-button sidebar-collapse" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={onCollapse}>{collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}</button>
         <button className="icon-button mobile-close" aria-label="Close sidebar" onClick={onCloseMobile}><X size={16} /></button>
       </div>
+      <a className="sidebar-new-thread" href={`/new${currentProjectId ? `?project=${encodeURIComponent(currentProjectId)}` : ''}`} aria-label="New thread" title="New thread">
+        <Plus size={16} aria-hidden="true" />{!collapsed && <span>New thread</span>}
+      </a>
       {!collapsed && <>
         <nav className="thread-navigation" aria-label="Agent threads">
           {mode === 'projects' ? projects.filter((project) => threads.some((thread) => thread.projectId === project.id)).sort((a, b) => (threads.find((thread) => thread.projectId === b.id)?.updatedAt ?? '').localeCompare(threads.find((thread) => thread.projectId === a.id)?.updatedAt ?? '')).map((project) => <section key={project.id} className="thread-group">

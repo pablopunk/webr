@@ -4,6 +4,9 @@
 .sidebar.is-collapsed .sidebar-header { justify-content: center; padding: 0; }
 .brand { font-size: 12px; font-weight: 700; letter-spacing: -.02em; }
 .sidebar-collapse { width: 26px; height: 26px; }
+.sidebar-new-thread { display: flex; align-items: center; gap: 9px; flex: none; min-height: 36px; margin: 12px 8px 4px; padding: 0 10px; border: 1px solid var(--card-edge); border-radius: 7px; background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); font-size: 11.5px; font-weight: 600; transition: background-color .2s, box-shadow .2s; }
+.sidebar-new-thread:hover { background: var(--card-hover); box-shadow: var(--card-shadow-hover); }
+.sidebar.is-collapsed .sidebar-new-thread { justify-content: center; width: 28px; min-height: 28px; margin: 10px auto 0; padding: 0; }
 .thread-navigation { flex: 1; overflow-y: auto; padding: 8px; scrollbar-width: thin; }
 .thread-row { display: flex; align-items: center; gap: 9px; min-height: 60px; padding: 7px 10px; border: 1px solid transparent; border-radius: 7px; color: var(--ink-soft); font-size: 11.5px; transition: background-color .2s, border-color .2s, box-shadow .2s; }
 .thread-row + .thread-row { margin-top: 4px; }
