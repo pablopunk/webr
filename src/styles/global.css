@@ -1,44 +1,6 @@
 @import './tokens.css';
+@import './base.css';
 @import './sidebar.css';
 @import './pages.css';
 @import './terminal.css';
-
-*, *::before, *::after { box-sizing: border-box; }
-html { background: var(--page); scroll-behavior: smooth; }
-body { margin: 0; color: var(--ink); background: var(--page); font: 14px/1.5 var(--font-ui); -webkit-font-smoothing: antialiased; }
-button, input, textarea, select { font: inherit; }
-button { cursor: pointer; }
-a { color: inherit; text-decoration: none; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
-::selection { background: var(--terminal-selection); }
-.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-.app-shell { min-height: 100dvh; display: flex; }
-.main-panel { flex: 1; min-width: 0; min-height: 100dvh; }
-.icon-button { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 34px; height: 34px; border: 0; border-radius: 9px; color: var(--ink-muted); background: transparent; transition: color .16s, background .16s; }
-.icon-button:hover { background: var(--surface-hover); color: var(--ink); }
-.status-dot { display: inline-block; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--idle); }
-.status-working { background: var(--working); box-shadow: 0 0 0 3px color-mix(in srgb, var(--working) 13%, transparent); }
-.status-blocked { background: var(--blocked); box-shadow: 0 0 0 3px color-mix(in srgb, var(--blocked) 12%, transparent); }
-.status-done { background: var(--done); }
-.eyebrow { display: flex; align-items: center; gap: 9px; color: var(--ink-muted); font: 500 10px/1.5 var(--font-mono); letter-spacing: .11em; }
-.eyebrow-line { display: inline-block; width: 16px; height: 1px; background: var(--accent); }
-.heading-period { color: var(--accent); }
-.primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 42px; padding: 0 17px; border: 0; border-radius: 10px; color: var(--page); background: var(--ink); font-size: 13px; font-weight: 600; transition: transform .2s var(--ease), opacity .2s; }
-.primary-button:hover { transform: translateY(-2px); opacity: .88; }
-.button-arrow { margin-left: 12px; opacity: .65; }
-.topbar { height: 67px; padding: 0 clamp(24px, 4vw, 56px); display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--line); background: var(--page); }
-.breadcrumbs, .topbar-actions { display: flex; align-items: center; gap: 11px; min-width: 0; }
-.breadcrumbs { font-size: 12.5px; }
-.crumb-project { color: var(--ink-muted); white-space: nowrap; }
-a.crumb-project:hover { color: var(--ink); }
-.crumb-divider { color: var(--ink-muted); opacity: .65; flex: none; }
-.crumb-current { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); font-weight: 600; }
-.sidebar-desktop-trigger { margin-left: -8px; margin-right: 5px; }
-.sidebar-mobile-trigger { display: none; }
-.topbar-environment { display: flex; align-items: center; gap: 8px; padding: 6px 11px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink-soft); background: var(--surface); font: 11px var(--font-mono); white-space: nowrap; }
-.environment-dot, .connection-indicator { width: 6px; height: 6px; border-radius: 50%; background: var(--working); }
-.not-found { max-width: 760px; margin: 15vh auto 0; padding: 30px; }
-.not-found h1 { margin: 14px 0; font-size: 34px; letter-spacing: -.05em; }
-.not-found p { color: var(--ink-soft); margin-bottom: 30px; }
-@media (max-width: 760px) { .topbar { padding: 0 20px; height: 58px; } .sidebar-mobile-trigger { display: inline-flex; margin-left: -8px; } .sidebar-desktop-trigger, .secondary-action, .share-button { display: none; } .topbar-environment { font-size: 0; padding: 8px; } }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+@import './palette.css';

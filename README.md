@@ -13,12 +13,12 @@ Open `http://127.0.0.1:4321/`. For a production build, run `npm run check`, `npm
 
 ## What works in the prototype
 
-- Overview and activity-ordered agent sidebar, grouped by project; search, collapse, and mobile drawer.
+- Activity-ordered agent sidebar with animated avatars, project-grouped and flat thread layouts, collapse, and a mobile drawer.
 - Direct `/threads/:id` and `/sessions/:session/tabs/:tab` pages, with multiple terminal panes.
 - xterm-based terminal previews that accept input but **never run commands**.
 - New-thread form with agent, project, and worktree choices. Created mock threads persist in `.data/threads.json` across restarts.
+- ⌘K / Ctrl+K command palette for navigation, theme, layout, focus, and new-thread actions.
 - System/light/dark themes and configurable thread, pane, and sidebar shortcuts, saved on this device.
-- Real `bot-avatars` and `border-beam` components in places tied to agent or creation state.
 
 ## Boundary
 

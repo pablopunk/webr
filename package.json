@@ -14,7 +14,6 @@
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "astro": "^7.3.5",
-    "border-beam": "^1.0.0",
     "bot-avatars": "^0.1.2",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",

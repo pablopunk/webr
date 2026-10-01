@@ -3,7 +3,7 @@ import { Monitor, Moon, Sun } from 'lucide-react';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
-function applyTheme(preference: ThemePreference) {
+export function applyTheme(preference: ThemePreference) {
   const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   document.documentElement.dataset.theme = preference === 'system'
     ? (dark ? 'dark' : 'light') : preference;
@@ -18,9 +18,14 @@ export function ThemeControl({ expanded = false }: { expanded?: boolean }) {
     setPreference(initial);
     applyTheme(initial);
     const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const onChange = () => applyTheme((localStorage.getItem('herdr-theme') as ThemePreference) || 'system');
+    const onChange = () => {
+      const current = (localStorage.getItem('herdr-theme') as ThemePreference) || 'system';
+      setPreference(current);
+      applyTheme(current);
+    };
     media.addEventListener('change', onChange);
-    return () => media.removeEventListener('change', onChange);
+    window.addEventListener('herdr-theme-change', onChange);
+    return () => { media.removeEventListener('change', onChange); window.removeEventListener('herdr-theme-change', onChange); };
   }, []);
 
   const select = (value: ThemePreference) => {
