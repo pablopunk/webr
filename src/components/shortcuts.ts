@@ -7,8 +7,8 @@ export const shortcutLabels: Record<ShortcutAction, string> = {
 };
 
 export const defaultShortcuts: Record<ShortcutAction, string> = {
-  nextThread: 'ctrl+alt+j', previousThread: 'ctrl+alt+k',
-  nextPane: 'ctrl+alt+l', previousPane: 'ctrl+alt+h',
+  nextThread: 'ctrl+j', previousThread: 'ctrl+k',
+  nextPane: 'ctrl+l', previousPane: 'ctrl+h',
   toggleSidebar: 'ctrl+alt+b', newThread: 'ctrl+x',
 };
 
@@ -40,5 +40,5 @@ export function keyCombo(event: KeyboardEvent | React.KeyboardEvent): string {
 }
 
 export function isReservedShortcut(combo: string): boolean {
-  return /^(meta|ctrl)\+(w|t|r|l|n)$/.test(combo) || !/(ctrl|alt|meta)\+/.test(combo);
+  return /^(meta\+(w|t|r|l|n)|ctrl\+(w|t|r|n))$/.test(combo) || !/(ctrl|alt|meta)\+/.test(combo);
 }

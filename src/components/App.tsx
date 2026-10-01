@@ -48,7 +48,7 @@ export default function App({ page, projects, threads, thread, projectId }: Prop
       if (event.repeat) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest('[data-recording="true"]')) return;
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+      if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k') {
         event.preventDefault(); setPaletteOpen((value) => !value); return;
       }
       if (paletteOpen || event.defaultPrevented) return;
