@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { BotAvatar } from 'bot-avatars';
 import { PanelLeftClose, PanelLeftOpen, Settings2, X } from 'lucide-react';
-import { type Project, type Thread, relativeTime } from '../lib/models';
+import { type Project, type Thread, harnessName, relativeTime } from '../lib/models';
 import { avatarForThread } from '../lib/avatars';
 import { ProjectIcon } from './ProjectIcon';
 
@@ -21,17 +21,14 @@ type Props = {
 const statusLabel: Record<Thread['status'], string> = {
   working: 'Working', blocked: 'Needs input', done: 'Done', idle: 'Idle', unknown: 'Unknown',
 };
-const agentName: Record<Thread['agent'], string> = {
-  claude: 'Claude', codex: 'Codex', opencode: 'OpenCode', pi: 'Pi',
-};
 
 export function Sidebar({ projects, threads, currentId, mode, collapsed, mobileOpen, onCollapse, onCloseMobile }: Props) {
   const [closedProjects, setClosedProjects] = useState<string[]>([]);
   const threadLink = (thread: Thread, showProject: boolean) => {
     const project = projects.find((item) => item.id === thread.projectId);
-    return <a key={thread.id} className={`thread-row ${currentId === thread.id ? 'is-current' : ''}`} href={`/threads/${encodeURIComponent(thread.id)}`} aria-current={currentId === thread.id ? 'page' : undefined} title={`${thread.title} · ${project?.name ?? ''} · ${statusLabel[thread.status]}`}>
+    return <a key={thread.id} className={`thread-row ${currentId === thread.id ? 'is-current' : ''}`} href={`/threads/${encodeURIComponent(thread.id)}`} aria-current={currentId === thread.id ? 'page' : undefined} title={`${thread.title} · ${project?.name ?? ''} · ${harnessName(thread.agent)} · ${thread.model} · ${statusLabel[thread.status]}`}>
       <span className="thread-avatar" aria-hidden="true"><BotAvatar {...avatarForThread(thread)} state={thread.status === 'working' ? 'working' : 'default'} size={24} paused={thread.status !== 'working'} /></span>
-      <span className="thread-copy"><span className="thread-context">{showProject && project && <ProjectIcon project={project} />}{showProject ? project?.name : agentName[thread.agent]}</span><span className="thread-name">{thread.title}</span></span>
+      <span className="thread-copy"><span className="thread-context">{showProject && project && <ProjectIcon project={project} />}{showProject ? project?.name : harnessName(thread.agent)}</span><span className="thread-name">{thread.title}</span></span>
       <span className="thread-time">{relativeTime(thread.updatedAt)}</span>
       <span className={`status-dot status-${thread.status}`} title={statusLabel[thread.status]} aria-label={statusLabel[thread.status]} />
     </a>;

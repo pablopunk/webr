@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { exampleThreads, projects, type AgentKind, type Thread } from './models';
+import { exampleThreads, harnessName, projects, type Thread } from './models';
 
 const dataFile = join(process.cwd(), '.data', 'threads.json');
 let pendingWrite: Promise<unknown> = Promise.resolve();
@@ -20,6 +20,7 @@ export async function listThreads(): Promise<Thread[]> {
   const examples = exampleThreads();
   const saved = (await savedThreads()).map((thread, index) => ({
     ...thread, avatarIndex: thread.avatarIndex ?? examples.length + index,
+    prompt: thread.prompt ?? thread.title, model: thread.model ?? 'Default',
   }));
   return [...examples, ...saved]
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -31,26 +32,30 @@ export async function findThread(id: string): Promise<Thread | undefined> {
 
 export function createThread(input: {
   projectId: string;
-  title: string;
-  agent: AgentKind;
+  prompt: string;
+  agent: string;
+  model: string;
   worktree: boolean;
 }): Promise<Thread> {
   const operation = pendingWrite.then(async () => {
     if (!projects.some((project) => project.id === input.projectId)) throw new Error('Unknown project');
     const id = randomUUID().slice(0, 8);
-    const name = input.title.trim().slice(0, 90);
-    if (!name) throw new Error('Enter a thread name');
+    const prompt = input.prompt.trim();
+    if (!prompt || prompt.length > 8000 || !input.agent.trim() || !input.model.trim()) throw new Error('Invalid thread details');
+    const name = prompt.split('\n').find((line) => line.trim())?.trim().replace(/\s+/g, ' ').slice(0, 90) ?? '';
+    if (!name) throw new Error('Enter a prompt');
     const branch = input.worktree
       ? `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32)}-${id}`
       : 'main';
     const threads = await savedThreads();
     const thread: Thread = {
       id, avatarIndex: exampleThreads().length + threads.length,
-      projectId: input.projectId, title: name, agent: input.agent,
+      projectId: input.projectId, title: name, prompt, agent: input.agent.trim(), model: input.model.trim(),
       status: 'idle', updatedAt: new Date().toISOString(), branch,
       worktree: input.worktree, session: 'default', tabId: `mock:t${id}`,
-      panes: [{ id: `mock:p${id}`, title: input.agent, kind: 'agent', lines: [
-        `$ ${input.agent}`, `New thread: ${name}`, '',
+      panes: [{ id: `mock:p${id}`, title: harnessName(input.agent.trim()), kind: 'agent', lines: [
+        `${harnessName(input.agent.trim())} · ${input.model.trim()}`, 'Prompt:',
+        ...prompt.replace(/[\x00-\x09\x0b-\x1f\x7f]/g, '').split('\n'), '',
         'This is a design prototype. The Herdr connection is not active yet.',
         'Type in this terminal to try the layout.', '', '$',
       ] }],

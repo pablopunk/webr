@@ -1,5 +1,11 @@
 export type AgentStatus = 'working' | 'blocked' | 'done' | 'idle' | 'unknown';
-export type AgentKind = 'claude' | 'codex' | 'opencode' | 'pi';
+export const harnessNames: Record<string, string> = {
+  claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'Pi',
+};
+
+export function harnessName(agent: string): string {
+  return Object.hasOwn(harnessNames, agent) ? harnessNames[agent] : agent;
+}
 
 export type Project = {
   id: string;
@@ -22,7 +28,9 @@ export type Thread = {
   avatarIndex: number;
   projectId: string;
   title: string;
-  agent: AgentKind;
+  prompt: string;
+  agent: string;
+  model: string;
   status: AgentStatus;
   updatedAt: string;
   branch: string;
@@ -45,7 +53,7 @@ export function exampleThreads(): Thread[] {
   return [
     {
       id: 'terminal-web-bridge', avatarIndex: 0, projectId: 'herdr', title: 'Build the web terminal bridge',
-      agent: 'claude', status: 'working', updatedAt: at(2), branch: 'web-terminal-bridge',
+      prompt: 'Build the web terminal bridge', agent: 'claude', model: 'Default', status: 'working', updatedAt: at(2), branch: 'web-terminal-bridge',
       worktree: true, session: 'default', tabId: 'w1:t2',
       panes: [
         { id: 'w1:p3', title: 'Claude Code', kind: 'agent', lines: [
@@ -66,7 +74,7 @@ export function exampleThreads(): Thread[] {
     },
     {
       id: 'review-socket-api', avatarIndex: 1, projectId: 'herdr', title: 'Review socket API changes',
-      agent: 'codex', status: 'blocked', updatedAt: at(14), branch: 'socket-api-review',
+      prompt: 'Review socket API changes', agent: 'codex', model: 'Default', status: 'blocked', updatedAt: at(14), branch: 'socket-api-review',
       worktree: true, session: 'default', tabId: 'w1:t3', needsAttention: true,
       panes: [{ id: 'w1:p5', title: 'Codex', kind: 'agent', lines: [
         '$ codex', 'Review complete. One change needs your approval.', '',
@@ -76,7 +84,7 @@ export function exampleThreads(): Thread[] {
     },
     {
       id: 'sidebar-interactions', avatarIndex: 2, projectId: 'herdr', title: 'Polish sidebar interactions',
-      agent: 'opencode', status: 'done', updatedAt: at(82), branch: 'sidebar-polish',
+      prompt: 'Polish sidebar interactions', agent: 'opencode', model: 'Default', status: 'done', updatedAt: at(82), branch: 'sidebar-polish',
       worktree: true, session: 'default', tabId: 'w1:t4', needsAttention: true,
       panes: [{ id: 'w1:p6', title: 'OpenCode', kind: 'agent', lines: [
         '$ opencode', 'Done. The sidebar now keeps its scroll position when',
@@ -85,7 +93,7 @@ export function exampleThreads(): Thread[] {
     },
     {
       id: 'fix-editor-loading', avatarIndex: 3, projectId: 'maze', title: 'Fix editor loading state',
-      agent: 'claude', status: 'working', updatedAt: at(7), branch: 'fix-editor-loading',
+      prompt: 'Fix editor loading state', agent: 'claude', model: 'Default', status: 'working', updatedAt: at(7), branch: 'fix-editor-loading',
       worktree: true, session: 'default', tabId: 'w2:t1',
       panes: [{ id: 'w2:p1', title: 'Claude Code', kind: 'agent', lines: [
         '$ claude', '✳ Investigating the loading state', '',
@@ -95,7 +103,7 @@ export function exampleThreads(): Thread[] {
     },
     {
       id: 'coverflow-motion', avatarIndex: 4, projectId: 'spotifin', title: 'Tune coverflow motion',
-      agent: 'pi', status: 'idle', updatedAt: at(1440), branch: 'coverflow-motion',
+      prompt: 'Tune coverflow motion', agent: 'pi', model: 'Default', status: 'idle', updatedAt: at(1440), branch: 'coverflow-motion',
       worktree: false, session: 'default', tabId: 'w3:t1',
       panes: [{ id: 'w3:p1', title: 'Pi', kind: 'agent', lines: [
         '$ pi', 'The transition timing is now 280ms. All changes are ready',

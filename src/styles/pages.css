@@ -1,15 +1,5 @@
 .form-page { width: min(520px, 100%); margin: 8vh auto 0; padding: 0 20px 60px; }
 .form-page h1 { margin: 0 0 26px; font-size: 22px; font-weight: 600; letter-spacing: -.03em; }
-.form-page form { display: grid; gap: 18px; }
-.form-page form > label:not(.checkbox-row) { display: grid; gap: 7px; color: var(--ink-soft); font-size: 12px; }
-.form-page input:not([type='checkbox']), .form-page select { width: 100%; height: 38px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface); color: var(--ink); }
-.project-select { position: relative; display: flex; align-items: center; }
-.project-select .thread-project { position: absolute; left: 10px; z-index: 1; pointer-events: none; }
-.form-page .project-select select { padding-left: 35px; }
-.checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-.form-page input[type='checkbox'] { accent-color: var(--accent); }
-.form-submit { justify-self: start; padding: 9px 13px; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--ink); color: var(--page); font-size: 12px; }
-.form-submit:disabled { opacity: .5; }
 .form-error { color: #d16a64; font-size: 12px; }
 .settings-page section { margin-top: 28px; border-top: 1px solid var(--line); }
 .settings-page h2 { margin: 18px 0 8px; font-size: 12px; font-weight: 600; }

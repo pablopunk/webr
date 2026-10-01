@@ -17,6 +17,7 @@
   --line: #e9e9e7;
   --line-strong: #dedfdd;
   --accent: #357dba;
+  --action-blue: #345fba;
   --accent-soft: #e9f3fa;
   --focus-ring: #579bcf;
   --working: #58a47a;
@@ -52,6 +53,7 @@ html[data-theme='dark'] {
   --line: #292b2b;
   --line-strong: #393b3b;
   --accent: #91cae8;
+  --action-blue: #365eb9;
   --accent-soft: #203239;
   --focus-ring: #9dd5e9;
   --working: #85cba2;

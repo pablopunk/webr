@@ -18,7 +18,7 @@ Open `http://127.0.0.1:4321/`. For a production build, run `npm run check`, `npm
 - Each thread keeps its own avatar: the first 18 use distinct shapes, then the shapes repeat with distinct colors and animation timing.
 - Direct `/threads/:id` and `/sessions/:session/tabs/:tab` pages, with multiple terminal panes.
 - xterm-based terminal previews that accept input but **never run commands**.
-- New-thread form with agent, project, and worktree choices. Created mock threads persist in `.data/threads.json` across restarts.
+- New-thread prompt with project, harness, model, and worktree choices. Harness and model accept custom names; they are saved as mock thread data and do not start an agent. Created threads persist in `.data/threads.json` across restarts.
 - ⌘K / Ctrl+K command palette for navigation, theme, layout, focus, and new-thread actions.
 - System/light/dark themes and configurable thread, pane, and sidebar shortcuts, saved on this device.
 
