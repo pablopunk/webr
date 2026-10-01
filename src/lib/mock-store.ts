@@ -6,6 +6,7 @@ import { findMachine } from './machines';
 
 const dataFile = join(process.cwd(), '.data', 'threads.json');
 let pendingWrite: Promise<unknown> = Promise.resolve();
+const requireFixtureMode = () => { if (process.env.NODE_ENV !== 'test' && !(process.env.HERDR_WEB_FIXTURES === '1' && process.env.NODE_ENV !== 'production')) throw new Error('Mock data requires explicit fixture mode'); };
 
 async function savedThreads(): Promise<Thread[]> {
   try {
@@ -17,6 +18,7 @@ async function savedThreads(): Promise<Thread[]> {
 }
 
 export async function listThreads(): Promise<Thread[]> {
+  requireFixtureMode();
   await pendingWrite;
   const examples = exampleThreads();
   const saved = (await savedThreads()).map((thread, index) => ({
@@ -40,6 +42,7 @@ export function createThread(input: {
   model: string;
   worktree: boolean;
 }): Promise<Thread> {
+  requireFixtureMode();
   const operation = pendingWrite.then(async () => {
     const machine = findMachine(input.machineId);
     if (!machine?.connected) throw new Error('Machine is not connected');

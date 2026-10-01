@@ -8,6 +8,7 @@ export type Machine = {
   harnesses: MachineHarness[];
   error?: string;
   writable?: boolean;
+  configVersion?: number;
 };
 
 export const machines: Machine[] = [

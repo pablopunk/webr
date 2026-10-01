@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { TargetAdapter } from './target';
 import type { NativeSnapshot } from '../protocol/native';
+const safeReason = (error: unknown, fallback: string) => error instanceof Error && ['managed_context_required', 'unsupported_herdr_version', 'ssh_forward_failed', 'socket_unavailable', 'rpc_timeout', 'events_lost'].includes(error.message) ? error.message : fallback;
 
 export class TargetSupervisor {
   readonly generation = randomUUID();
@@ -16,6 +17,7 @@ export class TargetSupervisor {
   private timer?: ReturnType<typeof setTimeout>;
   private health?: ReturnType<typeof setInterval>;
   private epoch = 0;
+  private subscribedPanes = '';
   constructor(readonly target: TargetAdapter, private publish: () => void, private delay = 25) {}
   async start() {
     if (this.stopped) return;
@@ -27,7 +29,7 @@ export class TargetSupervisor {
       this.invalidate();
       this.health ??= setInterval(() => this.invalidate(), 15_000);
       this.health.unref();
-    } catch { if (epoch === this.epoch) this.disconnect('target_unavailable'); }
+    } catch (error) { if (epoch === this.epoch) this.disconnect(safeReason(error, 'target_unavailable')); }
   }
   invalidate() {
     this.dirty = true;
@@ -48,7 +50,14 @@ export class TargetSupervisor {
       if (epoch !== this.epoch || this.stopped) return;
       this.snapshot = snapshot; this.connected = true; this.error = undefined;
       this.freshAt = new Date().toISOString(); ++this.revision; this.publish();
-    } catch { if (epoch === this.epoch) this.disconnect('snapshot_failed'); }
+      const paneIds = snapshot.panes.map((pane) => pane.pane_id).sort();
+      const key = JSON.stringify(paneIds);
+      if (key !== this.subscribedPanes) {
+        const subscription = await this.target.subscribe(() => this.invalidate(), (reason) => this.disconnect(reason), paneIds);
+        if (epoch !== this.epoch || this.stopped) { subscription(); return; }
+        this.subscription?.(); this.subscription = subscription; this.subscribedPanes = key; this.dirty = true;
+      }
+    } catch (error) { if (epoch === this.epoch) this.disconnect(safeReason(error, 'snapshot_failed')); }
     finally {
       this.reading = false;
       if (this.dirty && this.hasSubscription()) this.invalidate();
@@ -58,6 +67,7 @@ export class TargetSupervisor {
   private disconnect(reason: string) {
     if (this.stopped) return;
     ++this.epoch; this.subscription?.(); this.subscription = undefined;
+    this.subscribedPanes = '';
     this.connected = false; this.error = reason; this.freshAt = null; ++this.revision; this.publish();
     clearTimeout(this.timer);
     this.timer = setTimeout(() => { this.timer = undefined; void this.start(); }, Math.max(100, this.delay));

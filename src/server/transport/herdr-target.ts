@@ -2,13 +2,15 @@ import type { TargetAdapter } from '../runtime/target';
 import type { TargetProfile } from './registry';
 import { localSocket } from './registry';
 import { SocketApi } from '../protocol/socket';
-import { nativeSnapshot, nativePane, nativeTab } from '../protocol/native';
+import { nativeSnapshot } from '../protocol/native';
 import { openCliStream } from '../terminal/cli';
 import { boundedProcess } from './process';
 import { SshForward, sshOptions, remoteCommand, quoteShell } from './ssh';
 import type { LaunchInput } from '../../shared/runtime';
 import type { Machine } from '../../lib/machines';
 import { harnessName } from '../../lib/models';
+import { HerdrActions } from '../runtime/herdr-actions';
+import { readApprovedIcon, type Icon } from './icons';
 
 const knownKinds = ['claude', 'codex', 'opencode', 'pi'];
 export class HerdrTarget implements TargetAdapter {
@@ -19,6 +21,7 @@ export class HerdrTarget implements TargetAdapter {
   private compatible = false;
   private connecting?: Promise<SocketApi>;
   private streams = new Set<ReturnType<typeof openCliStream>>();
+  private icons = new Map<string, { expires: number; value: Promise<Icon | undefined> }>();
   constructor(private profile: TargetProfile) {
     this.id = profile.id; this.name = profile.name; this.session = profile.session; this.locations = profile.locations;
   }
@@ -49,10 +52,14 @@ export class HerdrTarget implements TargetAdapter {
     catch (error) { await this.disconnect(); throw error; }
     finally { this.connecting = undefined; }
   }
-  async subscribe(onEvent: () => void, onClose: (reason: string) => void) {
-    return (await this.connect()).subscribe(onEvent, (reason) => { this.api?.close(); this.api = undefined; this.compatible = false; void this.forwarding?.close(); this.forwarding = undefined; onClose(reason); });
+  async subscribe(onEvent: () => void, onClose: (reason: string) => void, paneIds: string[] = []) {
+    return (await this.connect()).subscribe(onEvent, (reason) => { this.api?.close(); this.api = undefined; this.compatible = false; void this.forwarding?.close(); this.forwarding = undefined; onClose(reason); }, paneIds);
   }
-  async snapshot() { return nativeSnapshot.parse((await (await this.connect()).request('session.snapshot')).snapshot); }
+  async snapshot() {
+    const snapshot = nativeSnapshot.parse((await (await this.connect()).request('session.snapshot')).snapshot);
+    if (snapshot.version !== '0.9.3') throw new Error('unsupported_herdr_version');
+    return snapshot;
+  }
   async catalog(): Promise<Machine> {
     const api = await this.connect();
     await api.request('ping');
@@ -65,21 +72,26 @@ export class HerdrTarget implements TargetAdapter {
     }
     return { id: this.id, name: this.name, session: this.session, connected: true, writable: false, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id) => ({ id, name: harnessName(id), models: [], launchEnabled: false, reason: 'Live launch and input validation has not passed for this target.' })) };
   }
+  async icon(projectId: string) {
+    const location = this.locations.find((location) => location.projectId === projectId);
+    if (this.profile.transport !== 'local' || !location) return;
+    const cached = this.icons.get(projectId);
+    if (cached && cached.expires > Date.now()) return cached.value;
+    const value = readApprovedIcon(location.path);
+    this.icons.set(projectId, { expires: Date.now() + 60_000, value }); return value;
+  }
   openTerminal: TargetAdapter['openTerminal'] = (terminalId, mode, cols, rows, takeover, onFrame, onClose) => {
     if (!this.compatible || mode !== 'observe' || takeover) throw new Error('write_capability_not_validated');
     const command = this.command(['terminal', 'session', 'observe', terminalId, '--cols', String(cols), '--rows', String(rows)]);
     const stream = openCliStream(command.command, command.args, { env: command.env }, onFrame, (reason) => { this.streams.delete(stream); onClose(reason); });
     this.streams.add(stream); return stream;
   };
-  async create(_input: LaunchInput, _threadId: string): Promise<{ tabId: string; paneId: string; terminalId: string; workspaceId: string }> { throw new Error('launch_capability_not_validated'); }
-  async start(_input: LaunchInput, _paneId: string, _threadId: string) { throw new Error('launch_capability_not_validated'); }
-  async prompt(_paneId: string, _prompt: string, _terminalId: string) { throw new Error('launch_capability_not_validated'); }
+  async create(input: LaunchInput, threadId: string) { return this.actions().create(input, threadId); }
+  async start(input: LaunchInput, paneId: string, threadId: string) { return this.actions().start(input, paneId, threadId); }
+  async prompt(paneId: string, prompt: string, terminalId: string, threadId: string, kind: string) { return this.actions().prompt(paneId, prompt, terminalId, threadId, kind); }
+  private actions() {
+    return new HerdrActions({ request: async (method, params) => (await this.connect()).request(method, params) }, this.locations, () => { throw new Error('launch_capability_not_validated'); });
+  }
   close() { this.api?.close(); for (const stream of this.streams) stream.close(); void this.forwarding?.close(); }
   private async disconnect() { this.api?.close(); this.api = undefined; await this.forwarding?.close(); this.forwarding = undefined; }
-}
-
-export function parseCreated(result: Record<string, unknown>) {
-  const pane = nativePane.parse(result.root_pane);
-  const tab = nativeTab.parse(result.tab);
-  return { paneId: pane.pane_id, terminalId: pane.terminal_id, tabId: tab.tab_id, workspaceId: pane.workspace_id };
 }

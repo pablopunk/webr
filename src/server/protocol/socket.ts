@@ -5,7 +5,7 @@ import { NdjsonParser } from './ndjson';
 import { lifecycleSubscriptions } from './native';
 
 const envelope = z.object({ id: z.string(), result: z.record(z.string(), z.unknown()).optional(), error: z.object({ code: z.string(), message: z.string() }).optional() });
-const allowed = new Set(['ping', 'session.snapshot', 'events.subscribe', 'server.agent_manifests', 'worktree.create', 'tab.create', 'agent.start', 'agent.prompt']);
+const allowed = new Set(['ping', 'session.snapshot', 'events.subscribe', 'server.agent_manifests', 'worktree.create', 'tab.create', 'agent.start', 'agent.get', 'agent.prompt']);
 export class SocketApi {
   private sockets = new Set<Socket>();
   constructor(readonly path: string, readonly deadline = 5000) {}
@@ -31,10 +31,11 @@ export class SocketApi {
       socket.on('connect', () => socket.write(JSON.stringify({ id, method, params }) + '\n'));
       socket.on('data', (chunk) => { try { parser.push(chunk); } catch (error) { finish(error as Error); } });
       socket.on('error', () => finish(new Error('socket_unavailable')));
+      socket.on('close', () => finish(new Error('rpc_closed')));
       socket.on('end', () => { try { parser.end(); finish(new Error('rpc_closed')); } catch (error) { finish(error as Error); } });
     });
   }
-  subscribe(onEvent: () => void, onClose: (reason: string) => void): Promise<() => void> {
+  subscribe(onEvent: () => void, onClose: (reason: string) => void, paneIds: string[] = []): Promise<() => void> {
     return new Promise((resolve, reject) => {
       const socket = this.open();
       const id = randomUUID();
@@ -60,7 +61,7 @@ export class SocketApi {
           onEvent();
         }
       });
-      socket.on('connect', () => socket.write(JSON.stringify({ id, method: 'events.subscribe', params: { subscriptions: lifecycleSubscriptions } }) + '\n'));
+      socket.on('connect', () => socket.write(JSON.stringify({ id, method: 'events.subscribe', params: { subscriptions: [...lifecycleSubscriptions, ...paneIds.map((pane_id) => ({ type: 'pane.agent_status_changed', pane_id }))] } }) + '\n'));
       socket.on('data', (chunk) => { try { parser.push(chunk); } catch (error) { stop((error as Error).message); } });
       socket.on('error', () => stop('socket_unavailable'));
       socket.on('end', () => stop('subscription_closed'));

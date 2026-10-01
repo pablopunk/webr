@@ -9,9 +9,9 @@
 .native-pane-layout { position: relative; flex: 1; min-height: 160px; }
 .native-pane-position { position: absolute; padding: 2px; }
 .native-pane-position .terminal-pane { height: 100%; display: flex; flex-direction: column; }
-.terminal-controls { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 11px; padding: 4px 8px; }
+.terminal-controls { display: flex; gap: 8px; align-items: center; color: var(--ink-muted); font-size: 11px; padding: 4px 8px; }
 .terminal-controls span { flex: 1; }
 .terminal-controls button { font: inherit; }
-.terminal-host { flex: 1; min-height: 0; overflow: hidden; }
+.terminal-host { flex: 1; min-height: 0; height: auto; overflow: hidden; }
 .terminal-input-capture { width: 100%; resize: none; background: var(--terminal-bg); color: var(--terminal-ink); border: 1px solid var(--terminal-selection); }
-.runtime-notice { padding: 10px 16px; color: var(--muted); font-size: 13px; }
+.runtime-notice { padding: 10px 16px; color: var(--ink-muted); font-size: 13px; }

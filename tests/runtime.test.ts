@@ -7,8 +7,8 @@ import { createRuntimeStore } from '../src/client/store';
 import { FakeTarget } from './fixtures/target';
 import type { Projection } from '../src/shared/runtime';
 
-const cleanup: (() => void)[] = [];
-afterEach(() => { for (const close of cleanup.splice(0).reverse()) close(); vi.useRealTimers(); });
+const cleanup: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); vi.useRealTimers(); });
 const database = () => { const db = new MetadataDatabase(':memory:'); cleanup.push(() => db.close()); return db; };
 it('serializes reads and performs an authoritative reread when an event occurs during a read', async () => {
   const target = new FakeTarget(); let finish!: () => void; let active = 0; let max = 0;
@@ -24,13 +24,14 @@ it('recovers events_lost by resubscribing before reading again, without replayin
   await supervisor.start(); await expect.poll(() => supervisor.connected).toBe(true);
   target.lost!('events_lost'); expect(supervisor.connected).toBe(false);
   target.state.panes = [];
-  await expect.poll(() => target.subscriptions).toBe(2);
+  await expect.poll(() => supervisor.connected).toBe(true);
+  expect(target.activeSubscriptions).toBe(1);
   await expect.poll(() => supervisor.snapshot?.panes.length).toBe(0);
 });
 it('shares one upstream subscription among all manager consumers', async () => {
   const target = new FakeTarget(); const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close());
   manager.on('projection', () => {}); manager.on('projection', () => {}); manager.start();
-  await expect.poll(() => manager.bootstrap().machines[0].connected).toBe(true); expect(target.subscriptions).toBe(1);
+  await expect.poll(() => manager.bootstrap().machines[0].connected).toBe(true); expect(target.activeSubscriptions).toBe(1);
 });
 it('does not attach cold-restored terminal IDs by the old pane ID and follows moved terminal identity', () => {
   const target = new FakeTarget(); const db = database();
@@ -60,4 +61,12 @@ it('does not use a late snapshot from a previous subscription after disconnect',
   await supervisor.start(); await expect.poll(() => target.reads).toBe(1);
   target.lost!('events_lost'); finish(target.state);
   await new Promise((resolve) => setTimeout(resolve, 10)); expect(supervisor.snapshot).toBeUndefined();
+});
+it('invalidates absent runtime on gateway loss without treating enabled profiles as connected', () => {
+  const db = database(); const target = new FakeTarget(); const records = reconcile(db, target, target.state);
+  const projection: Projection = { machineId: target.id, generation: 'one', revision: 1, freshAt: new Date().toISOString(), connected: true, ...records, layouts: [] };
+  const store = createRuntimeStore({ projections: [projection], machines: [], threads: [], projects: [] });
+  store.getState().connection(true); store.getState().connection(false); store.getState().connection(true);
+  expect(store.getState().projections[target.id].connected).toBe(false); expect(store.getState().threads[records.threads[0].id].panes).toEqual([]);
+  store.getState().install(projection); expect(store.getState().projections[target.id].connected).toBe(true); expect(store.getState().threads[records.threads[0].id].bindingState).toBe('attached');
 });

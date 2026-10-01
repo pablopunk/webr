@@ -11,9 +11,10 @@ export function createAuth(database: MetadataDatabase, origin: string, secret: s
     secret,
     emailAndPassword: { enabled: true, disableSignUp: !provisioning, minPasswordLength: 16 },
     trustedOrigins: [origin],
+    rateLimit: { enabled: true, window: 60, max: 10, storage: 'memory' },
     disabledPaths: provisioning ? [] : ['/sign-up/email', '/change-email', '/delete-user', '/forget-password', '/reset-password'],
     session: { expiresIn: 8 * 60 * 60, cookieCache: { enabled: false } },
-    advanced: { useSecureCookies: true, defaultCookieAttributes: { httpOnly: true, sameSite: 'strict', secure: true } },
+    advanced: { useSecureCookies: true, ipAddress: { ipAddressHeaders: ['x-herdr-web-client-ip'] }, defaultCookieAttributes: { httpOnly: true, sameSite: 'strict', secure: true } },
     logger: { disabled: true },
   });
   async function authenticate(headers: IncomingHttpHeaders) {

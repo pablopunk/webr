@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, GitBranch } from 'lucide-react';
 import type { Project } from '../lib/models';
 import type { Machine } from '../lib/machines';
@@ -17,8 +17,9 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const operation = useRef<{ payload: string; key: string } | null>(null);
   const baseMachine = machines.find((machine) => machine.id === machineId) ?? { id: '', name: 'No target', connected: false, session: '', projectPaths: {}, harnesses: [] };
-  const catalog = useMachineCatalog(machineId, baseMachine.connected);
+  const catalog = useMachineCatalog(machineId, baseMachine.connected, baseMachine.configVersion);
   const machine = { ...baseMachine, harnesses: baseMachine.connected ? catalog.data?.harnesses ?? [] : [] };
   const machineProjects = projects.filter((project) => Object.hasOwn(machine.projectPaths, project.id)).map((project) => ({
     ...project, path: machine.projectPaths[project.id], iconUrl: machineId === 'local' ? project.iconUrl : undefined,
@@ -41,14 +42,16 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     event.preventDefault();
     if (!canSubmit) return;
     setBusy(true); setError('');
+    const payload = JSON.stringify({ prompt, projectId, machineId, agent: harness, model: model.trim(), worktree });
+    if (operation.current?.payload !== payload) operation.current = { payload, key: crypto.randomUUID() };
     try {
       const result = await fetch('/api/threads', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
-        body: JSON.stringify({ prompt, projectId, machineId, agent: harness, model: model.trim(), worktree }),
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operation.current.key },
+        body: payload,
       });
-      const payload = await result.json();
-      if (!result.ok) throw new Error(payload.error || 'Could not create thread');
-      await navigate(`/threads/${encodeURIComponent(payload.id)}`);
+      const response = await result.json();
+      if (!result.ok) throw new Error(response.error || 'Could not create thread');
+      await navigate(`/threads/${encodeURIComponent(response.id)}`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not create thread');
       setBusy(false);
@@ -71,7 +74,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
         </div>
       </div>
     </form>
-    <p className="composer-preview-note">{selectedHarness?.reason ?? (!machines.length ? 'No target is configured.' : catalog.isError ? 'The machine catalog is not available.' : 'Select a verified launch adapter.')}</p>
+    <p className="composer-preview-note">{selectedHarness?.reason ?? (!machines.length ? 'No target is configured.' : machine.error ? `Machine is not connected: ${machine.error.replaceAll('_', ' ')}.` : catalog.isError ? 'The machine catalog is not available.' : 'Select a verified launch adapter.')}</p>
     {error && <p className="form-error" role="alert">{error}</p>}
   </main>;
 }

@@ -12,8 +12,8 @@ export function reconcile(database: MetadataDatabase, target: TargetAdapter, sna
   const projects: Project[] = [];
   for (const workspace of snapshot.workspaces) {
     const cwd = workspace.worktree?.repo_root ?? snapshot.panes.find((pane) => pane.workspace_id === workspace.workspace_id)?.cwd ?? '';
-    const projectId = projectIdentity(target.id, workspace.worktree?.repo_key ?? (cwd || workspace.workspace_id));
-    if (!projects.some((project) => project.id === projectId)) projects.push({ id: projectId, name: workspace.worktree?.repo_name ?? workspace.label, path: cwd, color: '#9b83df', initial: (workspace.label[0] ?? 'P').toUpperCase() });
+    const projectId = target.locations.find((location) => location.workspaceId === workspace.workspace_id || location.path === cwd)?.projectId ?? projectIdentity(target.id, workspace.worktree?.repo_key ?? (cwd || workspace.workspace_id));
+    if (!projects.some((project) => project.id === projectId)) projects.push({ id: projectId, name: workspace.worktree?.repo_name ?? workspace.label, path: cwd, color: '#9b83df', initial: (workspace.label[0] ?? 'P').toUpperCase(), iconUrl: target.icon && target.locations.some((location) => location.projectId === projectId) ? `/api/projects/${encodeURIComponent(target.id)}/${encodeURIComponent(projectId)}/icon` : undefined });
     for (const tab of snapshot.tabs.filter((tab) => tab.workspace_id === workspace.workspace_id)) {
       const panes = snapshot.panes.filter((pane) => pane.tab_id === tab.tab_id && pane.workspace_id === tab.workspace_id);
       const previous = saved.find((row) => row.alias === tab.tab_id);

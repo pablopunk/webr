@@ -1,0 +1,42 @@
+import { z } from 'zod';
+import type { LaunchInput } from '../../shared/runtime';
+import type { LaunchLocation } from './target';
+import { nativePane, nativeTab } from '../protocol/native';
+
+type Api = { request(method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>> };
+const startedAgent = z.object({ name: z.string(), terminal_id: z.string(), pane_id: z.string(), agent: z.string(), agent_status: z.enum(['idle', 'done', 'working', 'blocked', 'unknown']) });
+export function modelArguments(kind: string, model: string): string[] {
+  if (!['claude', 'codex', 'opencode'].includes(kind) || !/^[A-Za-z0-9_/.:+-]{1,120}$/.test(model)) throw new Error('unsupported_launch_adapter');
+  return model === 'Default' ? [] : ['--model', model];
+}
+export const agentName = (threadId: string) => 'web-' + threadId.replaceAll('-', '').slice(0, 28);
+
+export class HerdrActions {
+  constructor(private api: Api, private locations: LaunchLocation[], private requireCapability: () => void) {}
+  async create(input: LaunchInput, threadId: string) {
+    this.requireCapability();
+    const location = this.locations.find((location) => location.projectId === input.projectId);
+    if (!location) throw new Error('unknown_project_location');
+    const result = await this.api.request(input.worktree ? 'worktree.create' : 'tab.create', input.worktree
+      ? { workspace_id: location.workspaceId, branch: 'web/' + threadId, label: input.prompt.split('\n')[0].slice(0, 90), focus: false }
+      : { workspace_id: location.workspaceId, cwd: location.path, label: input.prompt.split('\n')[0].slice(0, 90), focus: false });
+    if (result.type !== (input.worktree ? 'worktree_created' : 'tab_created')) throw new Error('unexpected_create_result');
+    const pane = nativePane.parse(result.root_pane); const tab = nativeTab.parse(result.tab);
+    if (pane.tab_id !== tab.tab_id || pane.workspace_id !== tab.workspace_id) throw new Error('inconsistent_create_result');
+    return { paneId: pane.pane_id, terminalId: pane.terminal_id, tabId: tab.tab_id, workspaceId: pane.workspace_id };
+  }
+  async start(input: LaunchInput, paneId: string, threadId: string) {
+    this.requireCapability();
+    const result = await this.api.request('agent.start', { name: agentName(threadId), kind: input.agent, pane_id: paneId, args: modelArguments(input.agent, input.model), timeout_ms: 30000 });
+    const agent = startedAgent.parse(result.agent);
+    if (result.type !== 'agent_started' || agent.name !== agentName(threadId) || agent.pane_id !== paneId || agent.agent !== input.agent || !['idle', 'done'].includes(agent.agent_status)) throw new Error('agent_not_ready');
+  }
+  async prompt(paneId: string, prompt: string, terminalId: string, threadId: string, kind: string) {
+    this.requireCapability();
+    const name = agentName(threadId);
+    const result = await this.api.request('agent.get', { target: name });
+    const agent = startedAgent.parse(result.agent);
+    if (agent.name !== name || agent.terminal_id !== terminalId || agent.pane_id !== paneId || agent.agent !== kind || !['idle', 'done'].includes(agent.agent_status)) throw new Error('agent_occupant_changed');
+    await this.api.request('agent.prompt', { target: name, text: prompt });
+  }
+}

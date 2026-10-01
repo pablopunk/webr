@@ -54,4 +54,14 @@ export class MetadataDatabase {
   markInterruptedLaunches() {
     for (const operation of this.operations()) if (operation.state === 'pending' || operation.state === 'running') this.updateOperation(operation.id, 'unknown', operation.step, operation.result);
   }
+  registerProfile(id: string, session: string, metadata: string, locations: { projectId: string; path: string }[]) {
+    const previous = this.db.select().from(schema.profiles).where(eq(schema.profiles.id, id)).get();
+    const configVersion = previous ? previous.configVersion + Number(previous.metadata !== metadata || previous.session !== session) : 1;
+    this.db.transaction(() => {
+      this.db.insert(schema.profiles).values({ id, session, metadata, configVersion }).onConflictDoUpdate({ target: schema.profiles.id, set: { session, metadata, configVersion } }).run();
+      this.db.delete(schema.projectLocations).where(eq(schema.projectLocations.machineId, id)).run();
+      for (const location of locations) this.db.insert(schema.projectLocations).values({ id: id + ':' + location.projectId, machineId: id, projectId: location.projectId, path: location.path }).run();
+    });
+    return configVersion;
+  }
 }

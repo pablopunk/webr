@@ -33,7 +33,10 @@ export function registerWebsockets(app: FastifyInstance, manager: RuntimeManager
         };
         pair = { close }; pairs.set(owner, pair);
         manager.on('projection', publish);
-        interval = setInterval(() => { void auth.authenticate(request.headers).then((session) => { if (!session) close(); }).catch(close); }, 1000);
+        interval = setInterval(() => {
+          if (pair?.metadata && pair.metadata.readyState !== 1 || pair?.terminal && pair.terminal.readyState !== 1) { close(); return; }
+          void auth.authenticate(request.headers).then((session) => { if (!session) close(); }).catch(close);
+        }, 250);
         pairing = setTimeout(() => { if (!pair?.metadata || !pair.terminal) close(); }, 5000);
         interval.unref(); pairing.unref();
       }

@@ -8,15 +8,22 @@ const share = <T>(previous: T | undefined, next: T): T => previous && equal(prev
 
 export function createRuntimeStore(bootstrap: Bootstrap) {
   const retired = new Map<string, Set<string>>();
+  const awaiting = new Set<string>();
   const store = createStore<RuntimeState>((set, get) => ({
     projections: {}, threads: {}, projects: {}, threadIds: [], projectIds: [], connected: false,
-    connection: (connected) => set({ connected }),
+    connection: (connected) => set((state) => {
+      if (connected) return { connected };
+      for (const id of Object.keys(state.projections)) awaiting.add(id);
+      return { connected, projections: Object.fromEntries(Object.entries(state.projections).map(([id, projection]) => [id, { ...projection, connected: false, freshAt: null }])), threads: Object.fromEntries(Object.entries(state.threads).map(([id, thread]) => [id, { ...thread, status: 'unknown' as const, panes: [], bindingState: 'detached' as const }])) };
+    }),
     install: (projection) => {
       const old = get();
       const previous = old.projections[projection.machineId];
       const generations = retired.get(projection.machineId) ?? new Set<string>();
-      if (generations.has(projection.generation) || previous?.generation === projection.generation && previous.revision >= projection.revision) return;
+      if (generations.has(projection.generation) || !awaiting.has(projection.machineId) && previous?.generation === projection.generation && previous.revision >= projection.revision) return;
+      awaiting.delete(projection.machineId);
       if (previous && previous.generation !== projection.generation) generations.add(previous.generation);
+      if (generations.size > 8) generations.delete(generations.values().next().value!);
       retired.set(projection.machineId, generations);
       const threads = Object.fromEntries(Object.entries(old.threads).filter(([, thread]) => thread.machineId !== projection.machineId));
       for (const thread of projection.threads) threads[thread.id] = share(old.threads[thread.id], { ...thread, panes: thread.panes.map((pane) => share(old.threads[thread.id]?.panes.find((oldPane) => oldPane.id === pane.id && oldPane.terminalId === pane.terminalId), pane)) });

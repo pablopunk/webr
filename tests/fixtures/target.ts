@@ -10,15 +10,18 @@ export function snapshot(): NativeSnapshot {
 export class FakeTarget implements TargetAdapter {
   id = 'fixture'; name = 'Fixture'; session = 'fixture'; writable = true;
   locations = [{ projectId: 'project', path: '/fixture', workspaceId: 'w1' }];
-  state = snapshot(); subscriptions = 0; reads = 0; closed = 0;
+  state = snapshot(); subscriptions = 0; activeSubscriptions = 0; reads = 0; closed = 0;
   event?: () => void; lost?: (reason: string) => void;
   readHook?: () => Promise<NativeSnapshot>;
   effects: string[] = [];
   failure?: string;
   streams: { onFrame: (frame: TerminalFrame) => void; closed: boolean; commands: Record<string, unknown>[] }[] = [];
+  private listeners = new Set<() => void>();
   async subscribe(onEvent: () => void, onClose: (reason: string) => void) {
-    ++this.subscriptions; this.event = onEvent; this.lost = onClose;
-    return () => { this.event = undefined; this.lost = undefined; };
+    ++this.subscriptions; ++this.activeSubscriptions; this.listeners.add(onEvent);
+    this.event = () => { for (const listener of this.listeners) listener(); }; this.lost = onClose;
+    let active = true;
+    return () => { if (active) { --this.activeSubscriptions; this.listeners.delete(onEvent); active = false; } };
   }
   async snapshot() { ++this.reads; return this.readHook ? this.readHook() : structuredClone(this.state); }
   async catalog() { return { id: this.id, name: this.name, session: this.session, connected: true, writable: true, projectPaths: { project: '/fixture' }, harnesses: [{ id: 'claude', name: 'Claude Code', models: ['Default', 'host/model'], launchEnabled: true }] }; }

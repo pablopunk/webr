@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { MetadataDatabase } from '../src/server/storage/database';
 import { LaunchJournal } from '../src/server/runtime/launch';
 import { FakeTarget, launch } from './fixtures/target';
+import { reconcile } from '../src/server/runtime/reconcile';
 
 const databases: MetadataDatabase[] = [];
 afterEach(() => { for (const db of databases.splice(0)) db.close(); });
@@ -24,8 +25,13 @@ it.each(['checkout:before', 'checkout:after', 'start:before', 'start:after', 'pr
   await new Promise((resolve) => setTimeout(resolve, 10)); expect(target.effects).toEqual(effects); expect(target.effects.filter((effect) => effect === 'prompt').length).toBeLessThanOrEqual(1);
 });
 it('marks an interrupted durable intent as unknown instead of replaying it', () => {
-  const { db, target, journal } = setup(); const result = journal.submit('owner', randomUUID(), launch, target);
-  new LaunchJournal(db, () => {}); expect(db.operation(result.operationId)?.state).toBe('unknown');
+  const { db, target } = setup(); const thread = reconcile(db, target, target.state).threads[0];
+  const { operation } = db.beginLaunch('owner', randomUUID(), launch, thread);
+  new LaunchJournal(db, () => {}); expect(db.operation(operation.id)?.state).toBe('unknown'); expect(target.effects).toEqual([]);
+});
+it('stops queued effects during gateway shutdown without starting, prompting or deleting anything', async () => {
+  const { target, journal } = setup(); journal.submit('owner', randomUUID(), launch, target);
+  await journal.stop(); expect(target.effects).toEqual([]); expect(() => journal.submit('owner', randomUUID(), launch, target)).toThrow('gateway_stopping');
 });
 it('keeps catalogs and custom model choices isolated to the selected host', async () => {
   const { db, target, journal } = setup(); const other = new FakeTarget(); other.id = 'remote';

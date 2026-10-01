@@ -31,7 +31,7 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
   const thread = useRuntimeSelector((state) => state.threads[threadId ?? '']);
   const projections = useRuntimeSelector((state) => state.projections);
   const gatewayConnected = useRuntimeSelector((state) => state.connected);
-  const machines = bootstrap.machines.map((machine) => ({ ...machine, connected: gatewayConnected && !!projections[machine.id]?.connected }));
+  const machines = bootstrap.machines.map((machine) => ({ ...machine, connected: gatewayConnected && !!projections[machine.id]?.connected, error: projections[machine.id]?.error }));
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -89,7 +89,7 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
   }, [thread, threads, paletteOpen, toggleSidebar, focusedPane, setFocusedPane]);
 
   return <div className="app-shell">
-    <Sidebar projects={projects} threads={threads} currentId={thread?.id} mode={mode} onModeChange={changeMode} collapsed={collapsed}
+    <Sidebar projects={projects} threads={threads} machines={machines} currentId={thread?.id} mode={mode} onModeChange={changeMode} collapsed={collapsed}
       mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} />
     <div className="main-panel">
       {page === 'thread' && thread && <ThreadView thread={thread} layouts={projections[thread.machineId]?.layouts ?? []} connected={gatewayConnected && !!projections[thread.machineId]?.connected} focusedPane={focusedPane} onFocusPane={setFocusedPane} />}

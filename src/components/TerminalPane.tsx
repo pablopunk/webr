@@ -69,7 +69,7 @@ export function TerminalPane({ pane, machineId, threadId, active, onFocus }: { p
   useEffect(() => { if (active && writable) input.current?.focus(); }, [active, writable]);
 
   return <section className={`terminal-pane ${active ? 'is-active' : ''}`} aria-label={`${pane.title} terminal`} onClick={onFocus}>
-    <div className="terminal-controls"><span role="status">{message}</span>{!writable && <><button onClick={() => control.current?.control()}>Request control</button><button onClick={() => { if (confirm('Replace the active terminal controller?')) control.current?.control(true); }}>Take over</button></>}</div>
+    <div className="terminal-controls"><span role="status">{message}</span>{writable ? <button onClick={() => control.current?.observe()}>Release control</button> : <><button onClick={() => control.current?.control()}>Request control</button><button onClick={() => { if (confirm('Replace the active terminal controller?')) control.current?.control(true); }}>Take over</button></>}</div>
     <div ref={host} className="terminal-host" />
     {writable && <textarea ref={input} className="terminal-input-capture" value={draft} aria-label="Terminal input" rows={1}
       onCompositionStart={() => { composing.current = true; }} onCompositionEnd={(event) => { composing.current = false; control.current?.input(event.currentTarget.value); setDraft(''); event.currentTarget.value = ''; }}

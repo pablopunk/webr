@@ -12,20 +12,22 @@ export class RuntimeManager extends EventEmitter {
   readonly journal: LaunchJournal;
   private projections = new Map<string, Projection>();
   private catalogs = new Map<string, { expires: number; value: Promise<Machine> }>();
+  private configVersions = new Map<string, number>();
   constructor(readonly database: MetadataDatabase, targets: TargetAdapter[]) {
     super(); this.setMaxListeners(100);
     this.journal = new LaunchJournal(database, () => this.publishAll());
     for (const target of targets) {
+      this.configVersions.set(target.id, database.registerProfile(target.id, target.session, JSON.stringify({ name: target.name, locations: target.locations }), target.locations));
       const supervisor = new TargetSupervisor(target, () => this.publish(supervisor));
       this.supervisors.set(target.id, supervisor);
       this.publish(supervisor);
     }
   }
   start() { for (const supervisor of this.supervisors.values()) void supervisor.start(); }
-  close() { for (const supervisor of this.supervisors.values()) supervisor.stop(); this.removeAllListeners(); }
+  async close() { for (const supervisor of this.supervisors.values()) supervisor.stop(); await this.journal.stop(); this.removeAllListeners(); }
   bootstrap(): Bootstrap {
     const projections = [...this.projections.values()];
-    return { projections, projects: projections.flatMap((projection) => projection.projects), threads: projections.flatMap((projection) => projection.threads), machines: [...this.supervisors.values()].map((supervisor) => ({ id: supervisor.target.id, name: supervisor.target.name, session: supervisor.target.session, connected: supervisor.connected, projectPaths: Object.fromEntries(supervisor.target.locations.map((location) => [location.projectId, location.path])), harnesses: [], error: supervisor.error, writable: supervisor.target.writable })) };
+    return { projections, projects: projections.flatMap((projection) => projection.projects), threads: projections.flatMap((projection) => projection.threads), machines: [...this.supervisors.values()].map((supervisor) => ({ id: supervisor.target.id, name: supervisor.target.name, session: supervisor.target.session, connected: supervisor.connected, projectPaths: Object.fromEntries(supervisor.target.locations.map((location) => [location.projectId, location.path])), harnesses: [], error: supervisor.error, writable: supervisor.target.writable, configVersion: this.configVersions.get(supervisor.target.id) })) };
   }
   async catalog(machineId: string) {
     const supervisor = this.supervisors.get(machineId);
@@ -55,6 +57,7 @@ export class RuntimeManager extends EventEmitter {
     const records = supervisor.snapshot ? reconcile(this.database, supervisor.target, supervisor.snapshot) : { threads: this.database.threadRows(supervisor.target.id, supervisor.target.session).map((row) => ({ ...row.metadata, panes: [], bindingState: 'detached' as const, status: 'unknown' as const })), projects: [] };
     const previous = this.projections.get(supervisor.target.id);
     const projection: Projection = { machineId: supervisor.target.id, generation: supervisor.generation, revision: (previous?.revision ?? 0) + 1, freshAt: supervisor.freshAt, connected: supervisor.connected, error: supervisor.error, ...records, layouts: supervisor.snapshot?.layouts.map((layout) => ({ workspaceId: layout.workspace_id, tabId: layout.tab_id, area: layout.area, panes: layout.panes.map((pane) => ({ paneId: pane.pane_id, rect: pane.rect })) })) ?? [] };
+    projection.threads = projection.threads.map((thread) => ({ ...thread, prompt: '', ...(!projection.connected ? { panes: [], status: 'unknown' as const, bindingState: 'detached' as const } : {}) }));
     this.projections.set(supervisor.target.id, projection);
     if (!projection.connected) this.catalogs.delete(supervisor.target.id);
     this.emit('projection', projection);

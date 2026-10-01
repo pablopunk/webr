@@ -35,7 +35,9 @@ export async function createHost(manager: RuntimeManager, auth: GatewayAuth, ori
   const hub = registerWebsockets(app, manager, auth);
   app.get('/login', async (_request, reply) => reply.type('text/html').send(loginPage));
   app.route({ method: ['GET', 'POST'], url: '/api/auth/*', handler: async (request, reply) => {
-    const response = await auth.auth.handler(new Request(origin + request.url, { method: request.method, headers: fromNodeHeaders(request.headers), body: request.method === 'GET' ? undefined : JSON.stringify(request.body) }));
+    const headers = fromNodeHeaders(request.headers);
+    headers.set('x-herdr-web-client-ip', request.ip);
+    const response = await auth.auth.handler(new Request(origin + request.url, { method: request.method, headers, body: request.method === 'GET' ? undefined : JSON.stringify(request.body) }));
     reply.code(response.status);
     response.headers.forEach((value, key) => { if (key !== 'set-cookie') reply.header(key, value); });
     const cookies = response.headers.getSetCookie();
@@ -48,6 +50,14 @@ export async function createHost(manager: RuntimeManager, auth: GatewayAuth, ori
     return manager.catalog(machineId);
   });
   app.get('/api/runtime', async () => manager.bootstrap());
+  app.get('/api/projects/:machineId/:projectId/icon', async (request, reply) => {
+    const { machineId, projectId } = z.object({ machineId: opaqueId, projectId: opaqueId }).parse(request.params);
+    const target = manager.supervisors.get(machineId)?.target;
+    const icon = await target?.icon?.(projectId);
+    if (!icon) return reply.code(404).send();
+    if (icon.contentType === 'image/svg+xml') reply.header('Content-Security-Policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'");
+    return reply.type(icon.contentType).send(icon.bytes);
+  });
   app.post('/api/threads', async (request, reply) => {
     const input = launchInput.parse(request.body);
     const key = z.uuid().parse(request.headers['idempotency-key']);

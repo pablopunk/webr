@@ -11,6 +11,8 @@ import { createHost } from '../src/server/host';
 const host = process.env.HOST ?? '127.0.0.1';
 const port = Number(process.env.PORT ?? 4321);
 const origin = process.env.HERDR_WEB_ORIGIN ?? `http://${host}:${port}`;
+if (new URL(origin).origin !== origin || new URL(origin).username || new URL(origin).password) throw new Error('HERDR_WEB_ORIGIN must be a normalized HTTP or HTTPS origin without credentials or a path');
+if (!['http:', 'https:'].includes(new URL(origin).protocol)) throw new Error('HERDR_WEB_ORIGIN must use HTTP or HTTPS');
 const local = ['127.0.0.1', 'localhost', '::1'].includes(host);
 if (!local && (!origin.startsWith('https://') || process.env.HERDR_WEB_TRUSTED_HTTPS !== '1')) throw new Error('Nonlocal binding requires explicitly trusted HTTPS');
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid port');

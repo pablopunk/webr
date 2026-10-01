@@ -1,8 +1,9 @@
 import type { Terminal } from '@xterm/xterm';
 import type { Projection, TerminalAction } from '../shared/runtime';
 import { decodeFrame, FrameSequence } from '../shared/frame';
+import { TerminalRenderer } from './terminal-renderer';
 
-type VisiblePane = { machineId: string; threadId: string; terminalId: string; terminal: Terminal; mode: 'observe' | 'control'; generation: number; sequence: FrameSequence; writable: boolean; cols: number; rows: number; onState: (message: string, writable: boolean) => void; attempts: number };
+type VisiblePane = { machineId: string; threadId: string; terminalId: string; terminal: Terminal; mode: 'observe' | 'control'; generation: number; sequence: FrameSequence; renderer?: TerminalRenderer; writable: boolean; cols: number; rows: number; onState: (message: string, writable: boolean) => void; attempts: number };
 export class BrowserTerminalManager {
   private metadata?: WebSocket;
   private binary?: WebSocket;
@@ -20,9 +21,10 @@ export class BrowserTerminalManager {
     this.panes.set(id, { ...pane, generation: 1, sequence: new FrameSequence(), writable: false, attempts: 0 });
     this.open(id);
     return {
-      close: () => { const current = this.panes.get(id); if (current) this.send({ type: 'release', streamId: id, generation: current.generation }); this.panes.delete(id); },
+      close: () => { const current = this.panes.get(id); if (current) { this.send({ type: 'release', streamId: id, generation: current.generation }); current.renderer?.close(); } this.panes.delete(id); },
       input: (text: string, paste = false) => { const current = this.panes.get(id); if (current?.writable) this.send({ type: 'input', streamId: id, generation: current.generation, text, paste }); },
       control: (takeover = false) => { const current = this.panes.get(id); if (current) { this.send({ type: 'release', streamId: id, generation: current.generation }); current.mode = 'control'; ++current.generation; current.sequence = new FrameSequence(); this.open(id, takeover); } },
+      observe: () => { const current = this.panes.get(id); if (current) { this.send({ type: 'release', streamId: id, generation: current.generation }); current.mode = 'observe'; ++current.generation; current.sequence = new FrameSequence(); this.open(id); } },
       resize: (cols: number, rows: number) => {
         const current = this.panes.get(id);
         if (!current || cols === current.cols && rows === current.rows) return;
@@ -43,6 +45,10 @@ export class BrowserTerminalManager {
     const pane = this.panes.get(id);
     if (!pane) return;
     pane.writable = false;
+    pane.renderer?.close();
+    pane.renderer = new TerminalRenderer(pane.terminal, (frame) => {
+      if (this.panes.get(id) === pane && pane.generation === frame.generation) this.send({ type: 'ack', streamId: id, generation: frame.generation, seq: frame.seq });
+    });
     pane.onState('Read-only; input modes have not been verified.', false);
     this.send({ type: 'open', streamId: id, generation: pane.generation, machineId: pane.machineId, threadId: pane.threadId, terminalId: pane.terminalId, mode: pane.mode, cols: pane.cols, rows: pane.rows, takeover });
   }
@@ -67,6 +73,7 @@ export class BrowserTerminalManager {
           if (record.type === 'stream.opened') { pane.writable = !!record.writable; pane.onState(pane.writable ? 'Input control is active.' : 'Read-only', pane.writable); }
           if (record.type === 'stream.closed' || record.type === 'stream.error') {
             pane.writable = false; pane.onState(String(record.reason).replaceAll('_', ' '), false);
+            if (record.type === 'stream.error' && pane.mode === 'control') { pane.mode = 'observe'; ++pane.generation; pane.sequence = new FrameSequence(); this.open(record.streamId); return; }
             if (record.reason === 'stream_resync_required' && pane.attempts++ < 2) { ++pane.generation; pane.sequence = new FrameSequence(); pane.mode = 'observe'; this.open(record.streamId); }
           }
           return;
@@ -75,9 +82,7 @@ export class BrowserTerminalManager {
         const pane = this.panes.get(frame.streamId);
         if (!pane || pane.generation !== frame.generation) return;
         pane.sequence.accept(frame);
-        pane.terminal.resize(frame.width, frame.height);
-        if (frame.full) pane.terminal.reset();
-        pane.terminal.write(frame.bytes, () => { if (epoch === this.epoch && this.panes.get(frame.streamId) === pane && pane.generation === frame.generation) this.send({ type: 'ack', streamId: frame.streamId, generation: frame.generation, seq: frame.seq }); });
+        pane.renderer?.push(frame);
       } catch { this.disconnect(); }
     };
     const lost = () => { if (epoch === this.epoch) this.disconnect(); };
@@ -87,7 +92,7 @@ export class BrowserTerminalManager {
     ++this.epoch;
     this.metadata?.close(); this.binary?.close(); this.metadata = undefined; this.binary = undefined;
     this.onConnection(false);
-    for (const pane of this.panes.values()) { pane.writable = false; pane.mode = 'observe'; pane.onState('Disconnected; input was not saved.', false); }
+    for (const pane of this.panes.values()) { pane.renderer?.close(); pane.writable = false; pane.mode = 'observe'; pane.onState('Disconnected; input was not saved.', false); }
     clearTimeout(this.reconnect);
     if (!this.stopped) this.reconnect = setTimeout(() => this.connect(), 1000);
   }
