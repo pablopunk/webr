@@ -7,6 +7,7 @@ import { RuntimeManager } from '../src/server/runtime/manager';
 import { loadRegistry } from '../src/server/transport/registry';
 import { HerdrTarget } from '../src/server/transport/herdr-target';
 import { createHost } from '../src/server/host';
+import { validateLocalControl } from '../src/server/validation/automatic';
 
 const host = process.env.HOST ?? '127.0.0.1';
 const port = Number(process.env.PORT ?? 4321);
@@ -24,6 +25,17 @@ const { handler } = await import(pathToFileURL(resolve('dist/server/entry.mjs'))
 const tls = process.env.HERDR_WEB_TLS_CERT && process.env.HERDR_WEB_TLS_KEY ? { cert: await readFile(process.env.HERDR_WEB_TLS_CERT), key: await readFile(process.env.HERDR_WEB_TLS_KEY) } : undefined;
 const app = await createHost(manager, origin, handler, tls);
 await app.listen({ host, port });
+const automaticLocal = profiles.find((profile) => profile.id === 'local' && profile.automatic && profile.transport === 'local');
+let validationStarted = false;
+manager.on('projection', (projection) => {
+  if (!automaticLocal || validationStarted || !projection.connected || projection.machineId !== automaticLocal.id) return;
+  validationStarted = true;
+  const fingerprint = manager.supervisors.get(automaticLocal.id)!.target.fingerprint;
+  void validateLocalControl(automaticLocal, database, key, fingerprint).then((approved) => {
+    if (approved) manager.supervisors.get(automaticLocal.id)?.invalidate();
+    else console.warn('Automatic control validation did not approve terminal input');
+  }).catch((error) => console.warn('Automatic control validation stopped:', error instanceof Error ? error.message : 'unknown error'));
+});
 manager.start();
 console.log(`Herdr Web listening at ${origin}; unproved capabilities are disabled`);
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => { void app.close().finally(() => { database.close(); process.exit(0); }); });

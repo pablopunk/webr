@@ -109,7 +109,7 @@ The separate agent/live-validation safety rule still requires a genuinely inheri
 
 ## Input and launch limits
 
-Real targets are **read-only unless matching complete live evidence is approved locally**. When approved, the active terminal pane requests control without takeover and gains a focused input capture after its full baseline. An existing controller conflict leaves it read-only until the user explicitly requests takeover. The fixture path exercises control conflicts, explicit takeover, resize, Unicode, paste validation, release, sequence recovery, and disconnect teardown. The gateway controller lock protects its own leases and Herdr's direct controller path; it is not a global input lock over unrelated native or JSON API clients.
+Real targets are **read-only unless matching complete live evidence is approved locally**. On startup, automatic Local creates a no-focus, uniquely labelled validation workspace, runs the control validator from its own managed shell and approves only a successful measured receipt; it never sends validation input to an existing agent. The workspace closes only after its identity and idle shell are checked; uncertain outcomes leave it intact for inspection. When approved, the active terminal pane requests control without takeover and gains a focused input capture after its full baseline. An existing controller conflict leaves it read-only until the user explicitly requests takeover. The fixture path exercises control conflicts, explicit takeover, resize, Unicode, paste validation, release, sequence recovery, and disconnect teardown. The gateway controller lock protects its own leases and Herdr's direct controller path; it is not a global input lock over unrelated native or JSON API clients.
 
 Control, takeover and release actions are in the command palette and a compact terminal context menu, not permanent terminal header bars. The pilot captures deliberate keyboard, Unicode, IME and plain-text paste events through a small input capture field. Application shortcuts still work there and are dispatched only once; composer and search editing keys are not intercepted. It never forwards arbitrary xterm `onData`, device replies, terminal clipboard requests, or terminal-supplied links. Input is limited to 8 KiB of UTF-8 bytes. Paste rejects control characters and embedded bracketed-paste delimiters.
 
@@ -160,7 +160,7 @@ A different CLI/server version requires validation again. The installed JSON sch
 
 ## Run automated live validation in the existing session
 
-Automatic Local needs no registry or manually entered key. Run this **from a genuine Herdr terminal in the selected existing session**, not from an unmanaged shell, and do not set `HERDR_ENV` yourself:
+Automatic Local needs no registry or manually entered key: the app runs this validation in an owned managed shell when it starts, without requiring your shell to be inside Herdr. If automatic validation fails, inspect the retained `herdr-web-control-check-*` workspace and `.data/validation` journal; to rerun it manually, use a genuine Herdr terminal in the selected existing session, not an unmanaged shell, and do not set `HERDR_ENV` yourself:
 
 ```sh
 mise exec -- pnpm run validate:live --target local --consent --approve
@@ -188,4 +188,4 @@ mise exec -- pnpm run build
 mise exec -- pnpm start
 ```
 
-The gateway itself does not require a managed pane. Local/SSH actual live execution has **not** been performed in this coding session, because its genuine managed context is absent. The runner has deterministic injected failure/success tests and an owned recorder-process/PTY test, not fabricated Herdr live proof. Remote icons still use fallbacks, and general source-mode-aware keyboard/graphics support remains outside the literal pilot. Please check direct session loading, empty-session workspace creation, persisted navigation, themes and responsive layout manually.
+The gateway itself does not require a managed pane. Local/SSH actual live validation has **not** been performed in this coding session; the automatic bootstrap has injected tests, not fabricated Herdr live proof. Remote icons still use fallbacks, and general source-mode-aware keyboard/graphics support remains outside the literal pilot. Check direct session loading, terminal input after approval, empty-session workspace creation, persisted navigation, themes and responsive layout on the running app.
