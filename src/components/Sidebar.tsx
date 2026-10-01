@@ -58,9 +58,12 @@ export function Sidebar({ projects, threads, currentId, mode, onModeChange, coll
         </div>
         <nav className="thread-navigation" aria-label="Agent threads">
           {mode === 'projects' ? projects.filter((project) => threads.some((thread) => thread.projectId === project.id)).sort((a, b) => (threads.find((thread) => thread.projectId === b.id)?.updatedAt ?? '').localeCompare(threads.find((thread) => thread.projectId === a.id)?.updatedAt ?? '')).map((project) => <section key={project.id} className="thread-group">
-            <button className="group-title" onClick={() => setClosedProjects((value) => value.includes(project.id) ? value.filter((id) => id !== project.id) : [...value, project.id])} aria-expanded={!closedProjects.includes(project.id)}>
-              <span className="group-chevron" aria-hidden="true">{closedProjects.includes(project.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</span><ProjectIcon project={project} />{project.name}
-            </button>
+            <div className="group-header">
+              <button className="group-title" onClick={() => setClosedProjects((value) => value.includes(project.id) ? value.filter((id) => id !== project.id) : [...value, project.id])} aria-expanded={!closedProjects.includes(project.id)}>
+                <span className="group-chevron" aria-hidden="true">{closedProjects.includes(project.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</span><ProjectIcon project={project} /><span className="group-name">{project.name}</span>
+              </button>
+              <a className="group-new-thread" href={`/new?project=${encodeURIComponent(project.id)}`} aria-label={`New thread in ${project.name}`} title={`New thread in ${project.name}`}><Plus size={15} aria-hidden="true" /></a>
+            </div>
             {!closedProjects.includes(project.id) && threads.filter((thread) => thread.projectId === project.id).map((thread) => threadLink(thread, false))}
           </section>) : threads.map((thread) => threadLink(thread, true))}
           {!threads.length && <p className="sidebar-empty">No threads yet. Press ⌘K to start one.</p>}
