@@ -5,13 +5,12 @@
 .brand { font-size: 12px; font-weight: 700; letter-spacing: -.02em; }
 .sidebar-collapse { width: 26px; height: 26px; }
 .sidebar-actions { display: flex; align-items: center; gap: 5px; flex: none; margin: 12px 8px 4px; }
-.sidebar-new-thread { display: flex; align-items: center; gap: 5px; flex: none; min-height: 34px; padding: 0 8px; border: 1px solid var(--card-edge); border-radius: 7px; background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); font-size: 10.5px; font-weight: 600; white-space: nowrap; transition: background-color .2s, box-shadow .2s; }
-.sidebar-new-thread span { transform: translateY(1px); }
+.sidebar-new-thread { display: grid; flex: none; place-items: center; width: 34px; height: 34px; border: 1px solid var(--card-edge); border-radius: 7px; background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); transition: background-color .2s, box-shadow .2s; }
 .sidebar-new-thread:hover { background: var(--card-hover); box-shadow: var(--card-shadow-hover); }
 .sidebar.is-collapsed .sidebar-actions { justify-content: center; margin: 10px 0 0; }
-.sidebar.is-collapsed .sidebar-new-thread { justify-content: center; width: 28px; min-height: 28px; padding: 0; }
-.sidebar-view-switch { display: flex; flex: 1; min-width: 0; gap: 2px; height: 34px; padding: 2px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-muted); }
-.sidebar-view-switch button { display: inline-flex; flex: 1; align-items: center; justify-content: center; min-width: 0; gap: 3px; padding: 0 2px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--ink-soft); font-size: 10px; white-space: nowrap; }
+.sidebar.is-collapsed .sidebar-new-thread { width: 28px; height: 28px; }
+.sidebar-view-switch { display: flex; flex: none; gap: 2px; width: 70px; height: 34px; margin-left: auto; padding: 2px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-muted); }
+.sidebar-view-switch button { display: grid; flex: 1; place-items: center; min-width: 0; padding: 0; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--ink-soft); }
 .sidebar-view-switch button:hover { color: var(--ink); background: var(--surface-hover); }
 .sidebar-view-switch button[aria-pressed='true'] { border-color: var(--card-edge); background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); }
 .thread-navigation { flex: 1; overflow-y: auto; padding: 8px; scrollbar-width: thin; }
