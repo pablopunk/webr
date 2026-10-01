@@ -9,13 +9,13 @@ const envelope = z.object({ id: z.string(), result: z.record(z.string(), z.unkno
 const allowed = new Set(['ping', 'session.snapshot', 'events.subscribe', 'server.agent_manifests', 'worktree.create', 'tab.create', 'agent.start', 'agent.get', 'agent.prompt']);
 export class SocketApi {
   private sockets = new Set<Socket>();
-  constructor(readonly path: string, readonly deadline = 5000) {}
+  constructor(readonly path: string, readonly deadline = 5000, private methods: ReadonlySet<string> = allowed) {}
   request(method: string, params: Record<string, unknown> = {}, options?: RpcOptions): Promise<Record<string, unknown>> {
-    if (!allowed.has(method) || method === 'events.subscribe') return Promise.reject(new Error('method_not_allowed'));
+    if (!this.methods.has(method) || method === 'events.subscribe') return Promise.reject(new Error('method_not_allowed'));
     let deadline: number;
     try { deadline = requestDeadline(method, params, this.deadline, options); } catch (error) { return Promise.reject(error); }
     return new Promise((resolve, reject) => {
-      const id = randomUUID();
+      const id = options?.requestId ?? randomUUID();
       const socket = this.open();
       let done = false;
       const finish = (error?: Error, result?: Record<string, unknown>) => {
