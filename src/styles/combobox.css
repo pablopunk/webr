@@ -1,0 +1,20 @@
+.composer-select { display: inline-flex; align-items: center; justify-content: flex-start; gap: 5px; width: 100%; min-width: 0; height: 32px; padding: 0 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--ink-soft); font-size: 11px; }
+.composer-select:hover, .composer-select[data-popup-open] { border-color: var(--line); background: var(--surface-hover); color: var(--ink); }
+.composer-select-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; }
+.composer-select-icon .thread-project { width: 14px; height: 14px; }
+.composer-select-label { overflow: hidden; min-width: 0; white-space: nowrap; text-overflow: ellipsis; }
+.composer-select-caret { flex: none; margin-left: auto; }
+.composer-select-positioner { z-index: 20; }
+.composer-select-popup { width: min(280px, var(--available-width)); max-height: var(--available-height); overflow: hidden; border: 1px solid var(--card-edge); border-radius: 9px; background: var(--surface-raised); color: var(--ink); box-shadow: var(--card-shadow-hover), 0 12px 32px rgb(0 0 0 / 18%); }
+.composer-select-search { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); color: var(--ink-soft); }
+.composer-select-search input { width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 16px; line-height: 1.4; }
+.composer-select-search input::placeholder { color: var(--ink-soft); }
+.composer-select-list { max-height: min(240px, calc(var(--available-height) - 50px)); overflow-y: auto; padding: 5px; overscroll-behavior: contain; }
+.composer-select-option { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 8px; border-radius: 5px; font-size: 12px; cursor: pointer; }
+.composer-select-option[data-highlighted] { outline: 0; background: var(--surface-hover); }
+.composer-select-option[data-disabled] { opacity: .5; cursor: not-allowed; }
+.composer-select-option-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.composer-select-check { display: inline-flex; flex: none; color: var(--ink-soft); }
+.composer-select-empty { padding: 12px; color: var(--ink-soft); font-size: 12px; }
+@media (min-width: 761px) { .composer-select-search input { font-size: 12px; } }
+@media (max-width: 480px) { .composer-select-icon { display: none; } }

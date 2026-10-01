@@ -1,33 +1,23 @@
 .new-thread-page { position: relative; display: flex; flex-direction: column; justify-content: center; width: min(800px, 100%); min-height: 100dvh; margin: 0 auto; padding: 60px 20px; }
 .new-thread-page h1 { margin: 0 0 26px; color: var(--ink); font-size: clamp(24px, 2.8vw, 32px); font-weight: 500; line-height: 1.25; letter-spacing: -.035em; text-align: center; }
-.project-picker { position: relative; display: inline-flex; min-width: 0; }
-.project-picker > button { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; max-width: 160px; padding: 0 5px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-soft); font-size: 11px; }
-.project-picker > button:hover { background: var(--surface-hover); color: var(--ink); }
-.project-picker-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.project-picker-options { position: absolute; z-index: 5; top: calc(100% + 8px); left: 0; display: block; min-width: 225px; padding: 5px; border: 1px solid var(--card-edge); border-radius: 10px; background: var(--surface-raised); box-shadow: var(--card-shadow-hover), 0 12px 32px rgb(0 0 0 / 16%); }
-.project-picker-options button { display: flex; align-items: center; width: 100%; gap: 9px; padding: 9px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); text-align: left; font-size: 12px; letter-spacing: 0; }
-.project-picker-options button:hover, .project-picker-options button[aria-selected='true'] { background: var(--surface-hover); }
 .thread-composer { border: 1px solid var(--line-strong); border-radius: 18px; background: var(--surface); box-shadow: var(--card-shadow); transition: border-color .2s, box-shadow .2s; }
 .thread-composer:focus-within { border-color: color-mix(in srgb, var(--focus-ring) 50%, var(--line-strong)); box-shadow: var(--card-shadow-hover); }
 .thread-composer textarea { display: block; width: 100%; min-height: 94px; max-height: 45vh; padding: 17px 18px 0; border: 0; outline: 0; resize: vertical; background: transparent; color: var(--ink); font-size: 14px; line-height: 1.5; }
 .thread-composer textarea::placeholder { color: var(--ink-muted); }
-.composer-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 9px 13px 13px 15px; }
-.composer-choice { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 5px; border-radius: 6px; color: var(--ink-soft); }
-.composer-choice:focus-within { outline: 1px solid var(--focus-ring); outline-offset: 1px; }
-.composer-choice input, .composer-choice select { min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--ink-soft); font-size: 11px; }
-.composer-choice select { max-width: 128px; cursor: pointer; }
-.composer-choice option { background: var(--surface); color: var(--ink); }
-.model-choice input { width: 104px; }
+.composer-toolbar { display: flex; align-items: center; gap: 10px; padding: 9px 12px 12px; }
+.composer-selectors { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); flex: 1; min-width: 0; max-width: 400px; gap: 3px; }
+.composer-actions { display: inline-flex; flex: none; align-items: center; gap: 5px; margin-left: auto; }
 .composer-preview-note { margin: 12px 0 0; color: var(--ink-soft); font-size: 11px; text-align: center; }
-.composer-divider { width: 1px; height: 16px; background: var(--line-strong); }
-.worktree-option { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; margin-left: auto; padding: 0 5px; border-radius: 6px; color: var(--ink-soft); cursor: pointer; font-size: 11px; white-space: nowrap; }
+.worktree-option { position: relative; display: inline-grid; place-items: center; width: 30px; height: 32px; border-radius: 6px; color: var(--ink-soft); cursor: pointer; }
 .worktree-option:hover { color: var(--ink); background: var(--surface-hover); }
 .worktree-option:focus-within { outline: 1px solid var(--focus-ring); }
 .worktree-option input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .worktree-option:has(input:not(:checked)) { color: var(--ink-muted); }
+.worktree-option:has(input:checked) { background: var(--surface-muted); color: var(--ink); }
 .composer-send { display: inline-grid; place-items: center; flex: none; width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--action-blue); color: #fff; }
 .composer-send:hover:not(:disabled) { filter: brightness(1.12); }
 .composer-send:disabled { background: var(--surface-active); color: var(--ink-muted); cursor: not-allowed; }
 .new-thread-page .form-error { margin: 12px 4px; }
-@media (max-width: 760px) { .new-thread-page { padding: 60px 16px; } .new-thread-page .mobile-menu { position: absolute; top: 16px; left: 16px; margin: 0; } .worktree-option { margin-left: 0; } .composer-send { margin-left: auto; } }
-@media (max-width: 420px) { .composer-divider { display: none; } }
+@media (max-width: 760px) { .new-thread-page { padding: 60px 16px; } .new-thread-page .mobile-menu { position: absolute; top: 16px; left: 16px; margin: 0; } }
+@media (max-width: 480px) { .composer-toolbar { gap: 6px; padding: 8px; } }
+@media (max-width: 380px) { .composer-selectors { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

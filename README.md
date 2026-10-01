@@ -19,6 +19,7 @@ Open `http://127.0.0.1:4321/`. For a production build, run `npm run check`, `npm
 - Direct `/threads/:id` and `/sessions/:session/tabs/:tab` pages, with multiple terminal panes.
 - xterm-based terminal previews that accept input but **never run commands**.
 - New-thread prompt with machine, project, harness, model, and worktree choices. Local is the default. Each mock machine has its own project paths, harnesses, and model suggestions; models also accept custom names. Created threads persist in `.data/threads.json` across restarts.
+- Compact Base UI comboboxes offer searchable machine, project, harness, and model menus with full names, keyboard navigation, and custom model entry; the toolbar uses short labels and keeps send controls together on small screens.
 - ⌘K command palette for navigation, theme, layout, focus, and new-thread actions.
 - System/light/dark themes and configurable thread, pane, and sidebar shortcuts, saved on this device.
 
