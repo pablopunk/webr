@@ -21,6 +21,13 @@ export function getShortcuts(): Record<ShortcutAction, string> {
   }
 }
 
+export function formatShortcut(combo: string): string {
+  const keys: Record<string, string> = {
+    ctrl: '⌃', alt: '⌥', meta: '⌘', shift: '⇧', space: 'Space', escape: 'Esc',
+  };
+  return combo.split('+').map((key) => keys[key] ?? key.toUpperCase()).join('');
+}
+
 export function keyCombo(event: KeyboardEvent | React.KeyboardEvent): string {
   const modifiers = [event.ctrlKey && 'ctrl', event.altKey && 'alt', event.metaKey && 'meta', event.shiftKey && 'shift'].filter(Boolean);
   const key = event.key.toLowerCase() === ' ' ? 'space' : event.key.toLowerCase();
