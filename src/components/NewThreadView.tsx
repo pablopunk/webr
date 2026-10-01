@@ -39,12 +39,13 @@ export function NewThreadView({ projects, selectedProjectId, onOpenSidebar }: {
 
   return <main className="new-thread-page" aria-label="New thread">
     <button className="mobile-menu" onClick={onOpenSidebar}>Threads</button>
-    <h1>What should we build in <ProjectPicker projects={projects} projectId={projectId} onChange={setProjectId} />?</h1>
     <form className="thread-composer" onSubmit={submit} aria-busy={busy}>
       <textarea autoFocus required maxLength={8000} value={prompt} onChange={(event) => setPrompt(event.target.value)}
         onKeyDown={(event) => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
-        aria-label="Thread prompt" placeholder="Ask for changes, send follow-ups, or describe a task…" />
+        aria-label="Thread prompt" placeholder="Write a prompt…" />
       <div className="composer-toolbar">
+        <ProjectPicker projects={projects} projectId={projectId} onChange={setProjectId} />
+        <span className="composer-divider" aria-hidden="true" />
         <label className="composer-choice harness-choice"><TerminalSquare size={15} aria-hidden="true" /><input list="harness-choices" aria-label="Harness" value={harness} onChange={(event) => setHarness(event.target.value)} maxLength={80} required /></label>
         <datalist id="harness-choices">{harnessChoices.map(([id, name]) => <option key={id} value={name} />)}</datalist>
         <span className="composer-divider" aria-hidden="true" />

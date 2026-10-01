@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import type { Project } from '../lib/models';
 import { ProjectIcon } from './ProjectIcon';
 
@@ -20,9 +21,9 @@ export function ProjectPicker({ projects, projectId, onChange }: {
   }, [open]);
 
   return <span ref={root} className="project-picker">
-    <button ref={trigger} type="button" aria-label="Choose project" aria-expanded={open} aria-haspopup="listbox" onClick={() => setOpen((value) => !value)} onKeyDown={(event) => {
+    <button ref={trigger} type="button" aria-label={`Project: ${selected?.name ?? 'none'}`} aria-expanded={open} aria-haspopup="listbox" onClick={() => setOpen((value) => !value)} onKeyDown={(event) => {
       if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); requestAnimationFrame(() => root.current?.querySelector<HTMLButtonElement>('[role="option"]')?.focus()); }
-    }}>{selected?.name ?? 'a project'}</button>
+    }}>{selected && <ProjectIcon project={selected} />}<span className="project-picker-name">{selected?.name ?? 'Choose project'}</span><ChevronDown size={12} aria-hidden="true" /></button>
     {open && <span className="project-picker-options" role="listbox" aria-label="Projects" onKeyDown={(event) => {
       if (event.key === 'Escape') { event.preventDefault(); setOpen(false); trigger.current?.focus(); }
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
