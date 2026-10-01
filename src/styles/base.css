@@ -9,8 +9,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .main-panel { flex: 1; min-width: 0; min-height: 100dvh; }
 .icon-button { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 30px; border: 0; border-radius: 6px; color: var(--ink-muted); background: transparent; }
 .icon-button:hover { background: var(--surface-hover); color: var(--ink); }
-.status-dot { display: inline-block; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--idle); }
-.status-working { background: var(--working); }.status-blocked { background: var(--blocked); }.status-done { background: var(--done); }
 .not-found { max-width: 680px; margin: 14vh auto 0; padding: 25px; }
 .not-found h1 { font-size: 26px; font-weight: 600; }.not-found p { color: var(--ink-muted); }
 .mobile-controls { display: none; }
