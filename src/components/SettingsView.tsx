@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ThemeControl } from './ThemeControl';
-import { defaultShortcuts, getShortcuts, isReservedShortcut, keyCombo, shortcutLabels, type ShortcutAction } from './shortcuts';
+import { defaultShortcuts, getShortcuts, isReservedShortcut, keyCombo, shortcutKeys, shortcutLabels, type ShortcutAction } from './shortcuts';
 import type { SidebarMode } from './Sidebar';
 
 export function SettingsView({ onOpenSidebar, mode, onModeChange }: {
@@ -37,7 +37,7 @@ export function SettingsView({ onOpenSidebar, mode, onModeChange }: {
     <section><h2>New threads</h2><label className="settings-row"><span>Create a new worktree by default</span><input type="checkbox" checked={worktree} onChange={(event) => { setWorktree(event.target.checked); localStorage.setItem('herdr-new-worktree', String(event.target.checked)); }} /></label></section>
     <section id="shortcuts"><div className="settings-section-title"><h2>Keyboard shortcuts</h2><button onClick={() => { setShortcuts(defaultShortcuts); localStorage.removeItem('herdr-shortcuts'); setRecording(null); setError(''); }}>Reset</button></div>
       <p className="settings-note">Press ⌘K or Ctrl+K for all actions and threads.</p>
-      {(Object.keys(shortcutLabels) as ShortcutAction[]).map((action) => <div className="settings-row" key={action}><span>{shortcutLabels[action]}</span><button className="shortcut-key" data-recording={recording === action} onClick={() => { setRecording(action); setError(''); }} onKeyDown={(event) => recording === action && recordKey(event, action)} aria-label={`Change ${shortcutLabels[action]} shortcut`}>{recording === action ? 'Press keys…' : shortcuts[action].replaceAll('+', ' + ')}</button></div>)}
+      {(Object.keys(shortcutLabels) as ShortcutAction[]).map((action) => <div className="settings-row" key={action}><span>{shortcutLabels[action]}</span><button className="shortcut-key" data-recording={recording === action} onClick={() => { setRecording(action); setError(''); }} onKeyDown={(event) => recording === action && recordKey(event, action)} aria-label={`Change ${shortcutLabels[action]} shortcut`}>{recording === action ? 'Press keys…' : shortcutKeys(shortcuts[action]).map((key, index) => <kbd key={index}>{key}</kbd>)}</button></div>)}
       {error && <p role="alert" className="form-error">{error}</p>}
     </section>
   </main>;

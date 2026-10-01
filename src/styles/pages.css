@@ -5,8 +5,12 @@
 .settings-page h2 { margin: 18px 0 8px; font-size: 12px; font-weight: 600; }
 .settings-row { display: flex; align-items: center; justify-content: space-between; min-height: 44px; gap: 12px; border-bottom: 1px solid var(--line); font-size: 12px; }
 .settings-section-title { display: flex; align-items: center; justify-content: space-between; }
-.settings-section-title button, .shortcut-key, .segmented button { padding: 6px 9px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink-soft); font-size: 11px; }
+.settings-section-title button, .segmented button { padding: 6px 9px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink-soft); font-size: 11px; }
 .settings-section-title button:hover, .shortcut-key:hover { color: var(--ink); }
+.shortcut-key { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 3px 0; border: 0; background: transparent; color: var(--ink-soft); font-size: 11px; }
+.shortcut-key kbd { display: inline-grid; place-items: center; min-width: 25px; height: 25px; padding: 0 5px; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink-soft); font: 11px var(--font-mono); }
+.shortcut-key:hover kbd, .shortcut-key:focus-visible kbd { color: var(--ink); border-color: var(--card-edge); background: var(--card-hover); box-shadow: var(--card-shadow-hover); }
+.shortcut-key[data-recording='true'] { padding: 3px 8px; border: 1px solid var(--focus-ring); border-radius: 5px; color: var(--ink); }
 .settings-note { margin: 0 0 10px; color: var(--ink-soft); font-size: 11px; }
 .segmented { display: flex; gap: 3px; }
 .segmented button[aria-pressed='true'] { border-color: var(--card-edge); background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); }

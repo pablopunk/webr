@@ -21,11 +21,15 @@ export function getShortcuts(): Record<ShortcutAction, string> {
   }
 }
 
-export function formatShortcut(combo: string): string {
+export function shortcutKeys(combo: string): string[] {
   const keys: Record<string, string> = {
     ctrl: '⌃', alt: '⌥', meta: '⌘', shift: '⇧', space: 'Space', escape: 'Esc',
   };
-  return combo.split('+').map((key) => keys[key] ?? key.toUpperCase()).join('');
+  return combo.split('+').map((key) => keys[key] ?? key.toUpperCase());
+}
+
+export function formatShortcut(combo: string): string {
+  return shortcutKeys(combo).join('');
 }
 
 export function keyCombo(event: KeyboardEvent | React.KeyboardEvent): string {
