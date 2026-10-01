@@ -14,8 +14,11 @@
 .composer-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 9px 13px 13px 15px; }
 .composer-choice { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 5px; border-radius: 6px; color: var(--ink-soft); }
 .composer-choice:focus-within { outline: 1px solid var(--focus-ring); outline-offset: 1px; }
-.composer-choice input { min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--ink-soft); font-size: 11px; }
-.harness-choice input { width: 96px; }.model-choice input { width: 104px; }
+.composer-choice input, .composer-choice select { min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--ink-soft); font-size: 11px; }
+.composer-choice select { max-width: 128px; cursor: pointer; }
+.composer-choice option { background: var(--surface); color: var(--ink); }
+.model-choice input { width: 104px; }
+.composer-preview-note { margin: 12px 0 0; color: var(--ink-soft); font-size: 11px; text-align: center; }
 .composer-divider { width: 1px; height: 16px; background: var(--line-strong); }
 .worktree-option { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; margin-left: auto; padding: 0 5px; border-radius: 6px; color: var(--ink-soft); cursor: pointer; font-size: 11px; white-space: nowrap; }
 .worktree-option:hover { color: var(--ink); background: var(--surface-hover); }

@@ -14,6 +14,7 @@ export const POST: APIRoute = async ({ request }) => {
     if (!data || typeof data !== 'object') throw new Error('Invalid request');
     const input = data as Record<string, unknown>;
     if (typeof input.prompt !== 'string' || !input.prompt.trim() || input.prompt.length > 8000 ||
+      (input.machineId !== undefined && typeof input.machineId !== 'string') ||
       typeof input.projectId !== 'string' || typeof input.agent !== 'string' ||
       !input.agent.trim() || input.agent.length > 80 || /[\x00-\x1f\x7f]/.test(input.agent) ||
       typeof input.model !== 'string' || !input.model.trim() || input.model.length > 120 ||
@@ -21,6 +22,7 @@ export const POST: APIRoute = async ({ request }) => {
       typeof input.worktree !== 'boolean') throw new Error('Invalid thread details');
     const thread = await createThread({
       prompt: input.prompt, projectId: input.projectId,
+      machineId: typeof input.machineId === 'string' ? input.machineId : 'local',
       agent: input.agent, model: input.model, worktree: input.worktree,
     });
     return Response.json({ id: thread.id }, { status: 201 });

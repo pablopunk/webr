@@ -27,6 +27,7 @@ export type Thread = {
   id: string;
   avatarIndex: number;
   projectId: string;
+  machineId: string;
   title: string;
   prompt: string;
   agent: string;
@@ -51,7 +52,7 @@ const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).to
 export function exampleThreads(): Thread[] {
   return [
     {
-      id: 'terminal-web-bridge', avatarIndex: 0, projectId: 'herdr', title: 'Build the web terminal bridge',
+      id: 'terminal-web-bridge', avatarIndex: 0, projectId: 'herdr', machineId: 'local', title: 'Build the web terminal bridge',
       prompt: 'Build the web terminal bridge', agent: 'claude', model: 'Default', status: 'working', updatedAt: at(2), branch: 'web-terminal-bridge',
       worktree: true, session: 'default', tabId: 'w1:t2',
       panes: [
@@ -72,7 +73,7 @@ export function exampleThreads(): Thread[] {
       ],
     },
     {
-      id: 'review-socket-api', avatarIndex: 1, projectId: 'herdr', title: 'Review socket API changes',
+      id: 'review-socket-api', avatarIndex: 1, projectId: 'herdr', machineId: 'local', title: 'Review socket API changes',
       prompt: 'Review socket API changes', agent: 'codex', model: 'Default', status: 'blocked', updatedAt: at(14), branch: 'socket-api-review',
       worktree: true, session: 'default', tabId: 'w1:t3',
       panes: [{ id: 'w1:p5', title: 'Codex', kind: 'agent', lines: [
@@ -82,7 +83,7 @@ export function exampleThreads(): Thread[] {
       ] }],
     },
     {
-      id: 'sidebar-interactions', avatarIndex: 2, projectId: 'herdr', title: 'Polish sidebar interactions',
+      id: 'sidebar-interactions', avatarIndex: 2, projectId: 'herdr', machineId: 'local', title: 'Polish sidebar interactions',
       prompt: 'Polish sidebar interactions', agent: 'opencode', model: 'Default', status: 'done', updatedAt: at(82), branch: 'sidebar-polish',
       worktree: true, session: 'default', tabId: 'w1:t4',
       panes: [{ id: 'w1:p6', title: 'OpenCode', kind: 'agent', lines: [
@@ -91,7 +92,7 @@ export function exampleThreads(): Thread[] {
       ] }],
     },
     {
-      id: 'fix-editor-loading', avatarIndex: 3, projectId: 'maze', title: 'Fix editor loading state',
+      id: 'fix-editor-loading', avatarIndex: 3, projectId: 'maze', machineId: 'local', title: 'Fix editor loading state',
       prompt: 'Fix editor loading state', agent: 'claude', model: 'Default', status: 'working', updatedAt: at(7), branch: 'fix-editor-loading',
       worktree: true, session: 'default', tabId: 'w2:t1',
       panes: [{ id: 'w2:p1', title: 'Claude Code', kind: 'agent', lines: [
@@ -101,7 +102,7 @@ export function exampleThreads(): Thread[] {
       ] }],
     },
     {
-      id: 'coverflow-motion', avatarIndex: 4, projectId: 'spotifin', title: 'Tune coverflow motion',
+      id: 'coverflow-motion', avatarIndex: 4, projectId: 'spotifin', machineId: 'local', title: 'Tune coverflow motion',
       prompt: 'Tune coverflow motion', agent: 'pi', model: 'Default', status: 'idle', updatedAt: at(1440), branch: 'coverflow-motion',
       worktree: false, session: 'default', tabId: 'w3:t1',
       panes: [{ id: 'w3:p1', title: 'Pi', kind: 'agent', lines: [

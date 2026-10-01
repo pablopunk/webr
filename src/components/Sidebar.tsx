@@ -3,6 +3,7 @@ import { BotAvatar } from 'bot-avatars';
 import { ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, LayoutList, LoaderCircle, MessageCircleQuestion, PanelLeftClose, PanelLeftOpen, Plus, Settings2, X } from 'lucide-react';
 import { type Project, type Thread, harnessName, relativeTime } from '../lib/models';
 import { avatarForThread } from '../lib/avatars';
+import { findMachine } from '../lib/machines';
 import { ProjectIcon } from './ProjectIcon';
 
 export type SidebarMode = 'projects' | 'threads';
@@ -31,8 +32,9 @@ export function Sidebar({ projects, threads, currentId, mode, onModeChange, coll
   const currentProjectId = threads.find((thread) => thread.id === currentId)?.projectId;
   const threadLink = (thread: Thread, showProject: boolean) => {
     const project = projects.find((item) => item.id === thread.projectId);
+    const machineName = findMachine(thread.machineId)?.name ?? thread.machineId;
     const StatusIcon = thread.status === 'idle' ? null : statusIcons[thread.status];
-    return <a key={thread.id} className={`thread-row ${currentId === thread.id ? 'is-current' : ''}`} href={`/threads/${encodeURIComponent(thread.id)}`} aria-current={currentId === thread.id ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${statusLabel[thread.status]}`} title={`${thread.title} · ${project?.name ?? ''} · ${harnessName(thread.agent)} · ${thread.model} · ${statusLabel[thread.status]}`}>
+    return <a key={thread.id} className={`thread-row ${currentId === thread.id ? 'is-current' : ''}`} href={`/threads/${encodeURIComponent(thread.id)}`} aria-current={currentId === thread.id ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${statusLabel[thread.status]}`} title={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${statusLabel[thread.status]}`}>
       <span className="thread-avatar" aria-hidden="true"><BotAvatar {...avatarForThread(thread)} state={thread.status === 'working' ? 'working' : 'default'} size={24} paused={thread.status !== 'working'} /></span>
       <span className="thread-copy"><span className="thread-context">{showProject && project && <ProjectIcon project={project} />}{showProject ? project?.name : harnessName(thread.agent)}</span><span className="thread-name">{thread.title}</span></span>
       <span className="thread-time">{relativeTime(thread.updatedAt)}</span>
