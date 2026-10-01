@@ -50,7 +50,7 @@ export function Sidebar({ projects, threads, currentId, mode, onModeChange, coll
       </div>
       <div className="sidebar-actions">
         <a className="sidebar-new-thread" href={`/new${currentProjectId ? `?project=${encodeURIComponent(currentProjectId)}` : ''}`} aria-label="New thread" title="New thread">
-          <Plus size={16} aria-hidden="true" />
+          <Plus size={16} aria-hidden="true" />{!collapsed && <span>New thread</span>}
         </a>
         {!collapsed && <div className="sidebar-view-switch" role="group" aria-label="Sidebar layout">
           <button type="button" aria-label="Show threads" title="Show threads" aria-pressed={mode === 'threads'} onClick={() => onModeChange('threads')}><LayoutList size={16} aria-hidden="true" /></button>
