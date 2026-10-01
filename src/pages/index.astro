@@ -1,0 +1,11 @@
+---
+import Base from '../layouts/Base.astro';
+import App from '../components/App';
+import { listThreads } from '../lib/mock-store';
+import { projects } from '../lib/models';
+
+const threads = await listThreads();
+---
+<Base title="Threads">
+  <App page="home" projects={projects} threads={threads} client:load />
+</Base>

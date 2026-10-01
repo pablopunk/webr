@@ -1,0 +1,13 @@
+---
+import Base from '../../../../layouts/Base.astro';
+import App from '../../../../components/App';
+import { listThreads } from '../../../../lib/mock-store';
+import { projects } from '../../../../lib/models';
+
+const threads = await listThreads();
+const thread = threads.find((item) => item.session === Astro.params.session && item.tabId === Astro.params.tab);
+if (!thread) Astro.response.status = 404;
+---
+<Base title={thread?.title ?? 'Tab not found'}>
+  <App page={thread ? 'thread' : 'missing'} thread={thread} projects={projects} threads={threads} client:load />
+</Base>

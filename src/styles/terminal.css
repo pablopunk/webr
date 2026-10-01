@@ -1,0 +1,37 @@
+.thread-content { display: flex; flex-direction: column; min-height: calc(100dvh - 67px); padding: 35px clamp(24px, 4vw, 56px) 22px; }
+.thread-heading { margin-bottom: 27px; }
+.eyebrow-slash { color: var(--line-strong); }
+.heading-row { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-top: 11px; }
+.heading-row h1 { margin: 0 0 9px; font-size: clamp(24px, 3vw, 32px); line-height: 1.17; font-weight: 600; letter-spacing: -.055em; }
+.thread-meta { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 11.5px; }
+.thread-meta .status-dot { margin-right: 2px; }
+.meta-bullet { color: var(--ink-muted); }
+.subtle-button { display: inline-flex; align-items: center; gap: 9px; flex: none; padding: 8px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink-soft); font-size: 11px; font-weight: 600; transition: background .15s, color .15s; }
+.subtle-button:hover { background: var(--surface-hover); color: var(--ink); }
+.thread-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 18px; }
+.tag { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 25px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-soft); background: var(--surface); font: 10px/1.3 var(--font-mono); overflow-wrap: anywhere; }
+.tag-muted { color: var(--ink-muted); }
+.tag-link:hover { border-color: var(--line-strong); color: var(--ink); }
+.pane-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); flex: 1; min-height: 450px; gap: 12px; }
+.pane-layout.single-pane { grid-template-columns: minmax(0, 1fr); }
+.terminal-pane { display: flex; flex-direction: column; min-width: 0; min-height: 450px; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--terminal-bg); box-shadow: var(--shadow); transition: border-color .15s; }
+.terminal-pane.is-active { border-color: color-mix(in srgb, var(--accent) 38%, var(--line)); }
+.pane-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 45px; flex: none; padding: 0 12px 0 15px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.pane-heading { display: flex; align-items: center; gap: 9px; font-size: 11.5px; font-weight: 600; }
+.pane-type-icon { display: grid; place-items: center; color: var(--ink-muted); }
+.pane-header-actions { display: flex; align-items: center; gap: 5px; }
+.pane-id { margin-right: 4px; color: var(--ink-muted); font: 10px var(--font-mono); }
+.pane-action { display: inline-grid; place-items: center; width: 25px; height: 25px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-muted); }
+.pane-action:hover { background: var(--surface-hover); color: var(--ink); }
+.terminal-host { flex: 1; min-height: 0; min-width: 0; padding: 18px 15px 11px; overflow: hidden; }
+.terminal-host .xterm { height: 100%; }
+.terminal-host .xterm-viewport { scrollbar-width: thin; }
+.pane-bottom { display: flex; gap: 7px; align-items: center; min-height: 31px; padding: 0 15px; border-top: 1px solid var(--line); color: var(--ink-muted); background: var(--surface); font: 10px var(--font-mono); }
+.pane-live-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--working); }
+.pane-dimensions { margin-left: auto; }
+.thread-footnote { display: flex; align-items: center; gap: 10px; padding-top: 16px; color: var(--ink-muted); font-size: 10.5px; }
+.thread-footnote > span:first-child { color: var(--accent); font: 9px var(--font-mono); letter-spacing: .06em; white-space: nowrap; }
+.thread-footnote a { display: inline-flex; align-items: center; margin-left: auto; gap: 3px; white-space: nowrap; color: var(--ink-soft); }
+.thread-footnote a:hover { color: var(--ink); }
+@media (max-width: 1100px) { .pane-layout:not(.single-pane) { grid-template-columns: minmax(0, 1fr); } .terminal-pane { min-height: 350px; } }
+@media (max-width: 760px) { .thread-content { min-height: calc(100dvh - 58px); padding: 28px 17px 22px; } .thread-heading { margin-bottom: 22px; } .heading-row { align-items: start; } .subtle-button { font-size: 0; padding: 8px; } .thread-meta { flex-wrap: wrap; } .pane-layout { min-height: 0; } .terminal-pane { min-height: 350px; } .thread-footnote { flex-wrap: wrap; } .thread-footnote a { margin-left: 0; } }
