@@ -18,11 +18,8 @@
 .thread-context { display: flex; align-items: center; gap: 5px; color: var(--ink-soft); font-size: 10px; }
 .thread-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); }
 .thread-time { grid-column: 3; grid-row: 1; justify-self: end; font: 10px var(--font-mono); color: var(--ink-soft); }
-.thread-indicators { display: inline-flex; grid-column: 3; grid-row: 2; align-self: end; justify-self: end; align-items: center; gap: 3px; height: 16px; }
-.thread-status { color: var(--ink-soft); }
-.thread-attention { color: var(--blocked); }
-.thread-status.status-working { color: var(--working); }
-.thread-status.status-working { animation: thread-status-spin 1.5s linear infinite; }
+.thread-status { grid-column: 3; grid-row: 2; align-self: end; justify-self: end; color: var(--ink-soft); }
+.thread-status.status-working { color: var(--working); animation: thread-status-spin 1.5s linear infinite; }
 .thread-status.status-blocked { color: var(--blocked); }
 .thread-status.status-done { color: var(--done); }
 @keyframes thread-status-spin { to { transform: rotate(360deg); } }

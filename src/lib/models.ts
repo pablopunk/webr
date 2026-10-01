@@ -38,7 +38,6 @@ export type Thread = {
   session: string;
   tabId: string;
   panes: Pane[];
-  needsAttention?: boolean;
 };
 
 export const projects: Project[] = [
@@ -75,7 +74,7 @@ export function exampleThreads(): Thread[] {
     {
       id: 'review-socket-api', avatarIndex: 1, projectId: 'herdr', title: 'Review socket API changes',
       prompt: 'Review socket API changes', agent: 'codex', model: 'Default', status: 'blocked', updatedAt: at(14), branch: 'socket-api-review',
-      worktree: true, session: 'default', tabId: 'w1:t3', needsAttention: true,
+      worktree: true, session: 'default', tabId: 'w1:t3',
       panes: [{ id: 'w1:p5', title: 'Codex', kind: 'agent', lines: [
         '$ codex', 'Review complete. One change needs your approval.', '',
         'The new endpoint can replace the active controller.',
@@ -85,7 +84,7 @@ export function exampleThreads(): Thread[] {
     {
       id: 'sidebar-interactions', avatarIndex: 2, projectId: 'herdr', title: 'Polish sidebar interactions',
       prompt: 'Polish sidebar interactions', agent: 'opencode', model: 'Default', status: 'done', updatedAt: at(82), branch: 'sidebar-polish',
-      worktree: true, session: 'default', tabId: 'w1:t4', needsAttention: true,
+      worktree: true, session: 'default', tabId: 'w1:t4',
       panes: [{ id: 'w1:p6', title: 'OpenCode', kind: 'agent', lines: [
         '$ opencode', 'Done. The sidebar now keeps its scroll position when',
         'thread status changes. Ready for review.', '', '✓ 12 tests passed', '$',

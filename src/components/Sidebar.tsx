@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { BotAvatar } from 'bot-avatars';
-import { BellDot, CircleCheck, CircleHelp, LoaderCircle, MessageCircleQuestion, PanelLeftClose, PanelLeftOpen, Plus, Settings2, X } from 'lucide-react';
+import { CircleCheck, CircleHelp, LoaderCircle, MessageCircleQuestion, PanelLeftClose, PanelLeftOpen, Plus, Settings2, X } from 'lucide-react';
 import { type Project, type Thread, harnessName, relativeTime } from '../lib/models';
 import { avatarForThread } from '../lib/avatars';
 import { ProjectIcon } from './ProjectIcon';
@@ -31,14 +31,11 @@ export function Sidebar({ projects, threads, currentId, mode, collapsed, mobileO
   const threadLink = (thread: Thread, showProject: boolean) => {
     const project = projects.find((item) => item.id === thread.projectId);
     const StatusIcon = thread.status === 'idle' ? null : statusIcons[thread.status];
-    return <a key={thread.id} className={`thread-row ${currentId === thread.id ? 'is-current' : ''}`} href={`/threads/${encodeURIComponent(thread.id)}`} aria-current={currentId === thread.id ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${statusLabel[thread.status]}${thread.needsAttention ? ' · Needs attention' : ''}`} title={`${thread.title} · ${project?.name ?? ''} · ${harnessName(thread.agent)} · ${thread.model} · ${statusLabel[thread.status]}${thread.needsAttention ? ' · Needs attention' : ''}`}>
+    return <a key={thread.id} className={`thread-row ${currentId === thread.id ? 'is-current' : ''}`} href={`/threads/${encodeURIComponent(thread.id)}`} aria-current={currentId === thread.id ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${statusLabel[thread.status]}`} title={`${thread.title} · ${project?.name ?? ''} · ${harnessName(thread.agent)} · ${thread.model} · ${statusLabel[thread.status]}`}>
       <span className="thread-avatar" aria-hidden="true"><BotAvatar {...avatarForThread(thread)} state={thread.status === 'working' ? 'working' : 'default'} size={24} paused={thread.status !== 'working'} /></span>
       <span className="thread-copy"><span className="thread-context">{showProject && project && <ProjectIcon project={project} />}{showProject ? project?.name : harnessName(thread.agent)}</span><span className="thread-name">{thread.title}</span></span>
       <span className="thread-time">{relativeTime(thread.updatedAt)}</span>
-      {StatusIcon && <span className="thread-indicators" aria-hidden="true">
-        {thread.needsAttention && <BellDot className="thread-attention" size={14} strokeWidth={1.8} />}
-        <StatusIcon className={`thread-status status-${thread.status}`} size={15} strokeWidth={1.8} />
-      </span>}
+      {StatusIcon && <StatusIcon className={`thread-status status-${thread.status}`} size={15} strokeWidth={1.8} aria-hidden="true" />}
     </a>;
   };
 
