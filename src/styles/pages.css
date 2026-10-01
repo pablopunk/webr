@@ -16,9 +16,9 @@
 .settings-section-title button:hover, .shortcut-key:hover { color: var(--ink); }
 .settings-note { margin: 0 0 10px; color: var(--ink-soft); font-size: 11px; }
 .segmented { display: flex; gap: 3px; }
-.segmented button[aria-pressed='true'] { background: var(--surface-active); color: var(--ink); }
+.segmented button[aria-pressed='true'] { border-color: var(--card-edge); background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); }
 .theme-control { display: flex; gap: 3px; }
 .theme-option { display: flex; align-items: center; gap: 5px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink-soft); text-transform: capitalize; font-size: 11px; }
-.theme-option.is-selected { background: var(--surface-active); color: var(--ink); }
+.theme-option.is-selected { border-color: var(--card-edge); background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); }
 .mobile-menu { display: none; }
 @media (max-width: 760px) { .form-page { margin-top: 35px; } .mobile-menu { display: block; margin-bottom: 30px; padding: 4px 0; border: 0; background: transparent; color: var(--ink-soft); } }

@@ -1,12 +1,13 @@
 .palette-overlay { position: fixed; z-index: 30; inset: 0; display: flex; justify-content: center; align-items: flex-start; padding: min(16vh, 140px) 16px 16px; background: rgb(0 0 0 / 43%); }
-.palette { width: min(520px, 100%); overflow: hidden; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); box-shadow: 0 16px 60px rgb(0 0 0 / 22%); }
+.palette { width: min(520px, 100%); overflow: hidden; border: 1px solid var(--card-edge); border-radius: 9px; background: var(--surface); box-shadow: inset 0 1px 2px rgb(255 255 255 / 12%), 0 16px 60px rgb(0 0 0 / 22%); }
 .palette > input { display: block; width: 100%; height: 48px; padding: 0 16px; border: 0; border-bottom: 1px solid var(--line); outline: 0; background: transparent; color: var(--ink); font-size: 13px; }
 .palette > input::placeholder { color: var(--ink-muted); }
 .palette-results { max-height: min(400px, 55vh); overflow-y: auto; padding: 6px; }
-.palette-results button { display: flex; align-items: center; width: 100%; min-height: 36px; gap: 10px; padding: 0 10px; border: 0; border-radius: 5px; background: transparent; color: var(--ink); text-align: left; font-size: 12px; }
+.palette-results button { display: flex; align-items: center; width: 100%; min-height: 36px; gap: 10px; padding: 0 10px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--ink); text-align: left; font-size: 12px; transition: background-color .2s, border-color .2s, box-shadow .2s; }
 .palette-icon { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 22px; height: 22px; color: var(--ink-soft); }
 .palette-label { overflow: hidden; flex: 1; white-space: nowrap; text-overflow: ellipsis; }
-.palette-results button:hover, .palette-results button.is-selected { background: var(--surface-active); }
+.palette-results button:hover, .palette-results button.is-selected { border-color: var(--card-edge); background: var(--surface-raised); box-shadow: var(--card-shadow); }
+.palette-results button:hover { background: var(--card-hover); box-shadow: var(--card-shadow-hover); }
 .palette-results button small { color: var(--ink-soft); font-size: 10px; white-space: nowrap; }
 .palette-results button kbd { min-width: 34px; margin-left: 6px; padding: 3px 5px; border: 1px solid var(--line-strong); border-radius: 4px; color: var(--ink-soft); font: 10px var(--font-mono); text-align: center; white-space: nowrap; }
 .palette-results p { padding: 4px 10px; color: var(--ink-muted); }

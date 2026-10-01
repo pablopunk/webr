@@ -6,7 +6,11 @@
   --surface-muted: #f4f4f3;
   --surface-hover: #f0f0ef;
   --surface-active: #eaeae9;
-  --sidebar: #fdfdfc;
+  --sidebar: #f3f3f2;
+  --card-hover: #ffffff;
+  --card-edge: rgb(26 29 32 / 9%);
+  --card-shadow: inset 0 1px 2px rgb(255 255 255 / 95%), 0 1px 2px rgb(0 0 0 / 16%), 0 3px 7px rgb(0 0 0 / 7%);
+  --card-shadow-hover: inset 0 1px 2px rgb(255 255 255 / 95%), 0 2px 4px rgb(0 0 0 / 17%), 0 5px 10px rgb(0 0 0 / 8%);
   --ink: #1b1c1d;
   --ink-soft: #5b5d61;
   --ink-muted: #8b8d90;
@@ -37,7 +41,11 @@ html[data-theme='dark'] {
   --surface-muted: #242626;
   --surface-hover: #2a2c2c;
   --surface-active: #333535;
-  --sidebar: #171818;
+  --sidebar: #111212;
+  --card-hover: #2b2d2d;
+  --card-edge: rgb(255 255 255 / 8%);
+  --card-shadow: inset 0 1px 2px rgb(255 255 255 / 17%), 0 1px 2px rgb(0 0 0 / 36%), 0 3px 7px rgb(0 0 0 / 18%);
+  --card-shadow-hover: inset 0 1px 2px rgb(255 255 255 / 25%), 0 2px 4px rgb(0 0 0 / 38%), 0 5px 10px rgb(0 0 0 / 18%);
   --ink: #f1f2f0;
   --ink-soft: #b1b3b0;
   --ink-muted: #777b7b;
