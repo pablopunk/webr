@@ -15,8 +15,10 @@
 .thread-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); }
 .thread-time { flex: none; align-self: flex-start; padding-top: 4px; font: 10px var(--font-mono); color: var(--ink-soft); }
 .thread-row .status-dot { width: 5px; height: 5px; }
-.thread-project { display: grid; flex: none; place-items: center; width: 17px; height: 17px; border-radius: 3px; background: color-mix(in srgb, var(--project-color) 17%, transparent); color: var(--project-color); font: 700 10px var(--font-mono); }
-.group-title { display: flex; align-items: center; width: 100%; gap: 6px; padding: 12px 8px 5px; border: 0; background: none; color: var(--ink-muted); font-size: 11px; text-align: left; }
+.thread-project { position: relative; display: grid; flex: none; place-items: center; width: 17px; height: 17px; border-radius: 3px; background: color-mix(in srgb, var(--project-color) 17%, transparent); color: var(--project-color); font: 700 10px var(--font-mono); overflow: hidden; }
+.thread-project img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--surface-raised); opacity: 0; }
+.thread-project.has-icon img { opacity: 1; }
+.group-title { display: flex; align-items: center; width: 100%; gap: 6px; padding: 12px 8px 5px; border: 0; background: none; color: var(--ink-soft); font-size: 11px; text-align: left; }
 .group-chevron { width: 10px; font-size: 15px; line-height: 8px; }
 .thread-group + .thread-group { margin-top: 8px; }
 .sidebar-settings { display: flex; align-items: center; gap: 10px; height: 43px; flex: none; padding: 0 16px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 11.5px; }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { AgentKind, Project } from '../lib/models';
+import { ProjectIcon } from './ProjectIcon';
 
 const agentNames: Record<AgentKind, string> = {
   claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'Pi',
@@ -14,6 +15,7 @@ export function NewThreadView({ projects, selectedProjectId, onOpenSidebar }: {
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const selectedProject = projects.find((project) => project.id === projectId);
   useEffect(() => { setWorktree(localStorage.getItem('herdr-new-worktree') !== 'false'); }, []);
 
   const submit = async (event: React.SubmitEvent<HTMLFormElement>) => {
@@ -39,7 +41,7 @@ export function NewThreadView({ projects, selectedProjectId, onOpenSidebar }: {
     <h1>New thread</h1>
     <form onSubmit={submit}>
       <label>What are you working on?<input autoFocus required maxLength={90} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Thread name" /></label>
-      <label>Project<select value={projectId} onChange={(event) => setProjectId(event.target.value)}>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+      <label>Project<span className="project-select">{selectedProject && <ProjectIcon key={selectedProject.id} project={selectedProject} />}<select value={projectId} onChange={(event) => setProjectId(event.target.value)}>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></span></label>
       <label>Agent<select value={agent} onChange={(event) => setAgent(event.target.value as AgentKind)}>{(Object.keys(agentNames) as AgentKind[]).map((kind) => <option key={kind} value={kind}>{agentNames[kind]}</option>)}</select></label>
       <label className="checkbox-row"><input type="checkbox" checked={worktree} onChange={(event) => setWorktree(event.target.checked)} /> Create a new worktree</label>
       {error && <p role="alert" className="form-error">{error}</p>}

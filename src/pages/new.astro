@@ -2,9 +2,10 @@
 import Base from '../layouts/Base.astro';
 import App from '../components/App';
 import { listThreads } from '../lib/mock-store';
-import { projects } from '../lib/models';
+import { projectsWithIcons } from '../lib/project-icons';
 
 const threads = await listThreads();
+const projects = await projectsWithIcons();
 const projectId = Astro.url.searchParams.get('project') ?? undefined;
 ---
 <Base title="New thread">

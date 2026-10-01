@@ -14,6 +14,7 @@ Open `http://127.0.0.1:4321/`. For a production build, run `npm run check`, `npm
 ## What works in the prototype
 
 - Activity-ordered agent sidebar with animated avatars, project-grouped and flat thread layouts, collapse, and a mobile drawer.
+- Project icons come from a small set of likely image locations in each local repository; missing icons use the project's letter and color.
 - Each thread keeps its own avatar: the first 18 use distinct shapes, then the shapes repeat with distinct colors and animation timing.
 - Direct `/threads/:id` and `/sessions/:session/tabs/:tab` pages, with multiple terminal panes.
 - xterm-based terminal previews that accept input but **never run commands**.

@@ -3,6 +3,7 @@ import { BotAvatar } from 'bot-avatars';
 import { PanelLeftClose, PanelLeftOpen, Settings2, X } from 'lucide-react';
 import { type Project, type Thread, relativeTime } from '../lib/models';
 import { avatarForThread } from '../lib/avatars';
+import { ProjectIcon } from './ProjectIcon';
 
 export type SidebarMode = 'projects' | 'threads';
 
@@ -30,7 +31,7 @@ export function Sidebar({ projects, threads, currentId, mode, collapsed, mobileO
     const project = projects.find((item) => item.id === thread.projectId);
     return <a key={thread.id} className={`thread-row ${currentId === thread.id ? 'is-current' : ''}`} href={`/threads/${encodeURIComponent(thread.id)}`} aria-current={currentId === thread.id ? 'page' : undefined} title={`${thread.title} · ${project?.name ?? ''} · ${statusLabel[thread.status]}`}>
       <span className="thread-avatar" aria-hidden="true"><BotAvatar {...avatarForThread(thread)} state={thread.status === 'working' ? 'working' : 'default'} size={24} paused={thread.status !== 'working'} /></span>
-      <span className="thread-copy"><span className="thread-context">{showProject && <span className="thread-project" style={{ '--project-color': project?.color } as React.CSSProperties} aria-hidden="true">{project?.initial}</span>}{showProject ? project?.name : agentName[thread.agent]}</span><span className="thread-name">{thread.title}</span></span>
+      <span className="thread-copy"><span className="thread-context">{showProject && project && <ProjectIcon project={project} />}{showProject ? project?.name : agentName[thread.agent]}</span><span className="thread-name">{thread.title}</span></span>
       <span className="thread-time">{relativeTime(thread.updatedAt)}</span>
       <span className={`status-dot status-${thread.status}`} title={statusLabel[thread.status]} aria-label={statusLabel[thread.status]} />
     </a>;
@@ -48,7 +49,7 @@ export function Sidebar({ projects, threads, currentId, mode, collapsed, mobileO
         <nav className="thread-navigation" aria-label="Agent threads">
           {mode === 'projects' ? projects.filter((project) => threads.some((thread) => thread.projectId === project.id)).sort((a, b) => (threads.find((thread) => thread.projectId === b.id)?.updatedAt ?? '').localeCompare(threads.find((thread) => thread.projectId === a.id)?.updatedAt ?? '')).map((project) => <section key={project.id} className="thread-group">
             <button className="group-title" onClick={() => setClosedProjects((value) => value.includes(project.id) ? value.filter((id) => id !== project.id) : [...value, project.id])} aria-expanded={!closedProjects.includes(project.id)}>
-              <span className="group-chevron">{closedProjects.includes(project.id) ? '›' : '⌄'}</span>{project.name}
+              <span className="group-chevron">{closedProjects.includes(project.id) ? '›' : '⌄'}</span><ProjectIcon project={project} />{project.name}
             </button>
             {!closedProjects.includes(project.id) && threads.filter((thread) => thread.projectId === project.id).map((thread) => threadLink(thread, false))}
           </section>) : threads.map((thread) => threadLink(thread, true))}

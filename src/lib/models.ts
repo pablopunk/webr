@@ -7,6 +7,7 @@ export type Project = {
   path: string;
   color: string;
   initial: string;
+  iconUrl?: string;
 };
 
 export type Pane = {
@@ -34,7 +35,7 @@ export type Thread = {
 
 export const projects: Project[] = [
   { id: 'herdr', name: 'herdr', path: '~/src/herdr', color: '#9b83df', initial: 'H' },
-  { id: 'maze', name: 'maze-monorepo', path: '~/src/maze', color: '#e6a76d', initial: 'M' },
+  { id: 'maze', name: 'maze-monorepo', path: '~/src/maze/monorepo', color: '#e6a76d', initial: 'M' },
   { id: 'spotifin', name: 'spotifin', path: '~/src/spotifin', color: '#70b6a1', initial: 'S' },
 ];
 

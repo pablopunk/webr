@@ -2,10 +2,11 @@
 import Base from '../../layouts/Base.astro';
 import App from '../../components/App';
 import { findThread, listThreads } from '../../lib/mock-store';
-import { projects } from '../../lib/models';
+import { projectsWithIcons } from '../../lib/project-icons';
 
 const thread = await findThread(Astro.params.id ?? '');
 const threads = await listThreads();
+const projects = await projectsWithIcons();
 if (!thread) Astro.response.status = 404;
 ---
 <Base title={thread?.title ?? 'Thread not found'}>
