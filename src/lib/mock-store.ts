@@ -17,7 +17,11 @@ async function savedThreads(): Promise<Thread[]> {
 
 export async function listThreads(): Promise<Thread[]> {
   await pendingWrite;
-  return [...exampleThreads(), ...await savedThreads()]
+  const examples = exampleThreads();
+  const saved = (await savedThreads()).map((thread, index) => ({
+    ...thread, avatarIndex: thread.avatarIndex ?? examples.length + index,
+  }));
+  return [...examples, ...saved]
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
@@ -39,8 +43,10 @@ export function createThread(input: {
     const branch = input.worktree
       ? `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32)}-${id}`
       : 'main';
+    const threads = await savedThreads();
     const thread: Thread = {
-      id, projectId: input.projectId, title: name, agent: input.agent,
+      id, avatarIndex: exampleThreads().length + threads.length,
+      projectId: input.projectId, title: name, agent: input.agent,
       status: 'idle', updatedAt: new Date().toISOString(), branch,
       worktree: input.worktree, session: 'default', tabId: `mock:t${id}`,
       panes: [{ id: `mock:p${id}`, title: input.agent, kind: 'agent', lines: [
@@ -49,7 +55,6 @@ export function createThread(input: {
         'Type in this terminal to try the layout.', '', '$',
       ] }],
     };
-    const threads = await savedThreads();
     await mkdir(join(process.cwd(), '.data'), { recursive: true });
     const tempFile = `${dataFile}.${id}.tmp`;
     await writeFile(tempFile, JSON.stringify([...threads, thread], null, 2));

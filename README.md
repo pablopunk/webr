@@ -14,6 +14,7 @@ Open `http://127.0.0.1:4321/`. For a production build, run `npm run check`, `npm
 ## What works in the prototype
 
 - Activity-ordered agent sidebar with animated avatars, project-grouped and flat thread layouts, collapse, and a mobile drawer.
+- Each thread keeps its own avatar: the first 18 use distinct shapes, then the shapes repeat with distinct colors and animation timing.
 - Direct `/threads/:id` and `/sessions/:session/tabs/:tab` pages, with multiple terminal panes.
 - xterm-based terminal previews that accept input but **never run commands**.
 - New-thread form with agent, project, and worktree choices. Created mock threads persist in `.data/threads.json` across restarts.
