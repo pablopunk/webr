@@ -109,7 +109,7 @@ The separate agent/live-validation safety rule still requires a genuinely inheri
 
 ## Input and launch limits
 
-Real targets are **read-only unless matching complete live evidence is approved locally**. The fixture path exercises control conflicts, explicit takeover, resize, Unicode, paste validation, release, sequence recovery, and disconnect teardown. The gateway controller lock protects its own leases and Herdr's direct controller path; it is not a global input lock over unrelated native or JSON API clients.
+Real targets are **read-only unless matching complete live evidence is approved locally**. When approved, the active terminal pane requests control without takeover and gains a focused input capture after its full baseline. An existing controller conflict leaves it read-only until the user explicitly requests takeover. The fixture path exercises control conflicts, explicit takeover, resize, Unicode, paste validation, release, sequence recovery, and disconnect teardown. The gateway controller lock protects its own leases and Herdr's direct controller path; it is not a global input lock over unrelated native or JSON API clients.
 
 Control, takeover and release actions are in the command palette and a compact terminal context menu, not permanent terminal header bars. The pilot captures deliberate keyboard, Unicode, IME and plain-text paste events through a small input capture field. Application shortcuts still work there and are dispatched only once; composer and search editing keys are not intercepted. It never forwards arbitrary xterm `onData`, device replies, terminal clipboard requests, or terminal-supplied links. Input is limited to 8 KiB of UTF-8 bytes. Paste rejects control characters and embedded bracketed-paste delimiters.
 

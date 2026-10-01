@@ -16,14 +16,15 @@ const { title = 'Herdr Web' } = Astro.props;
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <script is:inline>
-      try {
-        const preference = localStorage.getItem('herdr-theme') || 'system';
+      function restoreHerdrTheme() {
+        let preference = 'system';
+        try { preference = localStorage.getItem('herdr-theme') || 'system'; } catch {}
         document.documentElement.dataset.theme = preference === 'system'
           ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
           : preference;
-      } catch {
-        document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       }
+      restoreHerdrTheme();
+      document.addEventListener('astro:after-swap', restoreHerdrTheme);
     </script>
   </head>
   <body>

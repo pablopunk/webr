@@ -26,8 +26,8 @@ export class BrowserTerminalManager {
     return {
       close: () => { const current = this.panes.get(id); if (current) { this.send({ type: 'release', streamId: id, generation: current.generation }); current.renderer?.close(); } this.panes.delete(id); },
       input: (text: string, paste = false) => { const current = this.panes.get(id); if (current?.writable) this.send({ type: 'input', streamId: id, generation: current.generation, text, paste }); },
-      control: (takeover = false) => { const current = this.panes.get(id); if (current) { this.send({ type: 'release', streamId: id, generation: current.generation }); current.mode = 'control'; ++current.generation; current.sequence = new FrameSequence(); this.open(id, takeover); } },
-      observe: () => { const current = this.panes.get(id); if (current) { this.send({ type: 'release', streamId: id, generation: current.generation }); current.mode = 'observe'; ++current.generation; current.sequence = new FrameSequence(); this.open(id); } },
+      control: (takeover = false) => { const current = this.panes.get(id); if (current && (current.mode !== 'control' || takeover)) { this.send({ type: 'release', streamId: id, generation: current.generation }); current.mode = 'control'; ++current.generation; current.sequence = new FrameSequence(); this.open(id, takeover); } },
+      observe: () => { const current = this.panes.get(id); if (current && current.mode !== 'observe') { this.send({ type: 'release', streamId: id, generation: current.generation }); current.mode = 'observe'; ++current.generation; current.sequence = new FrameSequence(); this.open(id); } },
       resize: (cols: number, rows: number) => {
         const current = this.panes.get(id);
         if (!current || cols === current.cols && rows === current.rows) return;
@@ -66,7 +66,7 @@ export class BrowserTerminalManager {
       pane.writable = ready;
       if (frame.full) pane.onState(ready ? 'Input control is active.' : 'Read-only', ready);
     });
-    pane.onState('Read-only; input modes have not been verified.', false);
+    pane.onState(pane.mode === 'control' ? 'Waiting for terminal control.' : 'Read-only', false);
     this.send({ type: 'open', streamId: id, generation: pane.generation, machineId: pane.machineId, threadId: pane.threadId, terminalId: pane.terminalId, mode: pane.mode, cols: pane.cols, rows: pane.rows, takeover });
   }
   private connect() {
@@ -77,7 +77,7 @@ export class BrowserTerminalManager {
     const metadata = new WebSocket(base + '/api/ws/metadata?instance=' + this.instance);
     const binary = new WebSocket(base + '/api/ws/terminal?instance=' + this.instance);
     this.metadata = metadata; this.binary = binary; binary.binaryType = 'arraybuffer';
-    const opened = () => { if (epoch !== this.epoch || metadata.readyState !== 1 || binary.readyState !== 1) return; this.connectedAt = Date.now(); this.onConnection(true); for (const [id, pane] of this.panes) { ++pane.generation; pane.sequence = new FrameSequence(); pane.mode = 'observe'; pane.attempts = 0; this.open(id); } };
+    const opened = () => { if (epoch !== this.epoch || metadata.readyState !== 1 || binary.readyState !== 1) return; this.connectedAt = Date.now(); this.onConnection(true); for (const [id, pane] of this.panes) { ++pane.generation; pane.sequence = new FrameSequence(); pane.attempts = 0; this.open(id); } };
     metadata.onopen = opened; binary.onopen = opened;
     metadata.onmessage = (event) => { if (epoch !== this.epoch) return; try { const record = JSON.parse(event.data); if (record.type === 'projection') this.install(record.projection); } catch { this.disconnect(); } };
     binary.onmessage = (event) => {

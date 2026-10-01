@@ -21,7 +21,7 @@ function themeColors() {
   };
 }
 
-export function TerminalPane({ pane, machineId, threadId, active, onFocus }: { pane: Pane; machineId: string; threadId: string; active: boolean; onFocus: () => void }) {
+export function TerminalPane({ pane, machineId, threadId, active, canControl, onFocus }: { pane: Pane; machineId: string; threadId: string; active: boolean; canControl: boolean; onFocus: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const term = useRef<Terminal | null>(null);
   const control = useRef<ReturnType<ReturnType<typeof useRuntime>['terminals']['mount']> | null>(null);
@@ -49,7 +49,7 @@ export function TerminalPane({ pane, machineId, threadId, active, onFocus }: { p
     const links = terminal.parser.registerOscHandler(8, () => true);
     if (!pane.terminalId) { terminal.dispose(); return; }
     const viewport = () => ({ cols: Math.max(2, Math.min(500, Math.floor((host.current?.clientWidth ?? 640) / 8))), rows: Math.max(1, Math.min(300, Math.floor((host.current?.clientHeight ?? 400) / 20))) });
-    control.current = terminals.mount({ machineId, threadId, terminalId: pane.terminalId, terminal, mode: 'observe', ...viewport(), onState: (message, writable) => { setMessage(message); setWritable(writable); writableRef.current = writable; } });
+    control.current = terminals.mount({ machineId, threadId, terminalId: pane.terminalId, terminal, mode: canControl && active ? 'control' : 'observe', ...viewport(), onState: (message, writable) => { setMessage(message); setWritable(writable); writableRef.current = writable; } });
     const gestures = bindTerminalGestures(host.current, () => ({ element: terminal.element?.querySelector<HTMLElement>('.xterm-screen') ?? undefined, cols: terminal.cols, rows: terminal.rows }), () => control.current, () => writableRef.current);
     let timer: ReturnType<typeof setTimeout>;
     const resize = new ResizeObserver(() => {
@@ -67,7 +67,9 @@ export function TerminalPane({ pane, machineId, threadId, active, onFocus }: { p
     };
     }).catch(() => setMessage('The terminal could not load.'));
     return () => { disposed = true; cleanup(); };
-  }, [pane.id, pane.terminalId, machineId, threadId, terminals]);
+  }, [pane.id, pane.terminalId, machineId, threadId, terminals, canControl]);
+
+  useEffect(() => { if (canControl) { if (active) control.current?.control(); else control.current?.observe(); } }, [active, canControl]);
 
   const focusInput = () => { if (writable && !term.current?.hasSelection()) host.current?.parentElement?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus(); };
   useEffect(() => { if (active) focusInput(); }, [active, writable]);

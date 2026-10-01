@@ -76,7 +76,7 @@ export function Sidebar({ projects, threads, machines, currentId, mode, onModeCh
             </div>
             {!closedProjects.includes(id) && threads.filter((thread) => locations.includes(thread.projectId)).map((thread) => threadLink(thread, false))}
           </section>) : threads.map((thread) => threadLink(thread, true))}
-          {!threads.length && <p className="sidebar-empty">No threads yet. Press ⌘K to start one.</p>}
+          {!threads.length && <p className="sidebar-empty">No agents yet. Press ⌘K to start one.</p>}
         </nav>
         <a className="sidebar-settings" href="/settings"><Settings2 size={15} /> Settings</a>
       </>}

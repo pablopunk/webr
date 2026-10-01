@@ -81,6 +81,8 @@ it('connects automatic Local without a registry opt-in and discovers native proj
   const { target, calls } = await setup(true); vi.stubEnv('HERDR_WEB_CONNECT', undefined);
   const state = await target.snapshot();
   expect(state.panes[0].terminal_id).toBe('term_fixture'); expect(target.locations).toHaveLength(1);
+  expect(target.writable).toBe(false);
+  expect(target.canLaunch({ ...launch, machineId: target.id, projectId: target.locations[0].projectId })).toBe(false);
   expect((await target.catalog()).projectPaths).toEqual({ [target.locations[0].projectId]: target.locations[0].path });
   expect(calls.every((call) => ['ping', 'session.snapshot'].includes(call.method))).toBe(true);
 });

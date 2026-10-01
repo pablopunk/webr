@@ -28,7 +28,7 @@ export default function App(props: Props) {
 function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
   const { ui, terminals } = useRuntime();
   const projects = useRuntimeSelector(useShallow((state) => state.projectIds.map((id) => state.projects[id])));
-  const threads = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id])));
+  const threads = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id]).filter((item) => item.panes.some((pane) => pane.kind === 'agent'))));
   const thread = useRuntimeSelector((state) => state.threads[threadId ?? '']);
   const projections = useRuntimeSelector((state) => state.projections);
   const gatewayConnected = useRuntimeSelector((state) => state.connected);
@@ -93,7 +93,7 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
     <Sidebar projects={projects} threads={threads} machines={machines} currentId={thread?.id} mode={mode} onModeChange={changeMode} collapsed={collapsed}
       mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} />
     <div className="main-panel">
-      {page === 'thread' && thread && <ThreadView thread={thread} layouts={projections[thread.machineId]?.layouts ?? []} tabs={projections[thread.machineId]?.availableTabs ?? []} connected={gatewayConnected && !!projections[thread.machineId]?.connected} focusedPane={focusedPane} onFocusPane={setFocusedPane} />}
+      {page === 'thread' && thread && <ThreadView thread={thread} layouts={projections[thread.machineId]?.layouts ?? []} tabs={projections[thread.machineId]?.availableTabs ?? []} connected={gatewayConnected && !!projections[thread.machineId]?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} />}
       {page === 'new' && <NewThreadView projects={projects} machines={machines} selectedProjectId={projectId} onOpenSidebar={toggleSidebar} />}
       {page === 'settings' && <SettingsView onOpenSidebar={toggleSidebar} mode={mode} onModeChange={changeMode} />}
       {page === 'missing' && <main className="not-found"><h1>Thread not found</h1><a href="/">Open a thread</a></main>}
