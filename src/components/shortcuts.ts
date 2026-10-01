@@ -9,7 +9,7 @@ export const shortcutLabels: Record<ShortcutAction, string> = {
 export const defaultShortcuts: Record<ShortcutAction, string> = {
   nextThread: 'ctrl+j', previousThread: 'ctrl+k',
   nextPane: 'ctrl+l', previousPane: 'ctrl+h',
-  toggleSidebar: 'ctrl+alt+b', newThread: 'ctrl+x',
+  toggleSidebar: 'ctrl+b', newThread: 'ctrl+x',
 };
 
 export function getShortcuts(): Record<ShortcutAction, string> {
