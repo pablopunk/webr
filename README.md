@@ -45,7 +45,7 @@ export HERDR_WEB_TLS_KEY='/absolute/path/to/your/local-private-key.pem'
 mise exec -- pnpm start
 ```
 
-Use your own trusted local certificate and open the exact origin. The hostname, port, and scheme must match `HERDR_WEB_ORIGIN`. The default bind address is `127.0.0.1`. Any nonlocal bind requires a trusted HTTPS origin and explicit `HERDR_WEB_TRUSTED_HTTPS=1`; this does not configure a proxy or authorize public exposure. Preserve the exact Host header and forward both WebSocket upgrades if a trusted proxy is used.
+Use your own trusted local certificate. Local origins accept `localhost`, `127.0.0.1`, and `[::1]` with the configured port and scheme; writes and WebSockets must use the same origin as the page. Nonlocal hosts must match `HERDR_WEB_ORIGIN` exactly. The default bind address is `127.0.0.1`. Any nonlocal bind requires a trusted HTTPS origin and explicit `HERDR_WEB_TRUSTED_HTTPS=1`; this does not configure a proxy or authorize public exposure. Preserve the Host header and forward both WebSocket upgrades if a trusted proxy is used.
 
 The Fastify host owns one HTTP/TLS port, Astro middleware and static assets, the shared runtime manager, and both WebSocket routes. Astro never creates another runtime manager. No cookies or credentials are required. Writes and upgrades require the exact Origin, and Host checks protect against rebinding; these checks are not authentication. Each browser instance has separate controller leases; losing either socket closes the pair and releases its leases.
 

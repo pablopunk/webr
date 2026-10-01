@@ -10,12 +10,12 @@ import { WebSocket } from 'ws';
 const cleanups: (() => Promise<unknown> | void)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 const origin = 'http://localhost:4321';
-async function setup() {
+async function setup(serverOrigin = origin) {
   const database = new MetadataDatabase(':memory:'); cleanups.push(() => database.close());
   const target = new FakeTarget(); const manager = new RuntimeManager(database, [target]);
-  const app = await createHost(manager, origin); cleanups.push(() => app.close());
+  const app = await createHost(manager, serverOrigin); cleanups.push(() => app.close());
   manager.start(); await expect.poll(() => manager.bootstrap().machines[0].connected).toBe(true);
-  const headers = { host: 'localhost:4321', origin };
+  const headers = { host: new URL(serverOrigin).host, origin: serverOrigin };
   return { database, target, manager, app, headers };
 }
 async function pair(app: Awaited<ReturnType<typeof createHost>>, headers: Record<string, string>) {
@@ -44,6 +44,25 @@ it('opens resources without accounts or cookies and guards Host and Origin', asy
   expect((await app.inject({ method: 'POST', url: '/api/threads', headers: { ...headers, origin: 'https://attacker.invalid' }, payload: launch })).statusCode).toBe(403);
   await expect(app.injectWS('/api/ws/metadata?instance=' + randomUUID(), { headers: { host: 'localhost:4321' } })).rejects.toThrow();
   await expect(app.injectWS('/api/ws/metadata?instance=' + randomUUID(), { headers: { ...headers, origin: 'https://attacker.invalid' } })).rejects.toThrow();
+});
+it.each(['localhost:4321', '127.0.0.1:4321', '[::1]:4321'])('accepts the loopback alias %s for pages, API writes and paired sockets', async (host) => {
+  const { app } = await setup('http://127.0.0.1:4321'); const headers = { host, origin: 'http://' + host };
+  expect((await app.inject({ url: '/api/runtime', headers })).statusCode).toBe(200);
+  const result = await app.inject({ method: 'POST', url: '/api/threads', headers: { ...headers, 'idempotency-key': randomUUID() }, payload: launch });
+  expect(result.statusCode).toBe(202);
+  const sockets = await pair(app, headers); expect(sockets.metadata.readyState).toBe(1); expect(sockets.terminal.readyState).toBe(1);
+});
+it('rejects different origins, ports, suffix hosts and nonlocal aliases even when loopback is allowed', async () => {
+  const { app } = await setup('http://127.0.0.1:4321');
+  for (const host of ['localhost:4322', 'localhost.attacker.invalid:4321', '192.0.2.1:4321']) expect((await app.inject({ url: '/api/runtime', headers: { host } })).statusCode).toBe(403);
+  for (const origin of ['http://127.0.0.1:4321', 'https://localhost:4321', 'http://localhost:4322']) {
+    const headers = { host: 'localhost:4321', origin };
+    expect((await app.inject({ method: 'POST', url: '/api/threads', headers, payload: launch })).statusCode).toBe(403);
+    await expect(app.injectWS('/api/ws/metadata?instance=' + randomUUID(), { headers })).rejects.toThrow();
+  }
+  const remote = await setup('https://herdr.example:4321');
+  expect((await remote.app.inject({ url: '/api/runtime', headers: { host: 'localhost:4321' } })).statusCode).toBe(403);
+  expect((await remote.app.inject({ url: '/api/runtime', headers: remote.headers })).statusCode).toBe(200);
 });
 it('runs anonymous start → shared snapshot → binary baseline → ACK → input → release on one host', async () => {
   const { app, target, manager, headers } = await setup();

@@ -13,13 +13,22 @@ type SsrHandler = (request: FastifyRequest['raw'], response: import('node:http')
 
 export async function createHost(manager: RuntimeManager, origin: string, ssr?: SsrHandler, tls?: { key: Buffer; cert: Buffer }) {
   const app = Fastify({ logger: false, bodyLimit: 16 * 1024, ...(tls ? { https: tls } : {}), requestTimeout: 10_000 });
+  const configuredOrigin = new URL(origin);
+  const allowedHosts = new Set([configuredOrigin.host]);
+  if (['localhost', '127.0.0.1', '[::1]'].includes(configuredOrigin.hostname)) {
+    for (const hostname of ['localhost', '127.0.0.1', '[::1]']) {
+      const alias = new URL(origin); alias.hostname = hostname;
+      allowedHosts.add(alias.host);
+    }
+  }
   app.addHook('onRequest', async (request, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Cache-Control', 'no-store');
     reply.header('Referrer-Policy', 'no-referrer');
-    if (request.headers.host !== new URL(origin).host) return reply.code(403).send({ error: 'invalid_host' });
+    if (!request.headers.host || !allowedHosts.has(request.headers.host)) return reply.code(403).send({ error: 'invalid_host' });
     const upgrade = request.headers.upgrade === 'websocket';
-    if ((request.method !== 'GET' && request.method !== 'HEAD' || upgrade) && request.headers.origin !== origin) return reply.code(403).send({ error: 'invalid_origin' });
+    const requestOrigin = `${configuredOrigin.protocol}//${request.headers.host}`;
+    if ((request.method !== 'GET' && request.method !== 'HEAD' || upgrade) && request.headers.origin !== requestOrigin) return reply.code(403).send({ error: 'invalid_origin' });
   });
   await app.register(websocket, { options: { maxPayload: 32 * 1024, perMessageDeflate: false } });
   const hub = registerWebsockets(app, manager);

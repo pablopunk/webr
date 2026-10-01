@@ -23,6 +23,8 @@ it('starts without an account or secret with coherent SSR, static assets, HTTP a
     await expect.poll(() => output, { timeout: 5000 }).toContain('Herdr Web listening');
     const anonymous = await fetch(origin + '/api/runtime'); expect(anonymous.status).toBe(200); expect(anonymous.headers.getSetCookie()).toEqual([]);
     const page = await fetch(origin + '/new'); const html = await page.text(); expect(page.status).toBe(200); expect(html).toContain('What do you want to build today?'); expect(html).toContain('herdr-app'); expect(html).not.toContain('Build machine (demo)');
+    const localPage = await fetch(origin + '/new', { headers: { host: 'localhost:' + port } });
+    expect(localPage.status).toBe(200); expect(await localPage.text()).toContain('What do you want to build today?');
     const asset = html.match(/(?:src|href)="(\/_astro\/[^"?]+\.(?:js|css))"/)?.[1]; expect(asset).toBeDefined();
     const css = await fetch(origin + asset); expect(css.status).toBe(200);
     const runtime = await fetch(origin + '/api/runtime'); expect(await runtime.json()).toMatchObject({ machines: [], threads: [], projects: [] });
