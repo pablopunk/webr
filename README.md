@@ -2,7 +2,7 @@
 
 This implementation replaces the design prototype's default mock data with an authenticated gateway and a persistent web client.
 
-**Release status: fixture-tested foundation, not a validated writable Herdr integration.** Real launch and terminal write capabilities are disabled in `HerdrTarget`; no environment switch enables them. Local and SSH read-only transport code is present. Its live behavior still requires proof in an owned disposable session. Do not use the current user's agent for validation.
+**Release status: revision 1 code is implemented and tested offline; live proof is missing.** Approved targets can connect read-only from a standalone supervised gateway. Control and launch paths consume target-specific, signed and locally approved validation evidence; no boolean environment flag enables those capabilities. No valid live evidence was produced in this execution. Do not use the current user's agent for validation.
 
 ## Requirements
 
@@ -68,6 +68,7 @@ Set `HERDR_WEB_TARGETS` to a private JSON registry file. There is no browser end
     "locations": [
       {
         "projectId": "my-project",
+        "logicalId": "my-project",
         "path": "/absolute/path/to/my-project",
         "workspaceId": "the-actual-native-workspace-id"
       }
@@ -76,11 +77,15 @@ Set `HERDR_WEB_TARGETS` to a private JSON registry file. There is no browser end
 ]
 ```
 
-Do not copy example native IDs into your registry. Obtain the real IDs only in a genuine managed context. A local profile can omit `socket` to use the documented configuration/session socket location. Connection probes verify the JSON protocol and installed CLI version.
+Do not copy example native IDs into your registry. Obtain the real IDs only in a genuine managed context. Profile IDs can be native opaque identifiers, including IDs that start with a digit. A local profile can omit `socket` to use the documented configuration/session socket location. An optional `executable` selects the approved target-host Herdr executable; the default is `herdr`. Connection probes check the running JSON protocol, installed CLI version and required bundled schema fields before a target becomes compatible.
+
+Browser project IDs are target-local location keys such as `local:my-project`, not the bare registry `projectId`. Catalogs, threads, icons and launch locations use the same scoped key. `logicalId` groups locations for the same repository across hosts and worktrees without mixing their paths; it defaults to the registry project ID. Set different logical IDs for unrelated repositories that happen to use the same local ID. Catalog query keys include the target, session, configuration version and selected project location.
 
 SSH profiles use `"transport": "ssh"` and require `host` plus the verified absolute remote `socket`. `host` is an approved SSH alias or `user@host`, not a browser-supplied host. The remote socket path supports ASCII letters, digits, underscores, slashes, dots and hyphens; paths that need spaces or colons in the Unix forwarding specification are not supported. Resolve this manually rather than changing quoting or enabling host-key approval. The API uses one persistent, verified Unix socket forward per target. Terminal commands execute the **target host's installed Herdr** over noninteractive SSH, with separately quoted arguments; they do not use `--machine` for terminal sessions. Only the gateway's own SSH/CLI processes and temporary forwarding directory are cleaned up.
 
-Actual connections require both an inherited genuine `HERDR_ENV=1` and explicit `HERDR_WEB_CONNECT=1`. **Do not set `HERDR_ENV` yourself.** When this gate is absent, approved profiles remain disconnected without contacting a live session. A configured or enabled profile is not proof of a connection.
+To connect the production application, set `HERDR_WEB_TARGETS` to the approved registry and explicitly set `HERDR_WEB_CONNECT=1`, then start the gateway. **The production gateway does not require `HERDR_ENV`; it can run as a supervised process outside a pane.** Disabled profiles remain visible but are not probed. Without connection opt-in, enabled profiles remain disconnected. A configured or enabled profile is not proof of a healthy connection. Failed target and browser connections use bounded exponential retry with jitter, not a permanent short polling loop.
+
+The separate agent/live-validation safety rule still requires a genuinely inherited `HERDR_ENV=1` before any live validation command. Do not set that variable to bypass the validator.
 
 ## Runtime and browser behavior
 
@@ -91,27 +96,44 @@ Actual connections require both an inherited genuine `HERDR_ENV=1` and explicit 
 - Binary headers include stream ID, generation, sequence, dimensions, full-baseline flag and payload length. An xterm write callback returns ACK credit. Per-stream, aggregate and writer byte limits close an overloaded stream rather than dropping an incremental frame. Reconnection starts from a full baseline.
 - Terminal output and buffers stay outside React, Zustand, HTTP query caches and SQLite. Normalized provider-scoped Zustand records preserve unchanged row identity. Focus uses scoped pane IDs. TanStack Query is limited to HTTP catalogs and cancels stale reads.
 - Astro ClientRouter persists the named App island, updates route props, and keeps sockets and UI state across page changes. It does not replace newer store state with an older SSR bootstrap. Direct `/threads/<full-UUID>` URLs remain server rendered. Native routes require `/sessions/<session>/tabs/<tab>?machine=<machine-id>`; native IDs alone are not globally unique.
-- Layouts use Herdr's native pane rectangles, not a fabricated flat split list. Missing runtime and detached anchors disable terminals. Exact terminal identity permits normal reconnection. A cold restore with new terminal IDs remains detached; paths, titles and pane IDs cannot silently rebind it.
-- Explicit adoption is currently an authenticated `POST /api/threads/<UUID>/adopt` with `{ "machineId": "...", "terminalIds": ["..."] }`; it checks fresh runtime identity and conflicts. There is **no adoption picker UI yet**. Adoption does not restart an old prompt.
+- Layouts use Herdr's native pane rectangles, not a fabricated flat split list. A saved thread is a tab alias, not a permanent list of launch-time panes. At least one expected terminal must survive in that same aliased tab before all its current panes can be projected and its anchor set updated. Native splits become visible; closing one pane keeps surviving tab members attached. A pane moved to another tab leaves the original thread's membership; the whole thread alias does not move with it. Loss of all same-tab anchors requires explicit adoption, even if paths, titles or pane IDs look unchanged.
+- Bindings also require the saved target fingerprint and configuration version. The fingerprint includes transport, host, socket, session and executable. A repointed profile or changed session cannot silently reuse terminal strings from another runtime; saved threads remain detached for adoption. Old metadata without those binding fields is also detached.
+- A detached thread has a native-tab adoption picker. It shows current terminal identities, requires explicit confirmation, and calls authenticated `POST /api/threads/<UUID>/adopt` with `{ "machineId": "...", "terminalIds": ["..."] }`. The server serializes a fresh authoritative read and checks complete same-tab membership and conflicts before updating the binding. Adoption does not restart an old prompt.
+- Activity time changes on meaningful agent, membership or title changes, not output-frame revisions. Unchanged projections keep their revision between bounded freshness publications.
 - Local approved-project icons use a fixed bounded candidate list and reject escaping symlinks. Remote and unconfigured project icons use letter fallbacks; no arbitrary filesystem endpoint exists.
 
 ## Input and launch limits
 
-Real targets are **read-only**. The fixture path exercises control conflicts, explicit takeover, resize, Unicode, paste validation, release, sequence recovery, and disconnect teardown. The gateway controller lock protects its own leases and Herdr's direct controller path; it is not a global input lock over unrelated native or JSON API clients.
+Real targets are **read-only unless matching complete live evidence is approved locally**. The fixture path exercises control conflicts, explicit takeover, resize, Unicode, paste validation, release, sequence recovery, and disconnect teardown. The gateway controller lock protects its own leases and Herdr's direct controller path; it is not a global input lock over unrelated native or JSON API clients.
 
-The pilot captures deliberate user input in a separate input field. It never forwards arbitrary xterm `onData`, device replies, terminal clipboard requests, or terminal-supplied links. Input is limited to 8 KiB of UTF-8 bytes. Paste rejects control characters and embedded bracketed-paste delimiters. Observer viewports reopen when their size changes; observers do not resize or independently scroll the source. Source dimensions determine xterm dimensions, with cropping/padding permitted.
+Control, takeover and release actions are in the command palette and a compact terminal context menu, not permanent terminal header bars. The pilot captures deliberate keyboard, Unicode, IME and plain-text paste events through a small input capture field. Application shortcuts still work there and are dispatched only once; composer and search editing keys are not intercepted. It never forwards arbitrary xterm `onData`, device replies, terminal clipboard requests, or terminal-supplied links. Input is limited to 8 KiB of UTF-8 bytes. Paste rejects control characters and embedded bracketed-paste delimiters.
 
-Herdr's CLI does not export source keyboard modes. Fixed pilot key encodings are not proof of complete native input compatibility. A future Herdr semantic key/paste CLI extension could resolve this; no such feature is assumed here. Graphics are not supported by the CLI mirror. Mouse and scroll commands exist in the server transport but have no complete browser gesture UI. Do not enable writes based only on the offline fixtures.
+Input requires both an accepted control open and a rendered full baseline. Pending rendering, generation replacement, release and resize disable input immediately; a resize requires a matching new full baseline. Old events and ACK callbacks cannot authorize another generation. Input is not queued for later replay. Observer viewports reopen when their size changes; observers do not resize or independently scroll the source. Source dimensions determine xterm dimensions, with cropping/padding permitted.
+
+Herdr's CLI does not export source keyboard modes. Fixed pilot key encodings are not proof of complete native input compatibility. A future Herdr semantic key/paste CLI extension could resolve this; no such feature is assumed here. Graphics are not supported by the CLI mirror. Plain pointer gestures and Shift gestures are reserved for selection/copy. While writable, hold Alt for source mouse gestures or source wheel scrolling; routing Alt is consumed and Ctrl is forwarded as a mouse modifier. Read-only viewers do not send these gestures. Shift-right-click retains the browser menu; the terminal menu also has an explicit Copy selection action. Do not enable writes based only on the offline fixtures.
 
 The catalog probes only the known `claude`, `codex`, `opencode` and `pi` executables on the selected host. It does not read credentials, import another host's catalog, or fabricate a model inventory. Installed executables remain viewable with a reason when launch is not verified. The fixture-tested native argv adapter handles Default and validated custom model IDs for Claude, Codex and OpenCode; other adapters are not launch-enabled.
 
-`POST /api/threads` requires an account-scoped UUID `Idempotency-Key`. Repeated payloads return the same operation/thread IDs; different payloads with the same key conflict. Each launch step persists intent before its effect. Worktree creation uses the returned initial tab rather than creating another tab. Returned native IDs are persisted before agent start; readiness belongs to Herdr's start operation; a fresh named-agent identity is checked before the initial prompt. An ambiguous effect or interrupted journal stays `unknown` for manual recovery. The gateway never retries a mutation or prompt blindly, deletes a partial checkout, or stops a target server. Real launch eligibility remains disabled.
+`POST /api/threads` requires an account-scoped UUID `Idempotency-Key`. Repeated payloads return the same operation/thread IDs; different payloads with the same key conflict. Each launch step persists intent before its effect. Worktree creation uses the returned initial tab rather than creating another tab. Returned native IDs are persisted before agent start; readiness belongs to Herdr's start operation; a fresh named-agent identity is checked before the initial prompt. An ambiguous effect or interrupted journal stays `unknown` for manual recovery. The gateway never retries a mutation or prompt blindly, deletes a partial checkout, or stops a target server. Launch requires separate proof for the exact target, project location, harness and native model adapter; a control grant is not a launch grant. Default-only evidence cannot authorize custom models.
+
+## Capability evidence and local approval
+
+`src/server/validation/evidence.ts` defines the signed evidence contract. Evidence binds protocol 22, version 0.9.3, target fingerprint, issue/expiry times and complete required check sets. Control uses `literal-pilot-v1`; launch uses a separate `model-argv-v1` grant for Claude, Codex or OpenCode and a specific scoped project/path. Partial, expired, modified or wrong-target evidence fails closed. Controls are revoked when approved evidence expires or is removed. Native control CLI and create/start/prompt paths are wired behind these checks, not behind permanent throw statements.
+
+Set a private `HERDR_WEB_EVIDENCE_KEY` with at least 32 characters for both the future live issuer and the gateway. This signing key is not the authentication secret and must not appear in source control, logs or browser data. Its presence alone grants nothing. If a complete live validator has produced a matching signed receipt, approve or revoke it from the local host:
+
+```sh
+npm run validation:approve -- <approved-target-id> /absolute/path/to/signed-live-evidence.json
+npm run validation:revoke -- <approved-target-id>
+```
+
+Approval checks the signature, identity, expiry and required grant checks, then persists the receipt in the private metadata database. There is no browser approval endpoint or bypass flag. **The current disposable-cat live validator covers only a subset and does not issue complete capability receipts. Full live evidence issuance remains blocked until all required control or harness-specific launch checks actually run.** Fixture signatures use only a test key and fake target identities; they are not live proof and must never be imported for a real target.
 
 ## Verify offline
 
 Authentication requests have a bounded in-memory rate limit. This limit resets when the one gateway process restarts; it does not replace a strong password or private network access.
 
-Dependency review remains open: `npm audit --omit=dev` reports four moderate advisories through Better Auth's optional Drizzle Kit peer and its old esbuild loader. The gateway does not invoke Drizzle Kit or that development server. Do not treat the audit as passed.
+Dependency review found four moderate advisories through Better Auth's optional Drizzle Kit peer and its old esbuild loader. The latest stable Drizzle Kit is 0.31.11 and still includes `@esbuild-kit/esm-loader`; the latest core-utils 3.3.2 declares esbuild `~0.18.20`. The fix requires an esbuild version outside that declared range or an unstable Drizzle Kit major. Neither was forced. The gateway does not invoke Drizzle Kit or that development server, but `npm audit --omit=dev` is not passed; the advisory remains documented for review.
 
 ```sh
 npm test
@@ -121,7 +143,7 @@ npm run validate:offline
 git diff --check
 ```
 
-`npm test` uses fake socket servers, fake target adapters, and owned Node/SSH-command fixtures; it never calls live Herdr. It includes an authenticated end-to-end gateway fixture and a real production-host start with an empty registry on an ephemeral local port. That production test builds Astro and proves SSR, static assets, HTTP and both WebSocket routes share the same port. No browser or desktop app is automated.
+`npm test` uses fake socket servers, fake target/process adapters, owned Node fixtures and DOM event tests; it never calls live Herdr. Tests check standalone approved connections without `HERDR_ENV`, capability consumption on fake targets, tab lineage, profile reconfiguration, scoped locations, baseline input barriers and explicit UI events. Retry recovery uses a deterministic fake clock and fixed jitter instead of a wall-clock polling deadline. It includes an authenticated end-to-end gateway fixture and a real production-host start with an empty registry on an ephemeral local port. That production test builds Astro and proves SSR, static assets, HTTP and both WebSocket routes share the same port. No real browser or desktop app is automated.
 
 The offline validator runs only `herdr api schema --json`, or reads an exported schema path:
 
