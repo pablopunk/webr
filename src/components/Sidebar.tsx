@@ -48,14 +48,16 @@ export function Sidebar({ projects, threads, currentId, mode, onModeChange, coll
         <button className="icon-button sidebar-collapse" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={onCollapse}>{collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}</button>
         <button className="icon-button mobile-close" aria-label="Close sidebar" onClick={onCloseMobile}><X size={16} /></button>
       </div>
-      <a className="sidebar-new-thread" href={`/new${currentProjectId ? `?project=${encodeURIComponent(currentProjectId)}` : ''}`} aria-label="New thread" title="New thread">
-        <Plus size={16} aria-hidden="true" />{!collapsed && <span>New thread</span>}
-      </a>
+      <div className="sidebar-actions">
+        <a className="sidebar-new-thread" href={`/new${currentProjectId ? `?project=${encodeURIComponent(currentProjectId)}` : ''}`} aria-label="New thread" title="New thread">
+          <Plus size={16} aria-hidden="true" />{!collapsed && <span>New thread</span>}
+        </a>
+        {!collapsed && <div className="sidebar-view-switch" role="group" aria-label="Sidebar layout">
+          <button type="button" aria-pressed={mode === 'threads'} onClick={() => onModeChange('threads')}><LayoutList size={13} aria-hidden="true" />Threads</button>
+          <button type="button" aria-pressed={mode === 'projects'} onClick={() => onModeChange('projects')}><FolderTree size={13} aria-hidden="true" />Projects</button>
+        </div>}
+      </div>
       {!collapsed && <>
-        <div className="sidebar-view-switch" role="group" aria-label="Sidebar layout">
-          <button type="button" aria-pressed={mode === 'threads'} onClick={() => onModeChange('threads')}><LayoutList size={14} aria-hidden="true" />Threads</button>
-          <button type="button" aria-pressed={mode === 'projects'} onClick={() => onModeChange('projects')}><FolderTree size={14} aria-hidden="true" />Projects</button>
-        </div>
         <nav className="thread-navigation" aria-label="Agent threads">
           {mode === 'projects' ? projects.filter((project) => threads.some((thread) => thread.projectId === project.id)).sort((a, b) => (threads.find((thread) => thread.projectId === b.id)?.updatedAt ?? '').localeCompare(threads.find((thread) => thread.projectId === a.id)?.updatedAt ?? '')).map((project) => <section key={project.id} className="thread-group">
             <div className="group-header">
