@@ -5,6 +5,7 @@
 .brand { font-size: 12px; font-weight: 700; letter-spacing: -.02em; }
 .sidebar-collapse { width: 26px; height: 26px; }
 .sidebar-new-thread { display: flex; align-items: center; gap: 9px; flex: none; min-height: 36px; margin: 12px 8px 4px; padding: 0 10px; border: 1px solid var(--card-edge); border-radius: 7px; background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); font-size: 11.5px; font-weight: 600; transition: background-color .2s, box-shadow .2s; }
+.sidebar-new-thread span { transform: translateY(1px); }
 .sidebar-new-thread:hover { background: var(--card-hover); box-shadow: var(--card-shadow-hover); }
 .sidebar.is-collapsed .sidebar-new-thread { justify-content: center; width: 28px; min-height: 28px; margin: 10px auto 0; padding: 0; }
 .sidebar-view-switch { display: flex; flex: none; gap: 3px; margin: 8px 8px 0; padding: 3px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-muted); }
