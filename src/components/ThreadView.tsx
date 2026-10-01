@@ -1,14 +1,16 @@
 import { TerminalPane } from './TerminalPane';
 import type { Thread } from '../lib/models';
-import type { Layout } from '../shared/runtime';
+import type { Layout, Projection } from '../shared/runtime';
+import { AdoptTab } from './AdoptTab';
 
-export function ThreadView({ thread, layouts, connected, onFocusPane, focusedPane }: {
-  thread: Thread; layouts: Layout[]; connected: boolean; onFocusPane: (paneId: string) => void; focusedPane: string;
+export function ThreadView({ thread, layouts, tabs, connected, onFocusPane, focusedPane }: {
+  thread: Thread; layouts: Layout[]; tabs: NonNullable<Projection['availableTabs']>; connected: boolean; onFocusPane: (paneId: string) => void; focusedPane: string;
 }) {
   const visibleLayouts = layouts.filter((layout) => layout.panes.some((rect) => thread.panes.some((pane) => pane.id === rect.paneId)));
   return <main className="native-thread-layout" aria-label={`${thread.title} tab`}>
     {(!connected || thread.bindingState !== 'attached') && <p className="runtime-notice" role="status">{!connected ? 'Disconnected; input is disabled.' : thread.bindingState === 'detached' ? 'The saved terminal is not present; explicit adoption is required.' : `Launch ${thread.operation?.state ?? 'pending'}: ${thread.operation?.step ?? 'validate'}`}</p>}
     {thread.operation?.state === 'unknown' && <p className="runtime-notice" role="alert">The launch result is unknown; inspect the target before you try again.</p>}
+    {connected && thread.bindingState === 'detached' && <AdoptTab key={thread.id} thread={thread} tabs={tabs} />}
     {connected && thread.bindingState === 'attached' && visibleLayouts.map((layout) => <div className="native-pane-layout" key={`${layout.workspaceId}:${layout.tabId}`}>
       {thread.panes.map((pane) => {
         const rect = layout.panes.find((rect) => rect.paneId === pane.id)?.rect;

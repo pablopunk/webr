@@ -6,7 +6,7 @@ import { encodeFrame } from '../src/shared/frame';
 import { frame } from './fixtures/target';
 import { QueryClient } from '@tanstack/react-query';
 
-afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); vi.restoreAllMocks(); });
 class BrowserSocket {
   static OPEN = 1; static instances: BrowserSocket[] = [];
   readyState = 0; bufferedAmount = 0; binaryType = ''; sent: string[] = [];
@@ -18,6 +18,7 @@ class BrowserSocket {
 }
 function setup() {
   vi.useFakeTimers(); BrowserSocket.instances = [];
+  vi.spyOn(Math, 'random').mockReturnValue(0.5);
   vi.stubGlobal('WebSocket', BrowserSocket); vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:4321' });
   const writes: { bytes: Uint8Array; finish: () => void }[] = [];
   const terminal = { resize: vi.fn(), write: (bytes: Uint8Array, finish: () => void) => writes.push({ bytes, finish }) } as unknown as Terminal;
@@ -39,8 +40,10 @@ it('ignores stale stream generations and never replays input after reconnect', (
   const { manager, binary, open, pane, writes } = setup();
   pane.control(); const writable = JSON.parse(binary.sent.at(-1)!);
   binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: writable.generation, writable: true }) });
+  pane.input('before baseline'); expect(JSON.parse(binary.sent.at(-1)!).type).toBe('open');
+  binary.onmessage!({ data: encodeFrame({ ...frame(), streamId: open.streamId, generation: writable.generation }).buffer as ArrayBuffer }); writes[0].finish();
   pane.input('a'); expect(JSON.parse(binary.sent.at(-1)!).text).toBe('a');
-  binary.onmessage!({ data: encodeFrame({ ...frame(), streamId: open.streamId, generation: open.generation }).buffer as ArrayBuffer }); expect(writes).toHaveLength(0);
+  binary.onmessage!({ data: encodeFrame({ ...frame(), streamId: open.streamId, generation: open.generation }).buffer as ArrayBuffer }); expect(writes).toHaveLength(1);
   binary.close(); pane.input('must not queue'); vi.advanceTimersByTime(1000);
   BrowserSocket.instances[2].open(); BrowserSocket.instances[3].open();
   const reconnectCommands = BrowserSocket.instances[3].sent.map((message) => JSON.parse(message));
@@ -66,4 +69,19 @@ it('cancels catalog reads for a stale machine key without installing the late re
   await client.cancelQueries({ queryKey: ['catalog', 'first'] });
   await client.query({ queryKey: ['catalog', 'second'], queryFn: async () => 'second-only' }); resolve('stale-first'); await first;
   expect(aborted).toBe(true); expect(client.getQueryData(['catalog', 'first'])).toBeUndefined(); expect(client.getQueryData(['catalog', 'second'])).toBe('second-only'); client.clear();
+});
+it('requires open acceptance and a rendered full baseline, and rejects old-generation ACK and input after replacement', () => {
+  const { manager, pane, binary, open, writes } = setup(); pane.control(); const command = JSON.parse(binary.sent.at(-1)!);
+  pane.input('before open'); binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: command.generation, writable: true }) }); pane.input('before full');
+  binary.onmessage!({ data: encodeFrame({ ...frame(), streamId: open.streamId, generation: command.generation }).buffer as ArrayBuffer }); pane.input('before render');
+  expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false);
+  pane.observe(); const replaced = JSON.parse(binary.sent.at(-1)!); writes[0].finish(); binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: command.generation, writable: true }) }); pane.input('after old open');
+  expect(binary.sent.some((value) => JSON.parse(value).type === 'ack')).toBe(false); expect(replaced.generation).not.toBe(command.generation); expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false); manager.stop();
+});
+it('disables input immediately during resize and requires a matching rendered full baseline to resume', () => {
+  const { manager, pane, binary, open, writes } = setup(); pane.control(); const command = JSON.parse(binary.sent.at(-1)!);
+  binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: command.generation, writable: true }) });
+  const deliver = (seq: number, full: boolean, width = 80, height = 24) => binary.onmessage!({ data: encodeFrame({ ...frame(seq, full), width, height, streamId: open.streamId, generation: command.generation }).buffer as ArrayBuffer });
+  deliver(1, true); writes[0].finish(); deliver(2, false); pane.resize(120, 30); pane.input('must not send'); writes[1].finish(); pane.input('still no new baseline');
+  expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false); deliver(3, true, 120, 30); writes[2].finish(); pane.input('safe now'); expect(JSON.parse(binary.sent.at(-1)!).text).toBe('safe now'); manager.stop();
 });

@@ -9,9 +9,13 @@
 .native-pane-layout { position: relative; flex: 1; min-height: 160px; }
 .native-pane-position { position: absolute; padding: 2px; }
 .native-pane-position .terminal-pane { height: 100%; display: flex; flex-direction: column; }
-.terminal-controls { display: flex; gap: 8px; align-items: center; color: var(--ink-muted); font-size: 11px; padding: 4px 8px; }
-.terminal-controls span { flex: 1; }
-.terminal-controls button { font: inherit; }
 .terminal-host { flex: 1; min-height: 0; height: auto; overflow: hidden; }
-.terminal-input-capture { width: 100%; resize: none; background: var(--terminal-bg); color: var(--terminal-ink); border: 1px solid var(--terminal-selection); }
+.terminal-pane { position: relative; }
+.terminal-input-capture { position: absolute; left: 12px; bottom: 8px; width: 2px; height: 2px; opacity: .01; padding: 0; border: 0; resize: none; }
+.terminal-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.terminal-context-menu { position: absolute; z-index: 20; display: grid; gap: 4px; width: 220px; padding: 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-raised); box-shadow: var(--shadow); }
+.terminal-context-menu button { text-align: left; padding: 5px 8px; font: inherit; color: var(--ink); background: var(--surface); border: 0; }
+.terminal-context-menu small { color: var(--ink-muted); }
+.adoption-picker { padding: 16px; color: var(--ink-soft); display: grid; gap: 8px; font-size: 13px; }
+.adoption-picker select { margin-left: 8px; }
 .runtime-notice { padding: 10px 16px; color: var(--ink-muted); font-size: 13px; }

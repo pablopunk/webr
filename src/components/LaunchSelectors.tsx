@@ -16,7 +16,7 @@ export function LaunchSelectors({ machine, machines, projects, projectId, harnes
     <ProjectPicker key={machine.id} projects={projects} projectId={projectId} onChange={onProjectChange} />
     <ComposerCombobox label="Harness" value={harness} onChange={onHarnessChange} icon={<TerminalSquare size={14} />}
       options={machine.harnesses.map((choice) => ({ value: choice.id, label: choice.name, shortLabel: choice.name === 'Claude Code' ? 'Claude' : choice.name }))} />
-    <ComposerCombobox key={`${machine.id}:${harness}`} label="Model" value={model} onChange={onModelChange} icon={<Cpu size={14} />} allowCustom
+    <ComposerCombobox key={`${machine.id}:${harness}`} label="Model" value={model} onChange={onModelChange} icon={<Cpu size={14} />} allowCustom={machine.harnesses.find((choice) => choice.id === harness)?.customModels ?? false}
       options={models.map((name) => ({ value: name, label: name, shortLabel: name.split('/').at(-1) }))} />
   </div>;
 }

@@ -10,7 +10,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   projects: Project[]; machines: Machine[]; selectedProjectId?: string; onOpenSidebar: () => void;
 }) {
   const [projectId, setProjectId] = useState(projects.find((project) => project.id === selectedProjectId)?.id ?? projects[0]?.id ?? '');
-  const [machineId, setMachineId] = useState(machines[0]?.id ?? '');
+  const [machineId, setMachineId] = useState(machines.find((machine) => selectedProjectId && Object.hasOwn(machine.projectPaths, selectedProjectId))?.id ?? machines[0]?.id ?? '');
   const [harness, setHarness] = useState('');
   const [model, setModel] = useState('Default');
   const [worktree, setWorktree] = useState(true);
@@ -19,7 +19,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   const [error, setError] = useState('');
   const operation = useRef<{ payload: string; key: string } | null>(null);
   const baseMachine = machines.find((machine) => machine.id === machineId) ?? { id: '', name: 'No target', connected: false, session: '', projectPaths: {}, harnesses: [] };
-  const catalog = useMachineCatalog(machineId, baseMachine.connected, baseMachine.configVersion);
+  const catalog = useMachineCatalog(machineId, baseMachine.connected, baseMachine.configVersion, baseMachine.session, projectId);
   const machine = { ...baseMachine, harnesses: baseMachine.connected ? catalog.data?.harnesses ?? [] : [] };
   const machineProjects = projects.filter((project) => Object.hasOwn(machine.projectPaths, project.id)).map((project) => ({
     ...project, path: machine.projectPaths[project.id], iconUrl: machineId === 'local' ? project.iconUrl : undefined,

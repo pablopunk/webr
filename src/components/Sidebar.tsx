@@ -5,6 +5,7 @@ import { type Project, type Thread, harnessName, relativeTime } from '../lib/mod
 import { avatarForThread } from '../lib/avatars';
 import type { Machine } from '../lib/machines';
 import { ProjectIcon } from './ProjectIcon';
+import { groupProjectLocations } from '../client/project-groups';
 
 export type SidebarMode = 'projects' | 'threads';
 
@@ -41,6 +42,7 @@ const ThreadRow = memo(function ThreadRow({ thread, project, machineName, curren
 export function Sidebar({ projects, threads, machines, currentId, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile }: Props) {
   const [closedProjects, setClosedProjects] = useState<string[]>([]);
   const currentProjectId = threads.find((thread) => thread.id === currentId)?.projectId;
+  const projectGroups = groupProjectLocations(projects, currentProjectId);
   const threadLink = (thread: Thread, showProject: boolean) => {
     const project = projects.find((item) => item.id === thread.projectId);
     return <ThreadRow key={thread.id} thread={thread} project={project} machineName={machines.find((machine) => machine.id === thread.machineId)?.name ?? thread.machineId} current={currentId === thread.id} showProject={showProject} />;
@@ -65,14 +67,14 @@ export function Sidebar({ projects, threads, machines, currentId, mode, onModeCh
       </div>
       {!collapsed && <>
         <nav className="thread-navigation" aria-label="Agent threads">
-          {mode === 'projects' ? projects.filter((project) => threads.some((thread) => thread.projectId === project.id)).sort((a, b) => (threads.find((thread) => thread.projectId === b.id)?.updatedAt ?? '').localeCompare(threads.find((thread) => thread.projectId === a.id)?.updatedAt ?? '')).map((project) => <section key={project.id} className="thread-group">
+          {mode === 'projects' ? projectGroups.filter((group) => threads.some((thread) => group.locations.includes(thread.projectId))).sort((a, b) => (threads.find((thread) => b.locations.includes(thread.projectId))?.updatedAt ?? '').localeCompare(threads.find((thread) => a.locations.includes(thread.projectId))?.updatedAt ?? '')).map(({ id, project, locations }) => <section key={id} className="thread-group">
             <div className="group-header">
-              <button className="group-title" onClick={() => setClosedProjects((value) => value.includes(project.id) ? value.filter((id) => id !== project.id) : [...value, project.id])} aria-expanded={!closedProjects.includes(project.id)}>
-                <span className="group-chevron" aria-hidden="true">{closedProjects.includes(project.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</span><ProjectIcon project={project} /><span className="group-name">{project.name}</span>
+              <button className="group-title" onClick={() => setClosedProjects((value) => value.includes(id) ? value.filter((item) => item !== id) : [...value, id])} aria-expanded={!closedProjects.includes(id)}>
+                <span className="group-chevron" aria-hidden="true">{closedProjects.includes(id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</span><ProjectIcon project={project} /><span className="group-name">{project.name}</span>
               </button>
               <a className="group-new-thread" href={`/new?project=${encodeURIComponent(project.id)}`} aria-label={`New thread in ${project.name}`} title={`New thread in ${project.name}`}><Plus size={15} aria-hidden="true" /></a>
             </div>
-            {!closedProjects.includes(project.id) && threads.filter((thread) => thread.projectId === project.id).map((thread) => threadLink(thread, false))}
+            {!closedProjects.includes(id) && threads.filter((thread) => locations.includes(thread.projectId)).map((thread) => threadLink(thread, false))}
           </section>) : threads.map((thread) => threadLink(thread, true))}
           {!threads.length && <p className="sidebar-empty">No threads yet. Press ⌘K to start one.</p>}
         </nav>

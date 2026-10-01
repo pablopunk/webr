@@ -10,10 +10,11 @@ import { navigate } from 'astro:transitions/client';
 
 type Command = { label: string; icon: ReactNode; detail?: string; shortcut?: ShortcutAction; run: () => void };
 
-export function CommandPalette({ open, onClose, projects, threads, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane }: {
+export function CommandPalette({ open, onClose, projects, threads, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction }: {
   open: boolean; onClose: () => void; projects: Project[]; threads: Thread[]; thread?: Thread;
   focusedPane: string; mode: SidebarMode; onModeChange: (mode: SidebarMode) => void;
   onToggleSidebar: () => void; onFocusPane: (paneId: string) => void;
+  onTerminalAction: (action: 'control' | 'takeover' | 'release') => void;
 }) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
@@ -54,13 +55,18 @@ export function CommandPalette({ open, onClose, projects, threads, thread, focus
     })),
     ...(thread ? [
       { label: 'Copy thread link', icon: <Copy size={16} />, run: () => { void navigator.clipboard.writeText(location.href); } },
+      ...(thread.bindingState === 'attached' ? [
+        { label: 'Request terminal control', icon: <TerminalSquare size={16} />, run: () => onTerminalAction('control') },
+        { label: 'Release terminal control', icon: <TerminalSquare size={16} />, run: () => onTerminalAction('release') },
+        { label: 'Take over terminal control', icon: <TerminalSquare size={16} />, run: () => { if (confirm('Replace the active controller of this terminal?')) onTerminalAction('takeover'); } },
+      ] : []),
       { label: 'Next pane', icon: <ArrowRight size={16} />, shortcut: 'nextPane' as const, run: () => focusPane(1) },
       { label: 'Previous pane', icon: <ArrowLeft size={16} />, shortcut: 'previousPane' as const, run: () => focusPane(-1) },
        ...thread.panes.map((pane, index) => ({ label: `Focus ${pane.title}`, icon: <TerminalSquare size={16} />, detail: `Pane ${index + 1}`, run: () => onFocusPane(pane.id) })),
     ] : []),
     ...threads.map((item) => ({ label: item.title, icon: <BotAvatar {...avatarForThread(item)} size={22} state={item.status === 'working' ? 'working' : 'default'} paused={item.status !== 'working'} />, detail: projects.find((project) => project.id === item.projectId)?.name,
       run: () => { void navigate(`/threads/${encodeURIComponent(item.id)}`); } })),
-  ], [projects, threads, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane]);
+  ], [projects, threads, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction]);
 
   const matching = commands.filter((command) => `${command.label} ${command.detail ?? ''}`.toLowerCase().includes(query.toLowerCase().trim()));
   if (!open) return null;

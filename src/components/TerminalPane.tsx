@@ -3,6 +3,8 @@ import type { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import type { Pane } from '../lib/models';
 import { useRuntime } from '../client/provider';
+import { TerminalInput } from './TerminalInput';
+import { bindTerminalGestures } from '../client/terminal-gestures';
 
 function themeColors() {
   const styles = getComputedStyle(document.documentElement);
@@ -26,9 +28,8 @@ export function TerminalPane({ pane, machineId, threadId, active, onFocus }: { p
   const { terminals } = useRuntime();
   const [message, setMessage] = useState('Connecting…');
   const [writable, setWritable] = useState(false);
-  const [draft, setDraft] = useState('');
-  const composing = useRef(false);
-  const input = useRef<HTMLTextAreaElement>(null);
+  const writableRef = useRef(false);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (!host.current) return;
@@ -48,7 +49,8 @@ export function TerminalPane({ pane, machineId, threadId, active, onFocus }: { p
     const links = terminal.parser.registerOscHandler(8, () => true);
     if (!pane.terminalId) { terminal.dispose(); return; }
     const viewport = () => ({ cols: Math.max(2, Math.min(500, Math.floor((host.current?.clientWidth ?? 640) / 8))), rows: Math.max(1, Math.min(300, Math.floor((host.current?.clientHeight ?? 400) / 20))) });
-    control.current = terminals.mount({ machineId, threadId, terminalId: pane.terminalId, terminal, mode: 'observe', ...viewport(), onState: (message, writable) => { setMessage(message); setWritable(writable); if (!writable) setDraft(''); } });
+    control.current = terminals.mount({ machineId, threadId, terminalId: pane.terminalId, terminal, mode: 'observe', ...viewport(), onState: (message, writable) => { setMessage(message); setWritable(writable); writableRef.current = writable; } });
+    const gestures = bindTerminalGestures(host.current, () => ({ element: terminal.element?.querySelector<HTMLElement>('.xterm-screen') ?? undefined, cols: terminal.cols, rows: terminal.rows }), () => control.current, () => writableRef.current);
     let timer: ReturnType<typeof setTimeout>;
     const resize = new ResizeObserver(() => {
       clearTimeout(timer);
@@ -59,6 +61,7 @@ export function TerminalPane({ pane, machineId, threadId, active, onFocus }: { p
     colorObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     cleanup = () => {
       clearTimeout(timer); control.current?.close(); control.current = null;
+      writableRef.current = false; gestures();
       clipboard.dispose(); links.dispose(); resize.disconnect(); colorObserver.disconnect();
       terminal.dispose(); term.current = null;
     };
@@ -66,20 +69,20 @@ export function TerminalPane({ pane, machineId, threadId, active, onFocus }: { p
     return () => { disposed = true; cleanup(); };
   }, [pane.id, pane.terminalId, machineId, threadId, terminals]);
 
-  useEffect(() => { if (active && writable) input.current?.focus(); }, [active, writable]);
+  const focusInput = () => { if (writable && !term.current?.hasSelection()) host.current?.parentElement?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus(); };
+  useEffect(() => { if (active) focusInput(); }, [active, writable]);
 
-  return <section className={`terminal-pane ${active ? 'is-active' : ''}`} aria-label={`${pane.title} terminal`} onClick={onFocus}>
-    <div className="terminal-controls"><span role="status">{message}</span>{writable ? <button onClick={() => control.current?.observe()}>Release control</button> : <><button onClick={() => control.current?.control()}>Request control</button><button onClick={() => { if (confirm('Replace the active terminal controller?')) control.current?.control(true); }}>Take over</button></>}</div>
+  return <section className={`terminal-pane ${active ? 'is-active' : ''}`} aria-label={`${pane.title} terminal`} onClick={() => { onFocus(); if (!menu) focusInput(); }} onContextMenu={(event) => { if (event.altKey || event.shiftKey) return; event.preventDefault(); onFocus(); const rect = event.currentTarget.getBoundingClientRect(); setMenu({ x: Math.max(0, Math.min(event.clientX - rect.left, rect.width - 220)), y: Math.max(0, Math.min(event.clientY - rect.top, rect.height - 180)) }); }}>
+    <span className="terminal-status" role="status">{message}</span>
     <div ref={host} className="terminal-host" />
-    {writable && <textarea ref={input} className="terminal-input-capture" value={draft} aria-label="Terminal input" rows={1}
-      onCompositionStart={() => { composing.current = true; }} onCompositionEnd={(event) => { composing.current = false; control.current?.input(event.currentTarget.value); setDraft(''); event.currentTarget.value = ''; }}
-      onChange={(event) => { if (composing.current) setDraft(event.target.value); else { if (event.target.value) control.current?.input(event.target.value); setDraft(''); } }}
-      onPaste={(event) => { event.preventDefault(); control.current?.input(event.clipboardData.getData('text/plain'), true); }}
-      onKeyDown={(event) => {
-        if (event.nativeEvent.isComposing || composing.current || event.metaKey) return;
-        const keys: Record<string, string> = { Enter: '\r', Backspace: '\x7f', Tab: '\t', Escape: '\x1b', ArrowUp: '\x1b[A', ArrowDown: '\x1b[B', ArrowRight: '\x1b[C', ArrowLeft: '\x1b[D' };
-        const bytes = event.ctrlKey && /^[a-z]$/i.test(event.key) ? String.fromCharCode(event.key.toUpperCase().charCodeAt(0) - 64) : keys[event.key];
-        if (bytes) { event.preventDefault(); control.current?.input(bytes); }
-      }} />}
+    {writable && <TerminalInput onInput={(text, paste) => control.current?.input(text, paste)} />}
+    {menu && <div role="menu" aria-label="Terminal actions" className="terminal-context-menu" style={{ left: menu.x, top: menu.y }} onKeyDown={(event) => { if (event.key === 'Escape') setMenu(null); }}>
+      <small>{message}</small>
+      <button role="menuitem" onClick={() => { control.current?.control(); setMenu(null); }}>Request control</button>
+      <button role="menuitem" onClick={() => { if (confirm('Replace the active terminal controller?')) control.current?.control(true); setMenu(null); }}>Take over</button>
+      <button role="menuitem" onClick={() => { control.current?.observe(); setMenu(null); }}>Release control</button>
+      <button role="menuitem" onClick={() => { const selection = term.current?.getSelection(); if (selection) void navigator.clipboard.writeText(selection); setMenu(null); }}>Copy selection</button>
+      <button role="menuitem" onClick={() => setMenu(null)}>Close menu</button>
+    </div>}
   </section>;
 }

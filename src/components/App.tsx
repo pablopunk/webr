@@ -6,12 +6,13 @@ import { SettingsView } from './SettingsView';
 import { Sidebar, type SidebarMode } from './Sidebar';
 import { applyTheme } from './ThemeControl';
 import { ThreadView } from './ThreadView';
-import { getShortcuts, keyCombo } from './shortcuts';
+import { getShortcuts } from './shortcuts';
 import { navigate } from 'astro:transitions/client';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from 'zustand';
 import { RuntimeProvider, useRuntime, useRuntimeSelector } from '../client/provider';
 import type { Bootstrap } from '../shared/runtime';
+import { appShortcutAction } from '../client/keyboard';
 
 type Props = {
   page: 'thread' | 'new' | 'settings' | 'missing';
@@ -25,19 +26,20 @@ export default function App(props: Props) {
 }
 
 function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
-  const { ui } = useRuntime();
+  const { ui, terminals } = useRuntime();
   const projects = useRuntimeSelector(useShallow((state) => state.projectIds.map((id) => state.projects[id])));
   const threads = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id])));
   const thread = useRuntimeSelector((state) => state.threads[threadId ?? '']);
   const projections = useRuntimeSelector((state) => state.projections);
   const gatewayConnected = useRuntimeSelector((state) => state.connected);
-  const machines = bootstrap.machines.map((machine) => ({ ...machine, connected: gatewayConnected && !!projections[machine.id]?.connected, error: projections[machine.id]?.error }));
+  const machines = Object.values(projections).flatMap((projection) => { const machine = projection.machine ?? bootstrap.machines.find((machine) => machine.id === projection.machineId); return machine ? [{ ...machine, connected: gatewayConnected && projection.connected, error: projection.error }] : []; });
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mode, setMode] = useState<SidebarMode>('threads');
   const scope = `${thread?.machineId ?? ''}:${thread?.id ?? ''}`;
-  const focusedPane = useStore(ui, (state) => state.focusedPanes[scope]) ?? thread?.panes[0]?.id ?? '';
+  const storedFocus = useStore(ui, (state) => state.focusedPanes[scope]);
+  const focusedPane = thread?.panes.some((pane) => pane.id === storedFocus) ? storedFocus! : thread?.panes[0]?.id ?? '';
   const setFocusedPane = useCallback((paneId: string) => ui.getState().focus(scope, paneId), [ui, scope]);
 
   useEffect(() => {
@@ -61,15 +63,14 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.repeat) return;
+      if (event.repeat || event.isComposing) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest('[data-recording="true"]')) return;
       if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k') {
         event.preventDefault(); setPaletteOpen((value) => !value); return;
       }
       if (paletteOpen || event.defaultPrevented) return;
-      if (target?.closest('input, textarea, select, [contenteditable="true"]') && !target.closest('.xterm')) return;
-      const action = Object.entries(getShortcuts()).find(([, combo]) => combo === keyCombo(event))?.[0];
+      const action = appShortcutAction(event, getShortcuts());
       if (!action) return;
       event.preventDefault();
       if (action === 'toggleSidebar') toggleSidebar();
@@ -92,13 +93,13 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
     <Sidebar projects={projects} threads={threads} machines={machines} currentId={thread?.id} mode={mode} onModeChange={changeMode} collapsed={collapsed}
       mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} />
     <div className="main-panel">
-      {page === 'thread' && thread && <ThreadView thread={thread} layouts={projections[thread.machineId]?.layouts ?? []} connected={gatewayConnected && !!projections[thread.machineId]?.connected} focusedPane={focusedPane} onFocusPane={setFocusedPane} />}
+      {page === 'thread' && thread && <ThreadView thread={thread} layouts={projections[thread.machineId]?.layouts ?? []} tabs={projections[thread.machineId]?.availableTabs ?? []} connected={gatewayConnected && !!projections[thread.machineId]?.connected} focusedPane={focusedPane} onFocusPane={setFocusedPane} />}
       {page === 'new' && <NewThreadView projects={projects} machines={machines} selectedProjectId={projectId} onOpenSidebar={toggleSidebar} />}
       {page === 'settings' && <SettingsView onOpenSidebar={toggleSidebar} mode={mode} onModeChange={changeMode} />}
       {page === 'missing' && <main className="not-found"><h1>Thread not found</h1><a href="/">Open a thread</a></main>}
     </div>
     {page === 'thread' && <div className="mobile-controls"><button aria-label="Open sidebar" onClick={toggleSidebar}><PanelLeft size={16} /></button><button aria-label="Open command palette" onClick={() => setPaletteOpen(true)}><Search size={16} /></button></div>}
     <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projects={projects} threads={threads} thread={thread} focusedPane={focusedPane}
-      mode={mode} onModeChange={changeMode} onToggleSidebar={toggleSidebar} onFocusPane={setFocusedPane} />
+      mode={mode} onModeChange={changeMode} onToggleSidebar={toggleSidebar} onFocusPane={setFocusedPane} onTerminalAction={(action) => { const pane = thread?.panes.find((pane) => pane.id === focusedPane); if (thread && pane?.terminalId) terminals.command(thread.machineId, thread.id, pane.terminalId, action); }} />
   </div>;
 }
