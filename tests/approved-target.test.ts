@@ -16,11 +16,12 @@ import { openCliStream } from '../src/server/terminal/cli';
 const cleanup: (() => void | Promise<unknown>)[] = [];
 afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn(); vi.unstubAllEnvs(); });
 const key = 'fixture-only-evidence-signing-key-never-used-live';
-async function setup() {
+async function setup(automatic = false, empty = false) {
   vi.stubEnv('HERDR_ENV', undefined); vi.stubEnv('HERDR_WEB_CONNECT', '1');
   const directory = await mkdtemp(join(tmpdir(), 'hc-')); cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const path = join(directory, 'api.sock'); const sockets = new Set<Socket>(); const calls: { method: string; params: Record<string, unknown> }[] = [];
   const state = snapshot(); let agent: Record<string, unknown> = {};
+  if (empty) { state.workspaces = []; state.tabs = []; state.panes = []; state.layouts = []; state.agents = []; }
   const server = createServer((socket) => {
     sockets.add(socket); socket.on('close', () => sockets.delete(socket));
     const parser = new NdjsonParser((value) => {
@@ -29,6 +30,10 @@ async function setup() {
       if (record.method === 'ping') result = { type: 'pong', version: '0.9.3', protocol: 22 };
       if (record.method === 'session.snapshot') result = { type: 'session_snapshot', snapshot: state };
       if (record.method === 'events.subscribe') result = { type: 'subscription_started' };
+      if (record.method === 'workspace.create') {
+        Object.assign(state, snapshot());
+        result = { type: 'workspace_created', workspace: state.workspaces[0], tab: state.tabs[0], root_pane: state.panes[0] };
+      }
       if (record.method === 'worktree.create' || record.method === 'tab.create') result = { type: record.method === 'worktree.create' ? 'worktree_created' : 'tab_created', root_pane: state.panes[0], tab: state.tabs[0] };
       if (record.method === 'agent.start') { agent = { name: record.params.name, terminal_id: state.panes[0].terminal_id, pane_id: state.panes[0].pane_id, agent: record.params.kind, agent_status: 'idle' }; result = { type: 'agent_started', agent }; }
       if (record.method === 'agent.get') result = { type: 'agent_info', agent };
@@ -38,7 +43,7 @@ async function setup() {
     socket.on('data', (chunk) => parser.push(chunk));
   });
   await new Promise<void>((resolve) => server.listen(path, resolve)); cleanup.push(() => new Promise<void>((resolve) => { for (const socket of sockets) socket.destroy(); server.close(() => resolve()); }));
-  const profile: TargetProfile = { id: '0123-fixture', name: 'Owned fake', enabled: true, transport: 'local', session: 'fixture', socket: path, executable: '/fixture/herdr', locations: [{ projectId: 'project', path: '/fixture', workspaceId: 'w1' }] };
+  const profile: TargetProfile = { id: '0123-fixture', name: 'Owned fake', enabled: true, transport: 'local', session: 'fixture', socket: path, executable: '/fixture/herdr', automatic, locations: automatic ? [] : [{ projectId: 'project', path: '/fixture', workspaceId: 'w1' }] };
   const process = vi.fn(async (_command: string, args: string[]) => args[0] === '--version' ? 'herdr 0.9.3\n' : args[0] === 'api' ? JSON.stringify(schemaFixture()) : '');
   const cli = vi.fn((..._args: Parameters<typeof openCliStream>) => ({ send: vi.fn(), close: vi.fn() }));
   let serialized: string | undefined;
@@ -71,4 +76,19 @@ it('accepts native opaque profile IDs and rejects unsupported bundled fields bef
   const { profile } = await setup(); expect(profileSchema.parse(profile).id).toBe('0123-fixture');
   const invalid = new HerdrTarget(profile, undefined, { process: async (_command, args) => args[0] === '--version' ? 'herdr 0.9.3' : '{}', cli: () => { throw new Error('must not reach CLI'); } }); cleanup.push(() => invalid.close());
   await expect(invalid.snapshot()).rejects.toThrow('unsupported_herdr_schema'); expect(invalid.writable).toBe(false);
+});
+it('connects automatic Local without a registry opt-in and discovers native projects without changing agents', async () => {
+  const { target, calls } = await setup(true); vi.stubEnv('HERDR_WEB_CONNECT', undefined);
+  const state = await target.snapshot();
+  expect(state.panes[0].terminal_id).toBe('term_fixture'); expect(target.locations).toHaveLength(1);
+  expect((await target.catalog()).projectPaths).toEqual({ [target.locations[0].projectId]: target.locations[0].path });
+  expect(calls.every((call) => ['ping', 'session.snapshot'].includes(call.method))).toBe(true);
+});
+it('accepts a connected empty session and creates its first workspace through Herdr with no source or focus change', async () => {
+  const { target, calls } = await setup(true, true); vi.stubEnv('HERDR_WEB_CONNECT', undefined);
+  expect((await target.snapshot()).workspaces).toEqual([]); expect(target.locations).toEqual([]);
+  const result = await target.createWorkspace('/fixture', 'Project', randomUUID());
+  expect(result).toMatchObject({ workspaceId: 'w1', terminalId: 'term_fixture' });
+  expect(calls.find((call) => call.method === 'workspace.create')?.params).toEqual({ cwd: '/fixture', label: 'Project', focus: false });
+  expect((await target.snapshot()).workspaces).toHaveLength(1); expect(target.locations).toHaveLength(1);
 });

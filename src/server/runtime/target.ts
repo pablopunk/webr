@@ -17,6 +17,7 @@ export type TargetAdapter = {
   catalog(projectId?: string): Promise<Machine>;
   canLaunch?(input: LaunchInput): boolean;
   icon?(projectId: string): Promise<Icon | undefined>;
+  createWorkspace?(path: string, label: string, requestId: string): Promise<{ workspaceId: string; tabId: string; terminalId: string }>;
   openTerminal(terminalId: string, mode: 'control' | 'observe', cols: number, rows: number, takeover: boolean, onFrame: (frame: TerminalFrame) => void, onClose: (reason: string) => void): TerminalStream;
   create(input: LaunchInput, threadId: string): Promise<{ tabId: string; paneId: string; terminalId: string; workspaceId: string }>;
   start(input: LaunchInput, paneId: string, threadId: string): Promise<void>;

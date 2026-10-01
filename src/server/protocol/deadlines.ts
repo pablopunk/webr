@@ -12,9 +12,9 @@ export function requestDeadline(method: string, params: Record<string, unknown>,
     timeout = ready + TRANSPORT_MARGIN_MS;
   }
   if (method === 'worktree.create') timeout = WORKTREE_TIMEOUT_MS;
-  if (method === 'tab.create') timeout = 30_000;
+  if (method === 'tab.create' || method === 'workspace.create') timeout = 30_000;
   timeout = options?.timeoutMs ?? timeout;
-  const maximum = ['agent.start', 'worktree.create', 'tab.create'].includes(method) ? MAX_RPC_TIMEOUT_MS : 5000;
+  const maximum = ['agent.start', 'worktree.create', 'tab.create', 'workspace.create'].includes(method) ? MAX_RPC_TIMEOUT_MS : 5000;
   if (!Number.isInteger(timeout) || timeout < 1 || timeout > maximum) throw new Error('invalid_rpc_timeout');
   return timeout;
 }

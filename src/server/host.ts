@@ -1,22 +1,18 @@
 import Fastify, { type FastifyRequest } from 'fastify';
 import websocket from '@fastify/websocket';
 import staticFiles from '@fastify/static';
-import { fromNodeHeaders } from 'better-auth/node';
 import { resolve } from 'node:path';
 import { z } from 'zod';
 import type { RuntimeManager } from './runtime/manager';
-import type { GatewayAuth } from './auth';
 import { launchInput, opaqueId } from '../shared/runtime';
 import { registerWebsockets } from './websockets';
+import { createWorkspace } from './runtime/workspace';
 
-declare module 'fastify' {
-  interface FastifyRequest { gatewaySession: { accountId: string; sessionId: string; expiresAt: Date } | null }
-}
+const localOwner = 'local';
 type SsrHandler = (request: FastifyRequest['raw'], response: import('node:http').ServerResponse, next: (error?: unknown) => void, locals: Record<string, unknown>) => void;
 
-export async function createHost(manager: RuntimeManager, auth: GatewayAuth, origin: string, ssr?: SsrHandler, tls?: { key: Buffer; cert: Buffer }) {
+export async function createHost(manager: RuntimeManager, origin: string, ssr?: SsrHandler, tls?: { key: Buffer; cert: Buffer }) {
   const app = Fastify({ logger: false, bodyLimit: 16 * 1024, ...(tls ? { https: tls } : {}), requestTimeout: 10_000 });
-  app.decorateRequest('gatewaySession', null);
   app.addHook('onRequest', async (request, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Cache-Control', 'no-store');
@@ -24,26 +20,9 @@ export async function createHost(manager: RuntimeManager, auth: GatewayAuth, ori
     if (request.headers.host !== new URL(origin).host) return reply.code(403).send({ error: 'invalid_host' });
     const upgrade = request.headers.upgrade === 'websocket';
     if ((request.method !== 'GET' && request.method !== 'HEAD' || upgrade) && request.headers.origin !== origin) return reply.code(403).send({ error: 'invalid_origin' });
-    if (request.url.split('?')[0] === '/login' || request.url.startsWith('/api/auth/')) return;
-    request.gatewaySession = await auth.authenticate(request.headers);
-    if (!request.gatewaySession) {
-      if (request.url.startsWith('/api/') || upgrade) return reply.code(401).send({ error: 'unauthorized' });
-      return reply.redirect('/login');
-    }
   });
   await app.register(websocket, { options: { maxPayload: 32 * 1024, perMessageDeflate: false } });
-  const hub = registerWebsockets(app, manager, auth);
-  app.get('/login', async (_request, reply) => reply.type('text/html').send(loginPage));
-  app.route({ method: ['GET', 'POST'], url: '/api/auth/*', handler: async (request, reply) => {
-    const headers = fromNodeHeaders(request.headers);
-    headers.set('x-herdr-web-client-ip', request.ip);
-    const response = await auth.auth.handler(new Request(origin + request.url, { method: request.method, headers, body: request.method === 'GET' ? undefined : JSON.stringify(request.body) }));
-    reply.code(response.status);
-    response.headers.forEach((value, key) => { if (key !== 'set-cookie') reply.header(key, value); });
-    const cookies = response.headers.getSetCookie();
-    if (cookies.length) reply.header('set-cookie', cookies);
-    return reply.send(await response.text());
-  } });
+  const hub = registerWebsockets(app, manager);
   app.get('/api/catalog/machines', async () => manager.bootstrap().machines);
   app.get('/api/catalog/:machineId', async (request) => {
     const { machineId } = z.object({ machineId: opaqueId }).parse(request.params);
@@ -51,6 +30,15 @@ export async function createHost(manager: RuntimeManager, auth: GatewayAuth, ori
     return manager.catalog(machineId, projectId);
   });
   app.get('/api/runtime', async () => manager.bootstrap());
+  app.post('/api/workspaces', async (request, reply) => {
+    const input = z.object({ machineId: opaqueId, path: z.string().startsWith('/').max(1000).refine((path) => !/[\x00-\x1f]/.test(path)), label: z.string().trim().min(1).max(80) }).strict().parse(request.body);
+    const key = z.uuid().parse(request.headers['idempotency-key']);
+    const supervisor = manager.supervisors.get(input.machineId);
+    if (!supervisor?.connected) return reply.code(409).send({ error: 'machine_disconnected' });
+    const result = await createWorkspace(manager.database, supervisor.target, key, input.path, input.label);
+    supervisor.invalidate();
+    return reply.code(result.state === 'unknown' ? 202 : 201).send(result);
+  });
   app.get('/api/projects/:machineId/:projectId/icon', async (request, reply) => {
     const { machineId, projectId } = z.object({ machineId: opaqueId, projectId: opaqueId }).parse(request.params);
     const target = manager.supervisors.get(machineId)?.target;
@@ -66,7 +54,7 @@ export async function createHost(manager: RuntimeManager, auth: GatewayAuth, ori
     if (!supervisor?.connected) return reply.code(409).send({ error: 'machine_disconnected' });
     const catalog = await manager.catalog(input.machineId, input.projectId);
     if (!catalog.harnesses.find((harness) => harness.id === input.agent)?.launchEnabled || supervisor.target.canLaunch && !supervisor.target.canLaunch(input)) return reply.code(409).send({ error: 'launch_capability_not_validated' });
-    const result = manager.journal.submit(request.gatewaySession!.accountId, key, input, supervisor.target);
+    const result = manager.journal.submit(localOwner, key, input, supervisor.target);
     return reply.code(202).send(result);
   });
   app.post('/api/threads/:id/adopt', async (request) => {
@@ -77,7 +65,7 @@ export async function createHost(manager: RuntimeManager, auth: GatewayAuth, ori
   app.get('/api/operations/:id', async (request, reply) => {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
     const operation = manager.database.operation(id);
-    if (!operation || operation.accountId !== request.gatewaySession?.accountId) return reply.code(404).send({ error: 'operation_not_found' });
+    if (!operation || ![localOwner, manager.database.getSetting('allowed_account')].includes(operation.accountId)) return reply.code(404).send({ error: 'operation_not_found' });
     return { id: operation.id, state: operation.state, step: operation.step, threadId: operation.threadId };
   });
   app.get('/api/stats', async () => hub.stats());
@@ -91,7 +79,7 @@ export async function createHost(manager: RuntimeManager, auth: GatewayAuth, ori
     });
     app.get('/*', async (request, reply) => {
       reply.hijack();
-      ssr(request.raw, reply.raw, () => { if (!reply.raw.headersSent) { reply.raw.statusCode = 404; reply.raw.end('Not found'); } }, { runtime: manager, accountId: request.gatewaySession!.accountId });
+      ssr(request.raw, reply.raw, () => { if (!reply.raw.headersSent) { reply.raw.statusCode = 404; reply.raw.end('Not found'); } }, { runtime: manager, accountId: localOwner });
     });
   }
   app.setErrorHandler((error, _request, reply) => {
@@ -102,5 +90,3 @@ export async function createHost(manager: RuntimeManager, auth: GatewayAuth, ori
   app.addHook('onClose', async () => manager.close());
   return app;
 }
-
-const loginPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Sign in · Herdr</title><style>body{font:16px system-ui;max-width:360px;margin:15vh auto;padding:24px}input,button{box-sizing:border-box;width:100%;padding:12px;margin:8px 0}p{color:#b22}</style><h1>Sign in</h1><form><input type="email" name="email" autocomplete="username" aria-label="Email" required><input type="password" name="password" autocomplete="current-password" aria-label="Password" required><button>Sign in</button><p role="alert"></p></form><script>document.querySelector('form').addEventListener('submit',async event=>{event.preventDefault();const form=new FormData(event.target);const response=await fetch('/api/auth/sign-in/email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:form.get('email'),password:form.get('password')})});if(response.ok)location.href='/';else document.querySelector('p').textContent='Sign in failed.';});</script></html>`;

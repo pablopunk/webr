@@ -6,7 +6,7 @@ import { lifecycleSubscriptions } from './native';
 import { requestDeadline, type RpcOptions } from './deadlines';
 
 const envelope = z.object({ id: z.string(), result: z.record(z.string(), z.unknown()).optional(), error: z.object({ code: z.string(), message: z.string() }).optional() });
-const allowed = new Set(['ping', 'session.snapshot', 'events.subscribe', 'server.agent_manifests', 'worktree.create', 'tab.create', 'agent.start', 'agent.get', 'agent.prompt']);
+const allowed = new Set(['ping', 'session.snapshot', 'events.subscribe', 'server.agent_manifests', 'workspace.create', 'worktree.create', 'tab.create', 'agent.start', 'agent.get', 'agent.prompt']);
 export class SocketApi {
   private sockets = new Set<Socket>();
   constructor(readonly path: string, readonly deadline = 5000, private methods: ReadonlySet<string> = allowed) {}
@@ -33,7 +33,7 @@ export class SocketApi {
       });
       socket.on('connect', () => socket.write(JSON.stringify({ id, method, params }) + '\n'));
       socket.on('data', (chunk) => { try { parser.push(chunk); } catch (error) { finish(error as Error); } });
-      socket.on('error', () => finish(new Error('socket_unavailable')));
+      socket.on('error', (error: NodeJS.ErrnoException) => finish(Object.assign(new Error('socket_unavailable', { cause: error }), { code: error.code })));
       socket.on('close', () => finish(new Error('rpc_closed')));
       socket.on('end', () => { try { parser.end(); finish(new Error('rpc_closed')); } catch (error) { finish(error as Error); } });
     });

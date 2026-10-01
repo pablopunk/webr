@@ -1,8 +1,8 @@
-import type { TargetAdapter } from '../runtime/target';
+import type { TargetAdapter, LaunchLocation } from '../runtime/target';
 import type { TargetProfile } from './registry';
 import { localSocket } from './registry';
 import { SocketApi } from '../protocol/socket';
-import { nativeSnapshot } from '../protocol/native';
+import { nativeSnapshot, nativeWorkspace, nativeTab, nativePane } from '../protocol/native';
 import { openCliStream } from '../terminal/cli';
 import { boundedProcess } from './process';
 import { SshForward, sshOptions, remoteCommand, quoteShell } from './ssh';
@@ -15,12 +15,14 @@ import { targetFingerprint } from './identity';
 import { scopedProjectId } from '../../shared/projects';
 import { verifyEvidence, controlGranted, launchGranted, approvedModels } from '../validation/evidence';
 import { validateInstalledSchema } from '../protocol/validate';
+import { ensureLocalSession } from './local-session';
+import { nativeLocations } from './native-locations';
 
 const knownKinds = ['claude', 'codex', 'opencode', 'pi'];
 type Dependencies = { process: typeof boundedProcess; cli: typeof openCliStream };
 type ValidationSource = { read: () => string | undefined; key?: string };
 export class HerdrTarget implements TargetAdapter {
-  readonly id; readonly name; readonly session; readonly locations;
+  readonly id; readonly name; readonly session; readonly locations: LaunchLocation[];
   readonly fingerprint; configVersion = 1;
   get enabled() { return this.profile.enabled; }
   get writable() { return this.compatible && controlGranted(this.evidence()); }
@@ -47,7 +49,8 @@ export class HerdrTarget implements TargetAdapter {
     if (this.connecting) return this.connecting;
     if (this.api) return this.api;
     this.connecting ??= (async () => {
-      if (!this.profile.enabled || process.env.HERDR_WEB_CONNECT !== '1') throw new Error('connection_not_approved');
+      if (!this.profile.enabled || !(this.profile.automatic && this.profile.transport === 'local') && process.env.HERDR_WEB_CONNECT !== '1') throw new Error('connection_not_approved');
+      if (this.profile.automatic && this.profile.transport === 'local') await ensureLocalSession(this.profile);
       if (this.profile.transport === 'ssh') {
         this.forwarding = new SshForward(this.profile.host!, this.profile.socket!);
         this.api = await this.forwarding.open();
@@ -73,7 +76,15 @@ export class HerdrTarget implements TargetAdapter {
   async snapshot() {
     const snapshot = nativeSnapshot.parse((await (await this.connect()).request('session.snapshot')).snapshot);
     if (snapshot.version !== '0.9.3') { this.compatible = false; throw new Error('unsupported_herdr_version'); }
+    if (this.profile.automatic && this.profile.transport === 'local') this.locations.splice(0, this.locations.length, ...nativeLocations(this.id, snapshot));
     return snapshot;
+  }
+  async createWorkspace(path: string, label: string, requestId: string) {
+    if (this.profile.transport !== 'local' || !this.profile.automatic || !this.compatible) throw new Error('workspace_creation_unavailable');
+    const result = await (await this.connect()).request('workspace.create', { cwd: path, label, focus: false }, { timeoutMs: 30_000, requestId });
+    const workspace = nativeWorkspace.parse(result.workspace); const tab = nativeTab.parse(result.tab); const pane = nativePane.parse(result.root_pane);
+    if (tab.workspace_id !== workspace.workspace_id || pane.workspace_id !== workspace.workspace_id || pane.tab_id !== tab.tab_id) throw new Error('workspace_identity_mismatch');
+    return { workspaceId: workspace.workspace_id, tabId: tab.tab_id, terminalId: pane.terminal_id };
   }
   async catalog(projectId?: string): Promise<Machine> {
     const api = await this.connect();

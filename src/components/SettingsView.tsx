@@ -32,7 +32,6 @@ export function SettingsView({ onOpenSidebar, mode, onModeChange }: {
   return <main className="form-page settings-page">
     <button className="mobile-menu" onClick={onOpenSidebar}>Threads</button>
     <h1>Settings</h1>
-    <button onClick={async () => { await fetch('/api/auth/sign-out', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); window.location.href = '/login'; }}>Sign out</button>
     <section><h2>Sidebar</h2><div className="settings-row"><span>Thread layout</span><div className="segmented" role="group" aria-label="Sidebar layout"><button aria-pressed={mode === 'threads'} onClick={() => onModeChange('threads')}>Threads</button><button aria-pressed={mode === 'projects'} onClick={() => onModeChange('projects')}>Projects</button></div></div></section>
     <section><h2>Appearance</h2><div className="settings-row"><span>Theme</span><ThemeControl expanded /></div></section>
     <section><h2>New threads</h2><label className="settings-row"><span>Create a new worktree by default</span><input type="checkbox" checked={worktree} onChange={(event) => { setWorktree(event.target.checked); localStorage.setItem('herdr-new-worktree', String(event.target.checked)); }} /></label></section>

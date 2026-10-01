@@ -1,23 +1,21 @@
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from 'ws';
 import type { RuntimeManager } from './runtime/manager';
-import type { GatewayAuth } from './auth';
 import { TerminalHub } from './terminal/hub';
 import { terminalAction } from '../shared/runtime';
 import { z } from 'zod';
 
-export function registerWebsockets(app: FastifyInstance, manager: RuntimeManager, auth: GatewayAuth) {
+export function registerWebsockets(app: FastifyInstance, manager: RuntimeManager) {
   const hub = new TerminalHub(manager);
   const pairs = new Map<string, { metadata?: WebSocket; terminal?: WebSocket; close: () => void }>();
   for (const kind of ['metadata', 'terminal'] as const) {
     app.get(`/api/ws/${kind}`, { websocket: true }, (socket, request) => {
       const parsed = z.object({ instance: z.uuid() }).strict().safeParse(request.query);
-      if (!parsed.success || !request.gatewaySession) { socket.close(1008); return; }
-      const owner = request.gatewaySession.sessionId + '\0' + parsed.data.instance;
+      if (!parsed.success) { socket.close(1008); return; }
+      const owner = parsed.data.instance;
       let pair = pairs.get(owner);
       if (!pair) {
         if (pairs.size >= 32) { socket.close(1013); return; }
-        let interval: ReturnType<typeof setInterval> | undefined;
         let pairing: ReturnType<typeof setTimeout> | undefined;
         const publish = (projection: unknown) => {
           if (!pair?.metadata || pair.metadata.readyState !== 1) return;
@@ -27,18 +25,14 @@ export function registerWebsockets(app: FastifyInstance, manager: RuntimeManager
         };
         const close = () => {
           if (!pairs.has(owner)) return;
-          pairs.delete(owner); clearInterval(interval); clearTimeout(pairing);
+          pairs.delete(owner); clearTimeout(pairing);
           manager.off('projection', publish); hub.detach(owner);
           pair?.metadata?.close(1008); pair?.terminal?.close(1008);
         };
         pair = { close }; pairs.set(owner, pair);
         manager.on('projection', publish);
-        interval = setInterval(() => {
-          if (pair?.metadata && pair.metadata.readyState !== 1 || pair?.terminal && pair.terminal.readyState !== 1) { close(); return; }
-          void auth.authenticate(request.headers).then((session) => { if (!session) close(); }).catch(close);
-        }, 250);
         pairing = setTimeout(() => { if (!pair?.metadata || !pair.terminal) close(); }, 5000);
-        interval.unref(); pairing.unref();
+        pairing.unref();
       }
       if (pair[kind]) { socket.close(1008); return; }
       pair[kind] = socket;
@@ -53,7 +47,7 @@ export function registerWebsockets(app: FastifyInstance, manager: RuntimeManager
         if (!validated.success) { pair!.close(); return; }
         commands = commands.then(async () => {
           if (!pairs.has(owner)) return;
-          if (!pair?.metadata || !pair.terminal || !await auth.authenticate(request.headers)) { pair!.close(); return; }
+          if (!pair?.metadata || !pair.terminal) { pair!.close(); return; }
           try { hub.action(owner, validated.data); }
           catch (error) { if (socket.readyState === 1) socket.send(JSON.stringify({ type: 'stream.error', streamId: validated.data.streamId, generation: validated.data.generation, reason: error instanceof Error ? error.message : 'action_failed' })); }
         }).catch(() => pair!.close()).finally(() => { --pending; });

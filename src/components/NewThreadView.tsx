@@ -5,6 +5,7 @@ import type { Machine } from '../lib/machines';
 import { LaunchSelectors } from './LaunchSelectors';
 import { useMachineCatalog } from '../client/catalog';
 import { navigate } from 'astro:transitions/client';
+import { CreateWorkspace } from './CreateWorkspace';
 
 export function NewThreadView({ projects, machines, selectedProjectId, onOpenSidebar }: {
   projects: Project[]; machines: Machine[]; selectedProjectId?: string; onOpenSidebar: () => void;
@@ -17,6 +18,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [creatingWorkspace, setCreatingWorkspace] = useState(false);
   const operation = useRef<{ payload: string; key: string } | null>(null);
   const baseMachine = machines.find((machine) => machine.id === machineId) ?? { id: '', name: 'No target', connected: false, session: '', projectPaths: {}, harnesses: [] };
   const catalog = useMachineCatalog(machineId, baseMachine.connected, baseMachine.configVersion, baseMachine.session, projectId);
@@ -27,6 +29,10 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   const selectedHarness = machine.harnesses.find((choice) => choice.id === harness);
   const canSubmit = !!(prompt.trim() && model.trim() && machine.connected && machineProjects.some((project) => project.id === projectId) && selectedHarness?.launchEnabled) && !busy;
   useEffect(() => { setWorktree(localStorage.getItem('herdr-new-worktree') !== 'false'); }, []);
+  useEffect(() => {
+    if (!machineId && machines.length) setMachineId(machines.find((machine) => machine.id === 'local')?.id ?? machines[0].id);
+    if (!projectId && machineProjects.length) setProjectId(machineProjects[0].id);
+  }, [machines, machineId, machineProjects, projectId]);
 
   const changeMachine = (id: string) => {
     const next = machines.find((machine) => machine.id === id);
@@ -61,6 +67,10 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   return <main className="new-thread-page" aria-label="New thread">
     <button className="mobile-menu" onClick={onOpenSidebar}>Threads</button>
     <h1>What do you want to build today?</h1>
+    {machine.connected && machine.id === 'local' && (!machineProjects.length || creatingWorkspace) ? <>
+      <p>{!machineProjects.length ? 'This Herdr session has no projects yet.' : 'Add a project to this Herdr session.'}</p>
+      <CreateWorkspace machineId={machine.id} onCreated={() => setCreatingWorkspace(false)} />
+    </> : <>
     <form className="thread-composer" onSubmit={submit} aria-busy={busy}>
       <textarea autoFocus required maxLength={8000} value={prompt} onChange={(event) => setPrompt(event.target.value)}
         onKeyDown={(event) => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
@@ -74,7 +84,9 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
         </div>
       </div>
     </form>
+    {machine.connected && machine.id === 'local' && <button onClick={() => setCreatingWorkspace(true)}>Add project</button>}
     <p className="composer-preview-note">{selectedHarness?.reason ?? (!machines.length ? 'No target is configured.' : machine.error ? `Machine is not connected: ${machine.error.replaceAll('_', ' ')}.` : catalog.isError ? 'The machine catalog is not available.' : 'Select a verified launch adapter.')}</p>
     {error && <p className="form-error" role="alert">{error}</p>}
+    </>}
   </main>;
 }
