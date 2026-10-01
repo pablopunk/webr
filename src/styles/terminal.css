@@ -5,3 +5,13 @@
 .terminal-host .xterm { height: 100%; }
 .terminal-host .xterm-viewport { scrollbar-width: thin; }
 @media (max-width: 760px) { .pane-layout:not(.single-pane) { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); } }
+.native-thread-layout { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+.native-pane-layout { position: relative; flex: 1; min-height: 160px; }
+.native-pane-position { position: absolute; padding: 2px; }
+.native-pane-position .terminal-pane { height: 100%; display: flex; flex-direction: column; }
+.terminal-controls { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 11px; padding: 4px 8px; }
+.terminal-controls span { flex: 1; }
+.terminal-controls button { font: inherit; }
+.terminal-host { flex: 1; min-height: 0; overflow: hidden; }
+.terminal-input-capture { width: 100%; resize: none; background: var(--terminal-bg); color: var(--terminal-ink); border: 1px solid var(--terminal-selection); }
+.runtime-notice { padding: 10px 16px; color: var(--muted); font-size: 13px; }

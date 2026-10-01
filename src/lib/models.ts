@@ -20,7 +20,8 @@ export type Pane = {
   id: string;
   title: string;
   kind: 'agent' | 'shell';
-  lines: string[];
+  lines?: string[];
+  terminalId?: string;
 };
 
 export type Thread = {
@@ -39,6 +40,8 @@ export type Thread = {
   session: string;
   tabId: string;
   panes: Pane[];
+  bindingState?: 'attached' | 'detached' | 'pending';
+  operation?: { id: string; state: string; step: string };
 };
 
 export const projects: Project[] = [

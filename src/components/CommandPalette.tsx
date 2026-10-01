@@ -6,13 +6,14 @@ import type { Project, Thread } from '../lib/models';
 import { defaultShortcuts, formatShortcut, getShortcuts, type ShortcutAction } from './shortcuts';
 import type { SidebarMode } from './Sidebar';
 import { applyTheme } from './ThemeControl';
+import { navigate } from 'astro:transitions/client';
 
 type Command = { label: string; icon: ReactNode; detail?: string; shortcut?: ShortcutAction; run: () => void };
 
 export function CommandPalette({ open, onClose, projects, threads, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane }: {
   open: boolean; onClose: () => void; projects: Project[]; threads: Thread[]; thread?: Thread;
-  focusedPane: number; mode: SidebarMode; onModeChange: (mode: SidebarMode) => void;
-  onToggleSidebar: () => void; onFocusPane: (index: number) => void;
+  focusedPane: string; mode: SidebarMode; onModeChange: (mode: SidebarMode) => void;
+  onToggleSidebar: () => void; onFocusPane: (paneId: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
@@ -30,15 +31,15 @@ export function CommandPalette({ open, onClose, projects, threads, thread, focus
     const index = threads.findIndex((item) => item.id === thread?.id);
     const start = index === -1 && offset < 0 ? 0 : index;
     const target = threads[(start + offset + threads.length) % threads.length];
-    if (target) location.assign(`/threads/${encodeURIComponent(target.id)}`);
+    if (target) void navigate(`/threads/${encodeURIComponent(target.id)}`);
   };
   const focusPane = (offset: number) => {
-    if (thread?.panes.length) onFocusPane((focusedPane + offset + thread.panes.length) % thread.panes.length);
+    if (thread?.panes.length) onFocusPane(thread.panes[(thread.panes.findIndex((pane) => pane.id === focusedPane) + offset + thread.panes.length) % thread.panes.length].id);
   };
 
   const commands = useMemo<Command[]>(() => [
-    { label: 'New thread', icon: <Plus size={16} />, shortcut: 'newThread', run: () => location.assign(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`) },
-    { label: 'Settings', icon: <Settings2 size={16} />, run: () => location.assign('/settings') },
+    { label: 'New thread', icon: <Plus size={16} />, shortcut: 'newThread', run: () => { void navigate(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`); } },
+    { label: 'Settings', icon: <Settings2 size={16} />, run: () => { void navigate('/settings'); } },
     { label: 'Toggle sidebar', icon: <PanelLeft size={16} />, shortcut: 'toggleSidebar', run: onToggleSidebar },
     ...(threads.length ? [
       { label: 'Next thread', icon: <ArrowDown size={16} />, shortcut: 'nextThread' as const, run: () => navigateThread(1) },
@@ -55,10 +56,10 @@ export function CommandPalette({ open, onClose, projects, threads, thread, focus
       { label: 'Copy thread link', icon: <Copy size={16} />, run: () => { void navigator.clipboard.writeText(location.href); } },
       { label: 'Next pane', icon: <ArrowRight size={16} />, shortcut: 'nextPane' as const, run: () => focusPane(1) },
       { label: 'Previous pane', icon: <ArrowLeft size={16} />, shortcut: 'previousPane' as const, run: () => focusPane(-1) },
-      ...thread.panes.map((pane, index) => ({ label: `Focus ${pane.title}`, icon: <TerminalSquare size={16} />, detail: `Pane ${index + 1}`, run: () => onFocusPane(index) })),
+       ...thread.panes.map((pane, index) => ({ label: `Focus ${pane.title}`, icon: <TerminalSquare size={16} />, detail: `Pane ${index + 1}`, run: () => onFocusPane(pane.id) })),
     ] : []),
     ...threads.map((item) => ({ label: item.title, icon: <BotAvatar {...avatarForThread(item)} size={22} state={item.status === 'working' ? 'working' : 'default'} paused={item.status !== 'working'} />, detail: projects.find((project) => project.id === item.projectId)?.name,
-      run: () => location.assign(`/threads/${encodeURIComponent(item.id)}`) })),
+      run: () => { void navigate(`/threads/${encodeURIComponent(item.id)}`); } })),
   ], [projects, threads, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane]);
 
   const matching = commands.filter((command) => `${command.label} ${command.detail ?? ''}`.toLowerCase().includes(query.toLowerCase().trim()));

@@ -1,12 +1,8 @@
 ---
 import Base from '../layouts/Base.astro';
 import App from '../components/App';
-import { listThreads } from '../lib/mock-store';
-import { projectsWithIcons } from '../lib/project-icons';
-
-const threads = await listThreads();
-const projects = await projectsWithIcons();
+const bootstrap = Astro.locals.runtime.bootstrap();
 ---
 <Base title="Settings">
-  <App page="settings" projects={projects} threads={threads} client:load />
+  <App page="settings" bootstrap={bootstrap} client:load transition:persist="herdr-app" />
 </Base>

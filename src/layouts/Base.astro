@@ -1,10 +1,12 @@
 ---
 import '../styles/global.css';
+import { ClientRouter } from 'astro:transitions';
 const { title = 'Herdr Web' } = Astro.props;
 ---
 <!doctype html>
 <html lang="en" data-theme="light">
   <head>
+    <ClientRouter />
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />

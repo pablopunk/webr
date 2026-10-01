@@ -7,22 +7,38 @@ import { Sidebar, type SidebarMode } from './Sidebar';
 import { applyTheme } from './ThemeControl';
 import { ThreadView } from './ThreadView';
 import { getShortcuts, keyCombo } from './shortcuts';
-import type { Project, Thread } from '../lib/models';
+import { navigate } from 'astro:transitions/client';
+import { useShallow } from 'zustand/react/shallow';
+import { useStore } from 'zustand';
+import { RuntimeProvider, useRuntime, useRuntimeSelector } from '../client/provider';
+import type { Bootstrap } from '../shared/runtime';
 
 type Props = {
   page: 'thread' | 'new' | 'settings' | 'missing';
-  projects: Project[];
-  threads: Thread[];
-  thread?: Thread;
+  bootstrap: Bootstrap;
+  threadId?: string;
   projectId?: string;
 };
 
-export default function App({ page, projects, threads, thread, projectId }: Props) {
+export default function App(props: Props) {
+  return <RuntimeProvider bootstrap={props.bootstrap}><RuntimeApp {...props} /></RuntimeProvider>;
+}
+
+function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
+  const { ui } = useRuntime();
+  const projects = useRuntimeSelector(useShallow((state) => state.projectIds.map((id) => state.projects[id])));
+  const threads = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id])));
+  const thread = useRuntimeSelector((state) => state.threads[threadId ?? '']);
+  const projections = useRuntimeSelector((state) => state.projections);
+  const gatewayConnected = useRuntimeSelector((state) => state.connected);
+  const machines = bootstrap.machines.map((machine) => ({ ...machine, connected: gatewayConnected && !!projections[machine.id]?.connected }));
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mode, setMode] = useState<SidebarMode>('threads');
-  const [focusedPane, setFocusedPane] = useState(0);
+  const scope = `${thread?.machineId ?? ''}:${thread?.id ?? ''}`;
+  const focusedPane = useStore(ui, (state) => state.focusedPanes[scope]) ?? thread?.panes[0]?.id ?? '';
+  const setFocusedPane = useCallback((paneId: string) => ui.getState().focus(scope, paneId), [ui, scope]);
 
   useEffect(() => {
     setCollapsed(localStorage.getItem('herdr-sidebar-collapsed') === 'true');
@@ -57,25 +73,27 @@ export default function App({ page, projects, threads, thread, projectId }: Prop
       if (!action) return;
       event.preventDefault();
       if (action === 'toggleSidebar') toggleSidebar();
-      if (action === 'newThread') location.assign(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`);
-      if (action === 'nextPane' && thread) setFocusedPane((index) => (index + 1) % thread.panes.length);
-      if (action === 'previousPane' && thread) setFocusedPane((index) => (index - 1 + thread.panes.length) % thread.panes.length);
+       if (action === 'newThread') void navigate(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`);
+       if ((action === 'nextPane' || action === 'previousPane') && thread?.panes.length) {
+         const index = thread.panes.findIndex((pane) => pane.id === focusedPane);
+         setFocusedPane(thread.panes[(index + (action === 'nextPane' ? 1 : -1) + thread.panes.length) % thread.panes.length].id);
+       }
       if ((action === 'nextThread' || action === 'previousThread') && threads.length) {
         const index = threads.findIndex((item) => item.id === thread?.id);
         const next = action === 'nextThread' ? (index + 1) % threads.length : (index - 1 + threads.length) % threads.length;
-        location.assign(`/threads/${encodeURIComponent(threads[next].id)}`);
+         void navigate(`/threads/${encodeURIComponent(threads[next].id)}`);
       }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [thread, threads, paletteOpen, toggleSidebar]);
+  }, [thread, threads, paletteOpen, toggleSidebar, focusedPane, setFocusedPane]);
 
   return <div className="app-shell">
     <Sidebar projects={projects} threads={threads} currentId={thread?.id} mode={mode} onModeChange={changeMode} collapsed={collapsed}
       mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} />
     <div className="main-panel">
-      {page === 'thread' && thread && <ThreadView thread={thread} focusedPane={focusedPane} onFocusPane={setFocusedPane} />}
-      {page === 'new' && <NewThreadView projects={projects} selectedProjectId={projectId} onOpenSidebar={toggleSidebar} />}
+      {page === 'thread' && thread && <ThreadView thread={thread} layouts={projections[thread.machineId]?.layouts ?? []} connected={gatewayConnected && !!projections[thread.machineId]?.connected} focusedPane={focusedPane} onFocusPane={setFocusedPane} />}
+      {page === 'new' && <NewThreadView projects={projects} machines={machines} selectedProjectId={projectId} onOpenSidebar={toggleSidebar} />}
       {page === 'settings' && <SettingsView onOpenSidebar={toggleSidebar} mode={mode} onModeChange={changeMode} />}
       {page === 'missing' && <main className="not-found"><h1>Thread not found</h1><a href="/">Open a thread</a></main>}
     </div>

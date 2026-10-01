@@ -1,6 +1,4 @@
 ---
-import { listThreads } from '../lib/mock-store';
-
-const threads = await listThreads();
+const { threads } = Astro.locals.runtime.bootstrap();
 return Astro.redirect(threads[0] ? `/threads/${encodeURIComponent(threads[0].id)}` : '/new');
 ---

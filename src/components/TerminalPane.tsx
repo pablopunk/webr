@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import type { Pane } from '../lib/models';
+import { useRuntime } from '../client/provider';
 
 function themeColors() {
   const styles = getComputedStyle(document.documentElement);
@@ -18,66 +19,67 @@ function themeColors() {
   };
 }
 
-export function TerminalPane({ pane, active, onFocus }: { pane: Pane; active: boolean; onFocus: () => void }) {
+export function TerminalPane({ pane, machineId, threadId, active, onFocus }: { pane: Pane; machineId: string; threadId: string; active: boolean; onFocus: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const term = useRef<Terminal | null>(null);
+  const control = useRef<ReturnType<ReturnType<typeof useRuntime>['terminals']['mount']> | null>(null);
+  const { terminals } = useRuntime();
+  const [message, setMessage] = useState('Connecting…');
+  const [writable, setWritable] = useState(false);
+  const [draft, setDraft] = useState('');
+  const composing = useRef(false);
+  const input = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!host.current) return;
     let disposed = false;
     let cleanup = () => {};
-    void Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit')]).then(([xterm, fitModule]) => {
+    void import('@xterm/xterm').then((xterm) => {
     if (disposed || !host.current) return;
     const terminal = new xterm.Terminal({
       fontFamily: '"DM Mono", ui-monospace, monospace', fontSize: 12.5,
       lineHeight: 1.55, letterSpacing: 0.15, cursorBlink: true,
-      allowTransparency: false, scrollback: 1500, theme: themeColors(),
+      allowTransparency: false, scrollback: 0, theme: themeColors(), disableStdin: true,
+      linkHandler: { activate: () => {} },
     });
-    const addon = new fitModule.FitAddon();
-    terminal.loadAddon(addon);
     terminal.open(host.current);
     term.current = terminal;
-    const lines = pane.lines.at(-1) === '$' ? pane.lines.slice(0, -1) : pane.lines;
-    const prompt = pane.kind === 'shell' ? '$ ' : '> ';
-    terminal.write(`${lines.join('\r\n')}\r\n${prompt}`);
-    let buffer = '';
-    const input = terminal.onData((data) => {
-      if (data === '\r') {
-        terminal.write('\r\n');
-        const command = buffer.trim();
-        buffer = '';
-        if (command) {
-          terminal.writeln('\x1b[90mPreview only — no command was run.\x1b[0m');
-        }
-        terminal.write(prompt);
-      } else if (data === '\u007f') {
-        if (buffer) { buffer = buffer.slice(0, -1); terminal.write('\b \b'); }
-      } else if (data === '\u0003') {
-        buffer = '';
-        terminal.write(`^C\r\n${prompt}`);
-      } else if (!data.startsWith('\x1b')) {
-        buffer += data;
-        terminal.write(data);
-      }
-    });
+    const clipboard = terminal.parser.registerOscHandler(52, () => true);
+    const links = terminal.parser.registerOscHandler(8, () => true);
+    if (!pane.terminalId) { terminal.dispose(); return; }
+    const viewport = () => ({ cols: Math.max(2, Math.min(500, Math.floor((host.current?.clientWidth ?? 640) / 8))), rows: Math.max(1, Math.min(300, Math.floor((host.current?.clientHeight ?? 400) / 20))) });
+    control.current = terminals.mount({ machineId, threadId, terminalId: pane.terminalId, terminal, mode: 'observe', ...viewport(), onState: (message, writable) => { setMessage(message); setWritable(writable); if (!writable) setDraft(''); } });
+    let timer: ReturnType<typeof setTimeout>;
     const resize = new ResizeObserver(() => {
-      if (host.current?.clientWidth && host.current.clientHeight) addon.fit();
+      clearTimeout(timer);
+      timer = setTimeout(() => { const { cols, rows } = viewport(); control.current?.resize(cols, rows); }, 150);
     });
     resize.observe(host.current);
-    requestAnimationFrame(() => addon.fit());
     const colorObserver = new MutationObserver(() => { terminal.options.theme = themeColors(); });
     colorObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     cleanup = () => {
-      input.dispose(); resize.disconnect(); colorObserver.disconnect();
+      clearTimeout(timer); control.current?.close(); control.current = null;
+      clipboard.dispose(); links.dispose(); resize.disconnect(); colorObserver.disconnect();
       terminal.dispose(); term.current = null;
     };
-    }).catch((error) => console.error('Could not load terminal preview', error));
+    }).catch(() => setMessage('The terminal could not load.'));
     return () => { disposed = true; cleanup(); };
-  }, [pane.id]);
+  }, [pane.id, pane.terminalId, machineId, threadId, terminals]);
 
-  useEffect(() => { if (active) term.current?.focus(); }, [active]);
+  useEffect(() => { if (active && writable) input.current?.focus(); }, [active, writable]);
 
   return <section className={`terminal-pane ${active ? 'is-active' : ''}`} aria-label={`${pane.title} terminal`} onClick={onFocus}>
+    <div className="terminal-controls"><span role="status">{message}</span>{!writable && <><button onClick={() => control.current?.control()}>Request control</button><button onClick={() => { if (confirm('Replace the active terminal controller?')) control.current?.control(true); }}>Take over</button></>}</div>
     <div ref={host} className="terminal-host" />
+    {writable && <textarea ref={input} className="terminal-input-capture" value={draft} aria-label="Terminal input" rows={1}
+      onCompositionStart={() => { composing.current = true; }} onCompositionEnd={(event) => { composing.current = false; control.current?.input(event.currentTarget.value); setDraft(''); event.currentTarget.value = ''; }}
+      onChange={(event) => { if (composing.current) setDraft(event.target.value); else { if (event.target.value) control.current?.input(event.target.value); setDraft(''); } }}
+      onPaste={(event) => { event.preventDefault(); control.current?.input(event.clipboardData.getData('text/plain'), true); }}
+      onKeyDown={(event) => {
+        if (event.nativeEvent.isComposing || composing.current || event.metaKey) return;
+        const keys: Record<string, string> = { Enter: '\r', Backspace: '\x7f', Tab: '\t', Escape: '\x1b', ArrowUp: '\x1b[A', ArrowDown: '\x1b[B', ArrowRight: '\x1b[C', ArrowLeft: '\x1b[D' };
+        const bytes = event.ctrlKey && /^[a-z]$/i.test(event.key) ? String.fromCharCode(event.key.toUpperCase().charCodeAt(0) - 64) : keys[event.key];
+        if (bytes) { event.preventDefault(); control.current?.input(bytes); }
+      }} />}
   </section>;
 }

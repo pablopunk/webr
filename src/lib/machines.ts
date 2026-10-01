@@ -1,4 +1,4 @@
-export type MachineHarness = { id: string; name: string; models: string[] };
+export type MachineHarness = { id: string; name: string; models: string[]; launchEnabled?: boolean; reason?: string };
 export type Machine = {
   id: string;
   name: string;
@@ -6,6 +6,8 @@ export type Machine = {
   session: string;
   projectPaths: Record<string, string>;
   harnesses: MachineHarness[];
+  error?: string;
+  writable?: boolean;
 };
 
 export const machines: Machine[] = [

@@ -3,28 +3,46 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "astro dev --host 127.0.0.1",
+    "dev": "npm run build && npm start",
     "build": "astro build",
-    "start": "node ./dist/server/entry.mjs",
-    "check": "astro check"
+    "start": "tsx server/start.ts",
+    "check": "astro check && tsc --noEmit",
+    "test": "vitest run",
+    "provision": "tsx scripts/provision.ts",
+    "validate:offline": "tsx scripts/validate-protocol.ts",
+    "validate:live": "tsx scripts/validate-live.ts"
   },
   "dependencies": {
     "@astrojs/node": "^11.1.6",
     "@astrojs/react": "^7.0.0",
     "@base-ui/react": "^1.8.0",
+    "@fastify/middie": "^9.3.4",
+    "@fastify/static": "^10.1.5",
+    "@fastify/websocket": "^11.3.1",
+    "@tanstack/react-query": "^5.104.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "astro": "^7.3.5",
+    "better-auth": "^1.7.7",
+    "better-sqlite3": "^13.0.3",
     "bot-avatars": "^0.1.2",
+    "drizzle-orm": "^0.45.3",
+    "fastify": "^5.12.5",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "zod": "^4.6.5",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.4",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "typescript": "^5.7.0"
+    "@types/ws": "^8.18.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.7.0",
+    "vitest": "^5.0.3"
   }
 }

@@ -1,14 +1,10 @@
 ---
 import Base from '../../layouts/Base.astro';
 import App from '../../components/App';
-import { findThread, listThreads } from '../../lib/mock-store';
-import { projectsWithIcons } from '../../lib/project-icons';
-
-const thread = await findThread(Astro.params.id ?? '');
-const threads = await listThreads();
-const projects = await projectsWithIcons();
+const bootstrap = Astro.locals.runtime.bootstrap();
+const thread = bootstrap.threads.find((thread) => thread.id === Astro.params.id);
 if (!thread) Astro.response.status = 404;
 ---
 <Base title={thread?.title ?? 'Thread not found'}>
-  <App page={thread ? 'thread' : 'missing'} thread={thread} projects={projects} threads={threads} client:load />
+  <App page={thread ? 'thread' : 'missing'} threadId={Astro.params.id} bootstrap={bootstrap} client:load transition:persist="herdr-app" />
 </Base>
