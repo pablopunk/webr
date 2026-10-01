@@ -1,4 +1,5 @@
-.new-thread-page { width: min(800px, 100%); margin: clamp(90px, 22vh, 210px) auto 0; padding: 0 20px 60px; }
+.new-thread-page { position: relative; display: flex; flex-direction: column; justify-content: center; width: min(800px, 100%); min-height: 100dvh; margin: 0 auto; padding: 60px 20px; }
+.new-thread-page h1 { margin: 0 0 26px; color: var(--ink); font-size: clamp(24px, 2.8vw, 32px); font-weight: 500; line-height: 1.25; letter-spacing: -.035em; text-align: center; }
 .project-picker { position: relative; display: inline-flex; min-width: 0; }
 .project-picker > button { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; max-width: 160px; padding: 0 5px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-soft); font-size: 11px; }
 .project-picker > button:hover { background: var(--surface-hover); color: var(--ink); }
@@ -25,5 +26,5 @@
 .composer-send:hover:not(:disabled) { filter: brightness(1.12); }
 .composer-send:disabled { background: var(--surface-active); color: var(--ink-muted); cursor: not-allowed; }
 .new-thread-page .form-error { margin: 12px 4px; }
-@media (max-width: 760px) { .new-thread-page { margin-top: 72px; padding: 0 16px 40px; } .worktree-option { margin-left: 0; } .composer-send { margin-left: auto; } }
+@media (max-width: 760px) { .new-thread-page { padding: 60px 16px; } .new-thread-page .mobile-menu { position: absolute; top: 16px; left: 16px; margin: 0; } .worktree-option { margin-left: 0; } .composer-send { margin-left: auto; } }
 @media (max-width: 420px) { .composer-divider { display: none; } }

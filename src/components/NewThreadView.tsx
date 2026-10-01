@@ -39,6 +39,7 @@ export function NewThreadView({ projects, selectedProjectId, onOpenSidebar }: {
 
   return <main className="new-thread-page" aria-label="New thread">
     <button className="mobile-menu" onClick={onOpenSidebar}>Threads</button>
+    <h1>Build it.</h1>
     <form className="thread-composer" onSubmit={submit} aria-busy={busy}>
       <textarea autoFocus required maxLength={8000} value={prompt} onChange={(event) => setPrompt(event.target.value)}
         onKeyDown={(event) => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
