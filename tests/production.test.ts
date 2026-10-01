@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { boundedProcess } from '../src/server/transport/process';
 
 it('starts without an account or secret with coherent SSR, static assets, HTTP and two WS on one port', async () => {
-  await boundedProcess('npm', ['run', 'build'], undefined, 30_000, 1024 * 1024);
+  await boundedProcess('mise', ['exec', '--', 'pnpm', 'run', 'build'], undefined, 30_000, 1024 * 1024);
   const directory = await mkdtemp(join(tmpdir(), 'hp-'));
   const listener = createServer(); await new Promise<void>((resolve) => listener.listen(0, '127.0.0.1', resolve));
   const port = (listener.address() as { port: number }).port; await new Promise<void>((resolve) => listener.close(() => resolve()));

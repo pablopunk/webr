@@ -6,7 +6,7 @@ This implementation replaces the design prototype's mock data with a local Herdr
 
 ## Requirements
 
-- Node.js 22 or later, npm, Linux or macOS.
+- Node.js 22 or later, mise-managed pnpm, Linux or macOS.
 - Installed Herdr **0.9.3**, JSON API protocol **22**, on each target host.
 - Local sessions are discovered automatically; when none exists the app starts Herdr's headless server, without installing Herdr, restarting existing sessions or touching their agents.
 - `better-sqlite3` may need a native build toolchain when no package binary is available.
@@ -16,9 +16,10 @@ Windows named pipes are not implemented. SSH must support Unix socket forwarding
 ## Install and run
 
 ```sh
-npm ci
-npm run build
-npm start
+mise install
+mise exec -- pnpm install --frozen-lockfile
+mise exec -- pnpm run build
+mise exec -- pnpm start
 ```
 
 Open `http://127.0.0.1:4321/`. There is no authentication by default and no password feature yet; do not expose this terminal-access app publicly. The bind address defaults to localhost.
@@ -28,12 +29,12 @@ The database defaults to `.data/gateway.sqlite`. Use `HERDR_WEB_DATABASE` to sel
 ## Build and run
 
 ```sh
-npm run check
-npm run build
-npm start
+mise exec -- pnpm run check
+mise exec -- pnpm run build
+mise exec -- pnpm start
 ```
 
-`npm run dev` builds and starts the same production host. It immediately connects to Local without requiring a registry, account, secret or `HERDR_WEB_CONNECT` flag.
+`mise exec -- pnpm run dev` builds and starts the same production host. It immediately connects to Local without requiring a registry, account, secret or `HERDR_WEB_CONNECT` flag; `mise.toml` selects pnpm, and `pnpm-lock.yaml` is the dependency lockfile.
 
 Optional local HTTPS:
 
@@ -41,7 +42,7 @@ Optional local HTTPS:
 export HERDR_WEB_ORIGIN='https://localhost:4321'
 export HERDR_WEB_TLS_CERT='/absolute/path/to/your/local-certificate.pem'
 export HERDR_WEB_TLS_KEY='/absolute/path/to/your/local-private-key.pem'
-npm start
+mise exec -- pnpm start
 ```
 
 Use your own trusted local certificate and open the exact origin. The hostname, port, and scheme must match `HERDR_WEB_ORIGIN`. The default bind address is `127.0.0.1`. Any nonlocal bind requires a trusted HTTPS origin and explicit `HERDR_WEB_TRUSTED_HTTPS=1`; this does not configure a proxy or authorize public exposure. Preserve the exact Host header and forward both WebSocket upgrades if a trusted proxy is used.
@@ -129,8 +130,8 @@ Read and health RPC deadlines remain five seconds. Agent start uses Herdr's thir
 The gateway and validation tools share an automatically generated signing key in the private SQLite store; no secret entry is required. `HERDR_WEB_EVIDENCE_KEY` remains an optional explicit override for existing receipts. The key must not appear in source control, logs or browser data, and its presence alone grants nothing. The guarded validator signs a private receipt only after every selected check passes. Use `--approve` to approve that measured receipt, or approve/revoke it separately:
 
 ```sh
-npm run validation:approve -- <approved-target-id> /absolute/path/to/signed-live-evidence.json
-npm run validation:revoke -- <approved-target-id>
+mise exec -- pnpm run validation:approve <approved-target-id> /absolute/path/to/signed-live-evidence.json
+mise exec -- pnpm run validation:revoke <approved-target-id>
 ```
 
 Approval checks the signature, identity, expiry and required grant checks, then persists the receipt in the private metadata database. There is no browser approval endpoint or bypass flag, and the validator never accepts a supplied successful checklist or ownership manifest. Fixture/injected transports cannot issue live receipts, even when their measured tests pass. Old receipts with blanket `modelMode` grants no longer pass the schema. The launch safety check `durable-intent-once` measures one journaled client request per effect; it is not a claim of server-side exactly-once delivery after a lost response.
@@ -140,19 +141,19 @@ Approval checks the signature, identity, expiry and required grant checks, then 
 Removing Better Auth also removes its optional Drizzle Kit/esbuild dependency chain; the updated lockfile reports zero advisories. No audit suppression or unsupported version override was applied.
 
 ```sh
-npm test
-npm run check
-npm run build
-npm run validate:offline
+mise exec -- pnpm test
+mise exec -- pnpm run check
+mise exec -- pnpm run build
+mise exec -- pnpm run validate:offline
 git diff --check
 ```
 
-`npm test` uses fake socket servers, injected process adapters, owned Node fixtures and DOM event tests; it never calls live Herdr. Tests cover no-account startup, local session selection and guarded creation, native empty sessions, first workspace creation, capability checks, Host/Origin refusal and socket lease teardown. The production-host fixture uses an explicit empty registry on an ephemeral local port and proves SSR, assets, HTTP and both WebSockets share one port. No browser or desktop app is automated.
+`mise exec -- pnpm test` uses fake socket servers, injected process adapters, owned Node fixtures and DOM event tests; it never calls live Herdr. Tests cover no-account startup, local session selection and guarded creation, native empty sessions, first workspace creation, capability checks, Host/Origin refusal and socket lease teardown. The production-host fixture uses an explicit empty registry on an ephemeral local port and proves SSR, assets, HTTP and both WebSockets share one port. No browser or desktop app is automated.
 
 The offline validator runs only `herdr api schema --json`, or reads an exported schema path:
 
 ```sh
-npm run validate:offline -- /absolute/path/to/herdr-web-api.schema.json
+mise exec -- pnpm run validate:offline /absolute/path/to/herdr-web-api.schema.json
 ```
 
 A different CLI/server version requires validation again. The installed JSON schema does not export CLI terminal frames or keyboard modes; the validator reports that missing proof explicitly.
@@ -162,7 +163,7 @@ A different CLI/server version requires validation again. The installed JSON sch
 Automatic Local needs no registry or manually entered key. Run this **from a genuine Herdr terminal in the selected existing session**, not from an unmanaged shell, and do not set `HERDR_ENV` yourself:
 
 ```sh
-npm run validate:live -- --target local --consent --approve
+mise exec -- pnpm run validate:live --target local --consent --approve
 ```
 
 One existing session is enough. This command creates a uniquely labelled, no-focus disposable workspace and private target-side Python recorder, not a second session. The selected Local socket must match the actual managed caller session. SSH uses exactly one approved target/session and strict noninteractive host-key checks. Python 3 must already be installed on the target on Linux/macOS; missing Python, incompatible schema or unsupported platform fails without installation. No server is started, stopped or restarted.
@@ -172,7 +173,7 @@ The recorder observes actual PTY input bytes and dimensions. Tests cover full ba
 The command does **not** launch a paid or tool-bearing agent by default. To request one selected harness/model test in its own linked checkout, use explicit additional flags:
 
 ```sh
-npm run validate:live -- --target local --consent --launch --harness claude --model Default --project my-project --approve
+mise exec -- pnpm run validate:live --target local --consent --launch --harness claude --model Default --project my-project --approve
 ```
 
 Use `--launch-only` instead of `--launch` if you want only the independent launch grant. `--harness`, `--model` and `--project` are mandatory for a launch test. Only that exact model is granted, and no other installed harness is launched. The validator uses worktree.create's initial tab/root pane, Herdr's own start readiness, a fresh named occupant and one benign encoded-token prompt. A settled decoded reply is required; the token is not supplied as plain prompt text, so echo of the submitted prompt cannot pass the output check. Approval questions are never answered. Unknown create/start/prompt outcomes are never repeated.
@@ -183,8 +184,8 @@ After successful approval, start the standalone gateway with the same registry a
 
 ```sh
 export HERDR_WEB_CONNECT=1
-npm run build
-npm start
+mise exec -- pnpm run build
+mise exec -- pnpm start
 ```
 
 The gateway itself does not require a managed pane. Local/SSH actual live execution has **not** been performed in this coding session, because its genuine managed context is absent. The runner has deterministic injected failure/success tests and an owned recorder-process/PTY test, not fabricated Herdr live proof. Remote icons still use fallbacks, and general source-mode-aware keyboard/graphics support remains outside the literal pilot. Please check direct session loading, empty-session workspace creation, persisted navigation, themes and responsive layout manually.

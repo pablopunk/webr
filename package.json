@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "npm run build && npm start",
+    "dev": "pnpm run build && pnpm start",
     "build": "astro build",
     "start": "tsx server/start.ts",
     "check": "astro check && tsc --noEmit",
