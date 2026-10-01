@@ -15,6 +15,7 @@
 .composer-select-option[data-disabled] { opacity: .5; cursor: not-allowed; }
 .composer-select-option-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .composer-select-check { display: inline-flex; flex: none; color: var(--ink-soft); }
-.composer-select-empty { padding: 12px; color: var(--ink-soft); font-size: 12px; }
+.composer-select-empty { color: var(--ink-soft); font-size: 12px; }
+.composer-select-empty:not(:empty) { padding: 12px; }
 @media (min-width: 761px) { .composer-select-search input { font-size: 12px; } }
 @media (max-width: 480px) { .composer-select-icon { display: none; } }
