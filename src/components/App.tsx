@@ -71,7 +71,7 @@ export default function App({ page, projects, threads, thread, projectId }: Prop
   }, [thread, threads, paletteOpen, toggleSidebar]);
 
   return <div className="app-shell">
-    <Sidebar projects={projects} threads={threads} currentId={thread?.id} mode={mode} collapsed={collapsed}
+    <Sidebar projects={projects} threads={threads} currentId={thread?.id} mode={mode} onModeChange={changeMode} collapsed={collapsed}
       mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} />
     <div className="main-panel">
       {page === 'thread' && thread && <ThreadView thread={thread} focusedPane={focusedPane} onFocusPane={setFocusedPane} />}

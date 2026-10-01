@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { BotAvatar } from 'bot-avatars';
-import { ChevronDown, ChevronRight, CircleCheck, CircleHelp, LoaderCircle, MessageCircleQuestion, PanelLeftClose, PanelLeftOpen, Plus, Settings2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, LayoutList, LoaderCircle, MessageCircleQuestion, PanelLeftClose, PanelLeftOpen, Plus, Settings2, X } from 'lucide-react';
 import { type Project, type Thread, harnessName, relativeTime } from '../lib/models';
 import { avatarForThread } from '../lib/avatars';
 import { ProjectIcon } from './ProjectIcon';
@@ -12,6 +12,7 @@ type Props = {
   threads: Thread[];
   currentId?: string;
   mode: SidebarMode;
+  onModeChange: (mode: SidebarMode) => void;
   collapsed: boolean;
   mobileOpen: boolean;
   onCollapse: () => void;
@@ -25,7 +26,7 @@ const statusIcons: Record<Exclude<Thread['status'], 'idle'>, typeof CircleHelp> 
   working: LoaderCircle, blocked: MessageCircleQuestion, done: CircleCheck, unknown: CircleHelp,
 };
 
-export function Sidebar({ projects, threads, currentId, mode, collapsed, mobileOpen, onCollapse, onCloseMobile }: Props) {
+export function Sidebar({ projects, threads, currentId, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile }: Props) {
   const [closedProjects, setClosedProjects] = useState<string[]>([]);
   const currentProjectId = threads.find((thread) => thread.id === currentId)?.projectId;
   const threadLink = (thread: Thread, showProject: boolean) => {
@@ -51,6 +52,10 @@ export function Sidebar({ projects, threads, currentId, mode, collapsed, mobileO
         <Plus size={16} aria-hidden="true" />{!collapsed && <span>New thread</span>}
       </a>
       {!collapsed && <>
+        <div className="sidebar-view-switch" role="group" aria-label="Sidebar layout">
+          <button type="button" aria-pressed={mode === 'threads'} onClick={() => onModeChange('threads')}><LayoutList size={14} aria-hidden="true" />Threads</button>
+          <button type="button" aria-pressed={mode === 'projects'} onClick={() => onModeChange('projects')}><FolderTree size={14} aria-hidden="true" />Projects</button>
+        </div>
         <nav className="thread-navigation" aria-label="Agent threads">
           {mode === 'projects' ? projects.filter((project) => threads.some((thread) => thread.projectId === project.id)).sort((a, b) => (threads.find((thread) => thread.projectId === b.id)?.updatedAt ?? '').localeCompare(threads.find((thread) => thread.projectId === a.id)?.updatedAt ?? '')).map((project) => <section key={project.id} className="thread-group">
             <button className="group-title" onClick={() => setClosedProjects((value) => value.includes(project.id) ? value.filter((id) => id !== project.id) : [...value, project.id])} aria-expanded={!closedProjects.includes(project.id)}>
