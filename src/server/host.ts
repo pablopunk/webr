@@ -47,7 +47,8 @@ export async function createHost(manager: RuntimeManager, auth: GatewayAuth, ori
   app.get('/api/catalog/machines', async () => manager.bootstrap().machines);
   app.get('/api/catalog/:machineId', async (request) => {
     const { machineId } = z.object({ machineId: opaqueId }).parse(request.params);
-    return manager.catalog(machineId);
+    const { projectId } = z.object({ projectId: opaqueId.optional() }).strict().parse(request.query);
+    return manager.catalog(machineId, projectId);
   });
   app.get('/api/runtime', async () => manager.bootstrap());
   app.get('/api/projects/:machineId/:projectId/icon', async (request, reply) => {
@@ -63,15 +64,15 @@ export async function createHost(manager: RuntimeManager, auth: GatewayAuth, ori
     const key = z.uuid().parse(request.headers['idempotency-key']);
     const supervisor = manager.supervisors.get(input.machineId);
     if (!supervisor?.connected) return reply.code(409).send({ error: 'machine_disconnected' });
-    const catalog = await manager.catalog(input.machineId);
-    if (!catalog.harnesses.find((harness) => harness.id === input.agent)?.launchEnabled) return reply.code(409).send({ error: 'launch_capability_not_validated' });
+    const catalog = await manager.catalog(input.machineId, input.projectId);
+    if (!catalog.harnesses.find((harness) => harness.id === input.agent)?.launchEnabled || supervisor.target.canLaunch && !supervisor.target.canLaunch(input)) return reply.code(409).send({ error: 'launch_capability_not_validated' });
     const result = manager.journal.submit(request.gatewaySession!.accountId, key, input, supervisor.target);
     return reply.code(202).send(result);
   });
   app.post('/api/threads/:id/adopt', async (request) => {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
-    const input = z.object({ machineId: opaqueId, terminalIds: z.array(opaqueId).min(1).max(16) }).strict().parse(request.body);
-    manager.adopt(input.machineId, id, input.terminalIds); return { adopted: true };
+    const input = z.object({ machineId: opaqueId, terminalIds: z.array(opaqueId).min(1).max(256) }).strict().parse(request.body);
+    await manager.adopt(input.machineId, id, input.terminalIds); return { adopted: true };
   });
   app.get('/api/operations/:id', async (request, reply) => {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
@@ -96,7 +97,7 @@ export async function createHost(manager: RuntimeManager, auth: GatewayAuth, ori
   app.setErrorHandler((error, _request, reply) => {
     const message = error instanceof Error ? error.message : '';
     if (error instanceof z.ZodError) return reply.code(400).send({ error: 'invalid_request' });
-    return reply.code(message === 'idempotency_conflict' ? 409 : 503).send({ error: ['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected'].includes(message) ? message : 'request_failed' });
+    return reply.code(['idempotency_conflict', 'binding_conflict', 'invalid_adoption'].includes(message) ? 409 : 503).send({ error: ['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected'].includes(message) ? message : 'request_failed' });
   });
   app.addHook('onClose', async () => manager.close());
   return app;

@@ -1,4 +1,4 @@
-export type MachineHarness = { id: string; name: string; models: string[]; launchEnabled?: boolean; reason?: string };
+export type MachineHarness = { id: string; name: string; models: string[]; customModels?: boolean; launchEnabled?: boolean; reason?: string };
 export type Machine = {
   id: string;
   name: string;

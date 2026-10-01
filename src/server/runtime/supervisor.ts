@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { TargetAdapter } from './target';
 import type { NativeSnapshot } from '../protocol/native';
-const safeReason = (error: unknown, fallback: string) => error instanceof Error && ['managed_context_required', 'unsupported_herdr_version', 'ssh_forward_failed', 'socket_unavailable', 'rpc_timeout', 'events_lost'].includes(error.message) ? error.message : fallback;
+import { retryDelay } from '../../shared/retry';
+const safeReason = (error: unknown, fallback: string) => error instanceof Error && ['connection_not_approved', 'unsupported_herdr_version', 'unsupported_herdr_schema', 'ssh_forward_failed', 'socket_unavailable', 'rpc_timeout', 'events_lost'].includes(error.message) ? error.message : fallback;
 
 export class TargetSupervisor {
   readonly generation = randomUUID();
@@ -18,6 +19,9 @@ export class TargetSupervisor {
   private health?: ReturnType<typeof setInterval>;
   private epoch = 0;
   private subscribedPanes = '';
+  private failures = 0;
+  private lastFailureAt = 0;
+  private waiters = new Set<{ floor: number; resolve: (snapshot: NativeSnapshot) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   constructor(readonly target: TargetAdapter, private publish: () => void, private delay = 25) {}
   async start() {
     if (this.stopped) return;
@@ -35,10 +39,18 @@ export class TargetSupervisor {
     this.dirty = true;
     if (!this.timer && !this.reading && this.subscription) this.timer = setTimeout(() => { this.timer = undefined; void this.refresh(); }, this.delay);
   }
+  readFresh(): Promise<NativeSnapshot> {
+    if (!this.subscription || this.stopped) return Promise.reject(new Error('machine_disconnected'));
+    return new Promise((resolve, reject) => {
+      const waiter = { floor: this.revision + (this.reading ? 2 : 1), resolve, reject, timer: setTimeout(() => { this.waiters.delete(waiter); reject(new Error('snapshot_timeout')); }, 15_000) };
+      this.waiters.add(waiter); this.invalidate();
+    });
+  }
   stop() {
     this.stopped = true; ++this.epoch;
     clearTimeout(this.timer); clearInterval(this.health);
     this.subscription?.(); this.subscription = undefined; this.target.close();
+    this.rejectWaiters();
   }
   private async refresh() {
     if (this.reading || this.stopped || !this.subscription) return;
@@ -49,7 +61,9 @@ export class TargetSupervisor {
       const snapshot = await this.target.snapshot();
       if (epoch !== this.epoch || this.stopped) return;
       this.snapshot = snapshot; this.connected = true; this.error = undefined;
+      if (Date.now() - this.lastFailureAt >= 30_000) this.failures = 0;
       this.freshAt = new Date().toISOString(); ++this.revision; this.publish();
+      for (const waiter of this.waiters) if (this.revision >= waiter.floor) { this.waiters.delete(waiter); clearTimeout(waiter.timer); waiter.resolve(snapshot); }
       const paneIds = snapshot.panes.map((pane) => pane.pane_id).sort();
       const key = JSON.stringify(paneIds);
       if (key !== this.subscribedPanes) {
@@ -69,7 +83,10 @@ export class TargetSupervisor {
     ++this.epoch; this.subscription?.(); this.subscription = undefined;
     this.subscribedPanes = '';
     this.connected = false; this.error = reason; this.freshAt = null; ++this.revision; this.publish();
+    this.lastFailureAt = Date.now();
+    this.rejectWaiters();
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => { this.timer = undefined; void this.start(); }, Math.max(100, this.delay));
+    this.timer = setTimeout(() => { this.timer = undefined; void this.start(); }, retryDelay(this.failures++));
   }
+  private rejectWaiters() { for (const waiter of this.waiters) { clearTimeout(waiter.timer); waiter.reject(new Error('machine_disconnected')); } this.waiters.clear(); }
 }

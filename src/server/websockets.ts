@@ -63,6 +63,6 @@ export function registerWebsockets(app: FastifyInstance, manager: RuntimeManager
       if (kind === 'metadata') for (const projection of manager.bootstrap().projections) socket.send(JSON.stringify({ type: 'projection', projection }));
     });
   }
-  app.addHook('onClose', async () => { for (const pair of pairs.values()) pair.close(); });
+  app.addHook('onClose', async () => { for (const pair of pairs.values()) pair.close(); hub.close(); });
   return hub;
 }

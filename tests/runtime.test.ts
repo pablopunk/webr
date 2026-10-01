@@ -8,7 +8,7 @@ import { FakeTarget } from './fixtures/target';
 import type { Projection } from '../src/shared/runtime';
 
 const cleanup: (() => void | Promise<void>)[] = [];
-afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); vi.useRealTimers(); });
+afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); vi.useRealTimers(); vi.restoreAllMocks(); });
 const database = () => { const db = new MetadataDatabase(':memory:'); cleanup.push(() => db.close()); return db; };
 it('serializes reads and performs an authoritative reread when an event occurs during a read', async () => {
   const target = new FakeTarget(); let finish!: () => void; let active = 0; let max = 0;
@@ -20,23 +20,30 @@ it('serializes reads and performs an authoritative reread when an event occurs d
   expect(supervisor.snapshot!.tabs[0].label).toBe('Newest'); expect(max).toBe(1); expect(publish).toHaveBeenCalledTimes(2);
 });
 it('recovers events_lost by resubscribing before reading again, without replaying payloads', async () => {
+  vi.useFakeTimers(); vi.spyOn(Math, 'random').mockReturnValue(0.5);
   const target = new FakeTarget(); const supervisor = new TargetSupervisor(target, () => {}, 0); cleanup.push(() => supervisor.stop());
-  await supervisor.start(); await expect.poll(() => supervisor.connected).toBe(true);
+  const order: string[] = []; const subscribe = target.subscribe.bind(target);
+  target.subscribe = async (...args) => { order.push('subscribe'); return subscribe(...args); };
+  target.readHook = async () => { order.push('snapshot'); return structuredClone(target.state); };
+  await supervisor.start(); await vi.advanceTimersByTimeAsync(10); expect(supervisor.connected).toBe(true);
+  const subscriptions = target.subscriptions; order.length = 0;
   target.lost!('events_lost'); expect(supervisor.connected).toBe(false);
   target.state.panes = [];
-  await expect.poll(() => supervisor.connected).toBe(true);
+  await vi.advanceTimersByTimeAsync(999); expect(supervisor.connected).toBe(false); expect(target.subscriptions).toBe(subscriptions);
+  await vi.advanceTimersByTimeAsync(1); expect(order[0]).toBe('subscribe');
+  await vi.advanceTimersByTimeAsync(1); expect(supervisor.connected).toBe(true); expect(order.indexOf('snapshot')).toBeGreaterThan(0);
   expect(target.activeSubscriptions).toBe(1);
-  await expect.poll(() => supervisor.snapshot?.panes.length).toBe(0);
+  expect(supervisor.snapshot?.panes.length).toBe(0);
 });
 it('shares one upstream subscription among all manager consumers', async () => {
   const target = new FakeTarget(); const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close());
   manager.on('projection', () => {}); manager.on('projection', () => {}); manager.start();
   await expect.poll(() => manager.bootstrap().machines[0].connected).toBe(true); expect(target.activeSubscriptions).toBe(1);
 });
-it('does not attach cold-restored terminal IDs by the old pane ID and follows moved terminal identity', () => {
+it('keeps same-tab terminal lineage when a pane ID changes but never guesses cold-restore identity', () => {
   const target = new FakeTarget(); const db = database();
   const original = reconcile(db, target, target.state).threads[0];
-  target.state.panes[0].pane_id = 'w2:p4'; target.state.panes[0].tab_id = 'w2:t3'; target.state.panes[0].workspace_id = 'w2';
+  target.state.panes[0].pane_id = 'w2:p4';
   expect(reconcile(db, target, target.state).threads[0].panes[0].id).toBe('w2:p4');
   target.state.panes[0].terminal_id = 'term_new';
   const detached = reconcile(db, target, target.state).threads.find((thread) => thread.id === original.id)!;

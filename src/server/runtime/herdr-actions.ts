@@ -12,9 +12,9 @@ export function modelArguments(kind: string, model: string): string[] {
 export const agentName = (threadId: string) => 'web-' + threadId.replaceAll('-', '').slice(0, 28);
 
 export class HerdrActions {
-  constructor(private api: Api, private locations: LaunchLocation[], private requireCapability: () => void) {}
+  constructor(private api: Api, private locations: LaunchLocation[], private requireCapability: (input?: LaunchInput) => void) {}
   async create(input: LaunchInput, threadId: string) {
-    this.requireCapability();
+    this.requireCapability(input);
     const location = this.locations.find((location) => location.projectId === input.projectId);
     if (!location) throw new Error('unknown_project_location');
     const result = await this.api.request(input.worktree ? 'worktree.create' : 'tab.create', input.worktree
@@ -26,13 +26,13 @@ export class HerdrActions {
     return { paneId: pane.pane_id, terminalId: pane.terminal_id, tabId: tab.tab_id, workspaceId: pane.workspace_id };
   }
   async start(input: LaunchInput, paneId: string, threadId: string) {
-    this.requireCapability();
+    this.requireCapability(input);
     const result = await this.api.request('agent.start', { name: agentName(threadId), kind: input.agent, pane_id: paneId, args: modelArguments(input.agent, input.model), timeout_ms: 30000 });
     const agent = startedAgent.parse(result.agent);
     if (result.type !== 'agent_started' || agent.name !== agentName(threadId) || agent.pane_id !== paneId || agent.agent !== input.agent || !['idle', 'done'].includes(agent.agent_status)) throw new Error('agent_not_ready');
   }
-  async prompt(paneId: string, prompt: string, terminalId: string, threadId: string, kind: string) {
-    this.requireCapability();
+  async prompt(paneId: string, prompt: string, terminalId: string, threadId: string, kind: string, input?: LaunchInput) {
+    this.requireCapability(input);
     const name = agentName(threadId);
     const result = await this.api.request('agent.get', { target: name });
     const agent = startedAgent.parse(result.agent);

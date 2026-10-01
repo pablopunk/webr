@@ -11,41 +11,56 @@ import type { Machine } from '../../lib/machines';
 import { harnessName } from '../../lib/models';
 import { HerdrActions } from '../runtime/herdr-actions';
 import { readApprovedIcon, type Icon } from './icons';
+import { targetFingerprint } from './identity';
+import { scopedProjectId } from '../../shared/projects';
+import { verifyEvidence, controlGranted, launchGranted } from '../validation/evidence';
+import { validateInstalledSchema } from '../protocol/validate';
 
 const knownKinds = ['claude', 'codex', 'opencode', 'pi'];
+type Dependencies = { process: typeof boundedProcess; cli: typeof openCliStream };
+type ValidationSource = { read: () => string | undefined; key?: string };
 export class HerdrTarget implements TargetAdapter {
   readonly id; readonly name; readonly session; readonly locations;
-  readonly writable = false;
+  readonly fingerprint; configVersion = 1;
+  get enabled() { return this.profile.enabled; }
+  get writable() { return this.compatible && controlGranted(this.evidence()); }
   private api?: SocketApi;
   private forwarding?: SshForward;
   private compatible = false;
   private connecting?: Promise<SocketApi>;
   private streams = new Set<ReturnType<typeof openCliStream>>();
   private icons = new Map<string, { expires: number; value: Promise<Icon | undefined> }>();
-  constructor(private profile: TargetProfile) {
-    this.id = profile.id; this.name = profile.name; this.session = profile.session; this.locations = profile.locations;
+  constructor(private profile: TargetProfile, private validation?: ValidationSource, private dependencies: Dependencies = { process: boundedProcess, cli: openCliStream }) {
+    this.id = profile.id; this.name = profile.name; this.session = profile.session;
+    this.fingerprint = targetFingerprint(profile);
+    this.locations = profile.locations.map((location) => ({ ...location, localId: location.projectId, logicalId: location.logicalId ?? location.projectId, projectId: scopedProjectId(profile.id, location.projectId) }));
   }
+  private evidence() { return verifyEvidence(this.validation?.read(), this.validation?.key, this.fingerprint); }
   private command(args: string[]) {
     const env: NodeJS.ProcessEnv = { ...process.env, HERDR_SOCKET_PATH: this.profile.socket ?? localSocket(this.profile) };
     delete env.HERDR_SESSION;
     return this.profile.transport === 'local'
-      ? { command: 'herdr', args, env }
-      : { command: 'ssh', args: [...sshOptions, this.profile.host!, remoteCommand(this.profile.socket!, 'herdr', args)], env: process.env };
+      ? { command: this.profile.executable ?? 'herdr', args, env }
+      : { command: 'ssh', args: [...sshOptions, this.profile.host!, remoteCommand(this.profile.socket!, this.profile.executable ?? 'herdr', args)], env: process.env };
   }
   private async connect() {
     if (this.connecting) return this.connecting;
     if (this.api) return this.api;
     this.connecting ??= (async () => {
-      if (process.env.HERDR_ENV !== '1' || process.env.HERDR_WEB_CONNECT !== '1') throw new Error('managed_context_required');
+      if (!this.profile.enabled || process.env.HERDR_WEB_CONNECT !== '1') throw new Error('connection_not_approved');
       if (this.profile.transport === 'ssh') {
         this.forwarding = new SshForward(this.profile.host!, this.profile.socket!);
         this.api = await this.forwarding.open();
       } else this.api = new SocketApi(localSocket(this.profile));
       const ping = await this.api.request('ping');
       const command = this.command(['--version']);
-      const version = await boundedProcess(command.command, command.args, command.env);
-      this.compatible = ping.protocol === 22 && ping.version === '0.9.3' && /^herdr 0\.9\.3\s*$/.test(version);
-      if (!this.compatible) throw new Error('unsupported_herdr_version');
+      const version = await this.dependencies.process(command.command, command.args, command.env);
+      const compatible = ping.protocol === 22 && ping.version === '0.9.3' && /^herdr 0\.9\.3\s*$/.test(version);
+      if (!compatible) throw new Error('unsupported_herdr_version');
+      const schemaCommand = this.command(['api', 'schema', '--json']);
+      const schema = JSON.parse(await this.dependencies.process(schemaCommand.command, schemaCommand.args, schemaCommand.env, 5000, 2 * 1024 * 1024));
+      if (validateInstalledSchema(schema).length) { this.compatible = false; throw new Error('unsupported_herdr_schema'); }
+      this.compatible = true;
       return this.api;
     })();
     try { return await this.connecting; }
@@ -57,20 +72,24 @@ export class HerdrTarget implements TargetAdapter {
   }
   async snapshot() {
     const snapshot = nativeSnapshot.parse((await (await this.connect()).request('session.snapshot')).snapshot);
-    if (snapshot.version !== '0.9.3') throw new Error('unsupported_herdr_version');
+    if (snapshot.version !== '0.9.3') { this.compatible = false; throw new Error('unsupported_herdr_version'); }
     return snapshot;
   }
-  async catalog(): Promise<Machine> {
+  async catalog(projectId?: string): Promise<Machine> {
     const api = await this.connect();
     await api.request('ping');
     const present: string[] = [];
     for (const kind of knownKinds) {
       try {
         const command = this.profile.transport === 'local' ? { command: '/bin/sh', args: ['-c', 'command -v "$1" >/dev/null', 'sh', kind] } : { command: 'ssh', args: [...sshOptions, this.profile.host!, 'command -v ' + quoteShell(kind) + ' >/dev/null'] };
-        await boundedProcess(command.command, command.args); present.push(kind);
+        await this.dependencies.process(command.command, command.args); present.push(kind);
       } catch {}
     }
-    return { id: this.id, name: this.name, session: this.session, connected: true, writable: false, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id) => ({ id, name: harnessName(id), models: [], launchEnabled: false, reason: 'Live launch and input validation has not passed for this target.' })) };
+    const location = this.locations.find((location) => location.projectId === projectId);
+    return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id) => {
+      const enabled = !!location && launchGranted(this.evidence(), { agent: id, model: 'Default', projectId: location.projectId }, location.path);
+      return { id, name: harnessName(id), models: enabled ? ['Default'] : [], customModels: !!location && launchGranted(this.evidence(), { agent: id, model: 'validation/custom', projectId: location.projectId }, location.path), launchEnabled: enabled, reason: enabled ? undefined : 'No complete approved live launch proof exists for this target, project and harness.' };
+    }) };
   }
   async icon(projectId: string) {
     const location = this.locations.find((location) => location.projectId === projectId);
@@ -81,17 +100,25 @@ export class HerdrTarget implements TargetAdapter {
     this.icons.set(projectId, { expires: Date.now() + 60_000, value }); return value;
   }
   openTerminal: TargetAdapter['openTerminal'] = (terminalId, mode, cols, rows, takeover, onFrame, onClose) => {
-    if (!this.compatible || mode !== 'observe' || takeover) throw new Error('write_capability_not_validated');
-    const command = this.command(['terminal', 'session', 'observe', terminalId, '--cols', String(cols), '--rows', String(rows)]);
-    const stream = openCliStream(command.command, command.args, { env: command.env }, onFrame, (reason) => { this.streams.delete(stream); onClose(reason); });
+    if (!this.compatible || mode === 'control' && !this.writable || mode === 'observe' && takeover) throw new Error('write_capability_not_validated');
+    const command = this.command(['terminal', 'session', mode, terminalId, '--cols', String(cols), '--rows', String(rows), ...(takeover ? ['--takeover'] : [])]);
+    const stream = this.dependencies.cli(command.command, command.args, { env: command.env }, onFrame, (reason) => { this.streams.delete(stream); onClose(reason); });
     this.streams.add(stream); return stream;
   };
   async create(input: LaunchInput, threadId: string) { return this.actions().create(input, threadId); }
+  canLaunch(input: LaunchInput) { const location = this.locations.find((location) => location.projectId === input.projectId); return this.compatible && !!location && launchGranted(this.evidence(), input, location.path); }
   async start(input: LaunchInput, paneId: string, threadId: string) { return this.actions().start(input, paneId, threadId); }
-  async prompt(paneId: string, prompt: string, terminalId: string, threadId: string, kind: string) { return this.actions().prompt(paneId, prompt, terminalId, threadId, kind); }
+  async prompt(paneId: string, prompt: string, terminalId: string, threadId: string, input: LaunchInput) { return this.actions().prompt(paneId, prompt, terminalId, threadId, input.agent, input); }
   private actions() {
-    return new HerdrActions({ request: async (method, params) => (await this.connect()).request(method, params) }, this.locations, () => { throw new Error('launch_capability_not_validated'); });
+    return new HerdrActions({ request: async (method, params) => {
+      const api = await this.connect(); const ping = await api.request('ping');
+      if (ping.version !== '0.9.3' || ping.protocol !== 22) { this.compatible = false; throw new Error('unsupported_herdr_version'); }
+      return api.request(method, params);
+    } }, this.locations, (input) => {
+      const location = this.locations.find((location) => location.projectId === input?.projectId);
+      if (!this.compatible || !input || !location || !launchGranted(this.evidence(), input, location.path)) throw new Error('launch_capability_not_validated');
+    });
   }
-  close() { this.api?.close(); for (const stream of this.streams) stream.close(); void this.forwarding?.close(); }
-  private async disconnect() { this.api?.close(); this.api = undefined; await this.forwarding?.close(); this.forwarding = undefined; }
+  close() { this.compatible = false; this.api?.close(); this.api = undefined; for (const stream of this.streams) stream.close(); void this.forwarding?.close(); }
+  private async disconnect() { this.compatible = false; this.api?.close(); this.api = undefined; await this.forwarding?.close(); this.forwarding = undefined; }
 }

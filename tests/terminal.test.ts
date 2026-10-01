@@ -15,7 +15,7 @@ async function setup(budget = 512 * 1024) {
   const db = new MetadataDatabase(':memory:'); cleanup.push(() => db.close());
   const target = new FakeTarget(); const manager = new RuntimeManager(db, [target]); cleanup.push(() => manager.close()); manager.start();
   await expect.poll(() => manager.bootstrap().machines[0].connected).toBe(true);
-  const hub = new TerminalHub(manager, budget, budget * 2); cleanup.push(() => { hub.detach('one'); hub.detach('two'); });
+  const hub = new TerminalHub(manager, budget, budget * 2); cleanup.push(() => hub.close());
   const one = new FakeSocket(); const two = new FakeSocket(); hub.attach('one', one as unknown as WebSocket); hub.attach('two', two as unknown as WebSocket);
   const open = { type: 'open' as const, streamId: 1, generation: 1, machineId: target.id, threadId: manager.bootstrap().threads[0].id, terminalId: 'term_fixture', cols: 80, rows: 24, mode: 'control' as const, takeover: false };
   return { target, manager, hub, one, two, open };
@@ -72,4 +72,10 @@ it('writes commands in order without waiting for RPC responses and fails a block
   const fail = vi.fn(); const blocked = new OrderedWriter(new Writable({ write() {} }), fail, 100, 20);
   blocked.send({ type: 'terminal.input', text: 'a' }); await expect.poll(() => fail.mock.calls.length).toBe(1);
   expect(() => blocked.send({ type: 'terminal.input', text: 'b' })).toThrow('writer_closed');
+});
+it('rejects input until baseline ACK and revokes an expired capability lease without another input action', async () => {
+  const { target, hub, open } = await setup(); hub.action('one', open);
+  expect(() => hub.action('one', { type: 'input', streamId: 1, generation: 1, text: 'early', paste: false })).toThrow('baseline_not_acknowledged');
+  target.streams[0].onFrame(frame()); hub.action('one', { type: 'ack', streamId: 1, generation: 1, seq: 1 }); hub.action('one', { type: 'input', streamId: 1, generation: 1, text: 'valid', paste: false }); expect(target.streams[0].commands).toHaveLength(1);
+  target.writable = false; await expect.poll(() => target.streams[0].closed).toBe(true); expect(hub.stats().controllers).toBe(0);
 });

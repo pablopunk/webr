@@ -27,7 +27,7 @@ it('requires explicit adoption of a new terminal identity after cold restore and
     target.state.panes[0].terminal_id = 'term_restored'; target.event!();
     await expect.poll(() => manager.bootstrap().threads[0].bindingState).toBe('detached');
     expect(() => manager.binding(target.id, id, 'term_restored')).toThrow('binding_invalid');
-    manager.adopt(target.id, id, ['term_restored']); expect(manager.bootstrap().threads[0].bindingState).toBe('attached'); expect(target.effects).toEqual([]);
+    await manager.adopt(target.id, id, ['term_restored']); expect(manager.bootstrap().threads[0].bindingState).toBe('attached'); expect(target.effects).toEqual([]);
   } finally { await manager.close(); database.close(); }
 });
 it('scans only fixed icon candidates within an approved target root and does not follow escaping symlinks', async () => {

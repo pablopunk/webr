@@ -5,13 +5,17 @@ import type { TerminalAction } from '../../shared/runtime';
 import type { TerminalStream } from './cli';
 import { encodeUserInput } from './writer';
 
-type Lease = { id: number; generation: number; terminalId: string; machineId: string; threadId: string; mode: string; stream?: TerminalStream; outstanding: Map<number, number>; bytes: number; sequence: FrameSequence; timer?: ReturnType<typeof setTimeout> };
+type Lease = { id: number; generation: number; terminalId: string; machineId: string; threadId: string; mode: string; stream?: TerminalStream; outstanding: Map<number, number>; bytes: number; sequence: FrameSequence; baselineReady: boolean; baselineSeq?: number; expectedSize?: [number, number]; timer?: ReturnType<typeof setTimeout> };
 export class TerminalHub {
   private viewers = new Map<string, { socket: WebSocket; leases: Map<number, Lease>; bytes: number }>();
   private controllers = new Map<string, { owner: string; id: number }>();
+  private expiry: ReturnType<typeof setInterval>;
   constructor(private manager: RuntimeManager, private streamBudget = 512 * 1024, private totalBudget = 2 * 1024 * 1024) {
+    this.expiry = setInterval(() => { for (const [owner, viewer] of this.viewers) for (const lease of viewer.leases.values()) if (lease.mode === 'control') { try { if (!manager.binding(lease.machineId, lease.threadId, lease.terminalId).writable) this.release(owner, lease.id, 'capability_revoked'); } catch { this.release(owner, lease.id, 'binding_invalid'); } } }, 250);
+    this.expiry.unref();
     manager.on('projection', () => { for (const [owner, viewer] of this.viewers) for (const lease of viewer.leases.values()) { try { manager.binding(lease.machineId, lease.threadId, lease.terminalId); } catch { this.release(owner, lease.id, 'binding_invalid'); } } });
   }
+  close() { clearInterval(this.expiry); for (const owner of this.viewers.keys()) this.detach(owner); }
   attach(owner: string, socket: WebSocket) { if (this.viewers.has(owner)) throw new Error('duplicate_terminal_socket'); this.viewers.set(owner, { socket, leases: new Map(), bytes: 0 }); }
   detach(owner: string) { const viewer = this.viewers.get(owner); if (!viewer) return; for (const lease of [...viewer.leases.values()]) this.release(owner, lease.id, 'connection_closed'); this.viewers.delete(owner); }
   action(owner: string, action: TerminalAction) {
@@ -27,7 +31,7 @@ export class TerminalHub {
         if (!action.takeover) throw new Error('controller_conflict');
         this.release(controller.owner, controller.id, 'taken_over');
       }
-      const lease: Lease = { id: action.streamId, generation: action.generation, machineId: action.machineId, threadId: action.threadId, terminalId: action.terminalId, mode: action.mode, outstanding: new Map(), bytes: 0, sequence: new FrameSequence() };
+      const lease: Lease = { id: action.streamId, generation: action.generation, machineId: action.machineId, threadId: action.threadId, terminalId: action.terminalId, mode: action.mode, outstanding: new Map(), bytes: 0, sequence: new FrameSequence(), baselineReady: false };
       viewer.leases.set(lease.id, lease);
       if (action.mode === 'control') this.controllers.set(controllerKey, { owner, id: lease.id });
       try {
@@ -38,6 +42,7 @@ export class TerminalHub {
             const packet = encodeFrame({ ...frame, streamId: lease.id, generation: lease.generation });
             if (lease.bytes + packet.length > this.streamBudget || viewer.bytes + packet.length > this.totalBudget || viewer.socket.bufferedAmount + packet.length > this.totalBudget) throw new Error('viewer_overload');
             lease.outstanding.set(frame.seq, packet.length); lease.bytes += packet.length; viewer.bytes += packet.length;
+            if (frame.full && !lease.baselineReady && (!lease.expectedSize || frame.width === lease.expectedSize[0] && frame.height === lease.expectedSize[1])) lease.baselineSeq = frame.seq;
             lease.timer ??= setTimeout(() => this.release(owner, lease.id, 'ack_timeout'), 5000);
             viewer.socket.send(packet, { binary: true });
           } catch { this.release(owner, lease.id, 'stream_resync_required'); }
@@ -54,13 +59,16 @@ export class TerminalHub {
       const bytes = lease.outstanding.get(action.seq);
       if (!bytes || lease.outstanding.keys().next().value !== action.seq) throw new Error('invalid_ack');
       lease.outstanding.delete(action.seq); lease.bytes -= bytes; viewer.bytes -= bytes;
+      if (action.seq === lease.baselineSeq) lease.baselineReady = true;
       clearTimeout(lease.timer); lease.timer = lease.outstanding.size ? setTimeout(() => this.release(owner, lease.id, 'ack_timeout'), 5000) : undefined;
       return;
     }
-    this.manager.binding(lease.machineId, lease.threadId, lease.terminalId);
+    const target = this.manager.binding(lease.machineId, lease.threadId, lease.terminalId);
     if (lease.mode !== 'control') throw new Error('observer_read_only');
+    if (!target.writable) { this.release(owner, lease.id, 'capability_revoked'); throw new Error('read_only_target'); }
+    if (action.type !== 'resize' && !lease.baselineReady) throw new Error('baseline_not_acknowledged');
     if (action.type === 'input') lease.stream?.send({ type: 'terminal.input', text: encodeUserInput(action.text, action.paste) });
-    if (action.type === 'resize') lease.stream?.send({ type: 'terminal.resize', cols: action.cols, rows: action.rows });
+    if (action.type === 'resize') { lease.baselineReady = false; lease.baselineSeq = undefined; lease.expectedSize = [action.cols, action.rows]; lease.stream?.send({ type: 'terminal.resize', cols: action.cols, rows: action.rows }); }
     if (action.type === 'scroll') lease.stream?.send({ type: 'terminal.scroll', direction: action.direction, lines: action.lines });
     if (action.type === 'mouse') lease.stream?.send({ type: 'terminal.mouse', action: action.action, button: action.button, column: action.column, row: action.row, modifiers: action.modifiers });
   }

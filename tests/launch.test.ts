@@ -35,7 +35,7 @@ it('stops queued effects during gateway shutdown without starting, prompting or 
 });
 it('keeps catalogs and custom model choices isolated to the selected host', async () => {
   const { db, target, journal } = setup(); const other = new FakeTarget(); other.id = 'remote';
-  const result = journal.submit('owner', randomUUID(), { ...launch, machineId: 'remote', model: 'remote/custom-model' }, other);
+  const result = journal.submit('owner', randomUUID(), { ...launch, machineId: 'remote', projectId: 'remote:project', model: 'remote/custom-model' }, other);
   await expect.poll(() => db.operation(result.operationId)?.state).toBe('ready');
   expect(target.effects).toEqual([]); expect(db.operation(result.operationId)?.input.model).toBe('remote/custom-model');
 });

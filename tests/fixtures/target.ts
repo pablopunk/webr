@@ -9,7 +9,9 @@ export function snapshot(): NativeSnapshot {
 }
 export class FakeTarget implements TargetAdapter {
   id = 'fixture'; name = 'Fixture'; session = 'fixture'; writable = true;
-  locations = [{ projectId: 'project', path: '/fixture', workspaceId: 'w1' }];
+  sourceIdentity = 'source-v1'; configVersion = 1; projectPath = '/fixture';
+  get fingerprint() { return this.id + ':' + this.sourceIdentity; }
+  get locations() { return [{ projectId: this.id + ':project', localId: 'project', logicalId: 'project', path: this.projectPath, workspaceId: 'w1' }]; }
   state = snapshot(); subscriptions = 0; activeSubscriptions = 0; reads = 0; closed = 0;
   event?: () => void; lost?: (reason: string) => void;
   readHook?: () => Promise<NativeSnapshot>;
@@ -24,7 +26,7 @@ export class FakeTarget implements TargetAdapter {
     return () => { if (active) { --this.activeSubscriptions; this.listeners.delete(onEvent); active = false; } };
   }
   async snapshot() { ++this.reads; return this.readHook ? this.readHook() : structuredClone(this.state); }
-  async catalog() { return { id: this.id, name: this.name, session: this.session, connected: true, writable: true, projectPaths: { project: '/fixture' }, harnesses: [{ id: 'claude', name: 'Claude Code', models: ['Default', 'host/model'], launchEnabled: true }] }; }
+  async catalog() { return { id: this.id, name: this.name, session: this.session, connected: true, writable: true, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: [{ id: 'claude', name: 'Claude Code', models: ['Default', 'host/model'], launchEnabled: true }] }; }
   openTerminal: TargetAdapter['openTerminal'] = (_terminal, _mode, _cols, _rows, _takeover, onFrame, _onClose) => {
     const stream = { onFrame, closed: false, commands: [] as Record<string, unknown>[] }; this.streams.push(stream);
     return { send: (command) => { if (stream.closed) throw new Error('closed'); stream.commands.push(command); }, close: () => { stream.closed = true; } };
@@ -46,5 +48,5 @@ export class FakeTarget implements TargetAdapter {
   async prompt(paneId: string, _prompt: string, terminalId: string) { if (!this.state.panes.some((pane) => pane.pane_id === paneId && pane.terminal_id === terminalId && pane.agent === 'claude')) throw new Error('occupant_changed'); this.effect('prompt'); }
   close() { ++this.closed; }
 }
-export const launch: LaunchInput = { machineId: 'fixture', projectId: 'project', prompt: 'Test launch', agent: 'claude', model: 'Default', worktree: true };
+export const launch: LaunchInput = { machineId: 'fixture', projectId: 'fixture:project', prompt: 'Test launch', agent: 'claude', model: 'Default', worktree: true };
 export const frame = (seq = 1, full = true, size = 32): TerminalFrame => ({ seq, full, width: 80, height: 24, bytes: Buffer.alloc(size, 65) });

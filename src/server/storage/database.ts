@@ -26,7 +26,7 @@ export class MetadataDatabase {
   getSetting(key: string) { return this.db.select().from(schema.settings).where(eq(schema.settings.key, key)).get()?.value; }
   setSetting(key: string, value: string) { this.db.insert(schema.settings).values({ key, value }).onConflictDoUpdate({ target: schema.settings.key, set: { value } }).run(); }
   threadRows(machineId?: string, session?: string) {
-    return this.db.select().from(schema.threads).where(machineId ? and(eq(schema.threads.machineId, machineId), eq(schema.threads.session, session!)) : undefined).all();
+    return this.db.select().from(schema.threads).where(machineId ? and(eq(schema.threads.machineId, machineId), session ? eq(schema.threads.session, session) : undefined) : undefined).all();
   }
   saveThread(thread: Thread, anchors: string[], alias: string | null = null) {
     const row = { id: thread.id, machineId: thread.machineId, session: thread.session, alias, metadata: thread, anchors, avatar: thread.avatarIndex };

@@ -1,0 +1,6 @@
+export function schemaFixture() {
+  return { protocol: 22, schemas: {
+    request: { oneOf: ['ping', 'session.snapshot', 'events.subscribe', 'tab.create', 'worktree.create', 'agent.start', 'agent.get', 'agent.prompt'].map((method) => ({ properties: { method: { const: method } } })), $defs: { EventsSubscribeParams: { required: ['subscriptions'] }, Subscription: { oneOf: [{ properties: { type: { const: 'pane.agent_status_changed' } }, required: ['pane_id'] }] }, ...Object.fromEntries(Object.entries({ AgentStartParams: ['name', 'kind', 'pane_id', 'args', 'timeout_ms'], AgentPromptParams: ['target', 'text'], TabCreateParams: ['workspace_id', 'cwd', 'focus'], WorktreeCreateParams: ['workspace_id', 'branch', 'focus'] }).map(([record, fields]) => [record, { properties: Object.fromEntries(fields.map((field) => [field, {}])) }])) } },
+    success_response: { $defs: { SessionSnapshot: { required: ['version', 'protocol', 'workspaces', 'tabs', 'panes', 'layouts', 'agents'] }, PaneInfo: { required: ['pane_id', 'terminal_id', 'workspace_id', 'tab_id'] }, PaneLayoutSnapshot: { required: ['area', 'panes', 'tab_id', 'workspace_id'] }, AgentInfo: { properties: Object.fromEntries(['name', 'pane_id', 'terminal_id', 'agent', 'agent_status'].map((field) => [field, {}])) } } },
+  } };
+}

@@ -16,6 +16,8 @@ export type Layout = { workspaceId: string; tabId: string; area: Rect; panes: { 
 export type Projection = {
   machineId: string; generation: string; revision: number; freshAt: string | null;
   connected: boolean; error?: string; threads: Thread[]; projects: Project[]; layouts: Layout[];
+  availableTabs?: { tabId: string; workspaceId: string; label: string; bound: boolean; panes: { id: string; terminalId: string; title: string }[] }[];
+  machine?: Machine;
 };
 export type Bootstrap = { projections: Projection[]; machines: Machine[]; projects: Project[]; threads: Thread[] };
 const streamRef = { streamId: z.number().int().min(1).max(0xffffffff), generation: z.number().int().min(1).max(0xffffffff) };

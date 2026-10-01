@@ -14,6 +14,9 @@ export type Project = {
   color: string;
   initial: string;
   iconUrl?: string;
+  machineId?: string;
+  localId?: string;
+  logicalId?: string;
 };
 
 export type Pane = {
@@ -42,6 +45,9 @@ export type Thread = {
   panes: Pane[];
   bindingState?: 'attached' | 'detached' | 'pending';
   operation?: { id: string; state: string; step: string };
+  bindingFingerprint?: string;
+  bindingConfigVersion?: number;
+  semanticSignature?: string;
 };
 
 export const projects: Project[] = [

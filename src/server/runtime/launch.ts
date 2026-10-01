@@ -10,7 +10,7 @@ export class LaunchJournal {
   constructor(private database: MetadataDatabase, private publish: () => void) { database.markInterruptedLaunches(); }
   submit(accountId: string, key: string, input: LaunchInput, target: TargetAdapter) {
     if (this.stopping) throw new Error('gateway_stopping');
-    const thread: Thread = { id: randomUUID(), avatarIndex: this.database.threadRows().length, projectId: input.projectId, machineId: target.id, title: input.prompt.split('\n')[0].slice(0, 90), prompt: input.prompt, agent: input.agent, model: input.model, status: 'unknown', updatedAt: new Date().toISOString(), branch: '', worktree: input.worktree, session: target.session, tabId: '', panes: [], bindingState: 'pending' };
+    const thread: Thread = { id: randomUUID(), avatarIndex: this.database.threadRows().length, projectId: input.projectId, machineId: target.id, title: input.prompt.split('\n')[0].slice(0, 90), prompt: input.prompt, agent: input.agent, model: input.model, status: 'unknown', updatedAt: new Date().toISOString(), branch: '', worktree: input.worktree, session: target.session, tabId: '', panes: [], bindingState: 'pending', bindingFingerprint: target.fingerprint, bindingConfigVersion: target.configVersion };
     const { operation, created } = this.database.beginLaunch(accountId, key, input, thread);
     if (created) {
       const scope = target.id + '\0' + input.projectId;
@@ -27,10 +27,10 @@ export class LaunchJournal {
     let step = 'validate';
     let result: Record<string, unknown> = {};
     try {
-      const catalog = await target.catalog();
+      const catalog = await target.catalog(input.projectId);
       if (this.stopping) throw new Error('gateway_stopping');
       const harness = catalog.harnesses.find((harness) => harness.id === input.agent);
-      if (!catalog.connected || !harness?.launchEnabled || !target.locations.some((location) => location.projectId === input.projectId)) throw new Error('launch_unavailable');
+      if (!catalog.connected || !harness?.launchEnabled || target.canLaunch && !target.canLaunch(input) || !target.locations.some((location) => location.projectId === input.projectId)) throw new Error('launch_unavailable');
       step = 'checkout'; this.database.updateOperation(id, 'running', step, result); this.publish();
       const created = await target.create(input, thread.id);
       result = { ...created };
@@ -44,7 +44,7 @@ export class LaunchJournal {
       await target.start(input, created.paneId, thread.id);
       if (this.stopping) throw new Error('gateway_stopping');
       step = 'prompt'; this.database.updateOperation(id, 'running', step, result); this.publish();
-      await target.prompt(created.paneId, input.prompt, created.terminalId, thread.id, input.agent);
+      await target.prompt(created.paneId, input.prompt, created.terminalId, thread.id, input);
       this.database.updateOperation(id, 'ready', 'ready', result);
     } catch {
       this.database.updateOperation(id, step === 'validate' ? 'failed' : 'unknown', step, result);
