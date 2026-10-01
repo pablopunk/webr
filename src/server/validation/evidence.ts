@@ -3,10 +3,10 @@ import { z } from 'zod';
 import type { LaunchInput } from '../../shared/runtime';
 
 export const controlChecks = ['full-baseline', 'sequence', 'unicode', 'keys', 'paste', 'mouse', 'scroll', 'resize', 'release', 'controller-conflict', 'takeover', 'disconnect', 'no-device-replies'] as const;
-export const launchChecks = ['checkout', 'initial-tab', 'start-ready', 'fresh-occupant', 'prompt-once', 'uncertain-effects', 'model-argv'] as const;
+export const launchChecks = ['checkout', 'initial-tab', 'start-ready', 'fresh-occupant', 'prompt-once', 'durable-intent-once', 'model-argv'] as const;
 const grant = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('control'), inputAdapter: z.literal('literal-pilot-v1'), checks: z.array(z.string()).max(32) }).strict(),
-  z.object({ kind: z.literal('launch'), harness: z.enum(['claude', 'codex', 'opencode']), adapter: z.literal('model-argv-v1'), projectId: z.string(), locationPath: z.string(), modelMode: z.enum(['default', 'custom']), checks: z.array(z.string()).max(32) }).strict(),
+  z.object({ kind: z.literal('control'), inputAdapter: z.literal('literal-pilot-v1'), scope: z.literal('literal-transport'), checks: z.array(z.string()).max(32) }).strict(),
+  z.object({ kind: z.literal('launch'), harness: z.enum(['claude', 'codex', 'opencode']), adapter: z.literal('model-argv-v1'), projectId: z.string(), locationPath: z.string(), model: z.string().regex(/^[A-Za-z0-9_/.:+-]{1,120}$/), checks: z.array(z.string()).max(32) }).strict(),
 ]);
 export const evidenceSchema = z.object({ issuer: z.literal('herdr-web-live-v1'), targetFingerprint: z.string().min(1), version: z.literal('0.9.3'), protocol: z.literal(22), issuedAt: z.number().int().positive(), expiresAt: z.number().int().positive(), grants: z.array(grant).max(32) }).strict();
 export type Evidence = z.infer<typeof evidenceSchema>;
@@ -24,5 +24,6 @@ export function verifyEvidence(serialized: string | undefined, key: string | und
 }
 export function controlGranted(evidence?: Evidence) { return !!evidence?.grants.some((grant) => grant.kind === 'control' && controlChecks.every((check) => grant.checks.includes(check))); }
 export function launchGranted(evidence: Evidence | undefined, input: Pick<LaunchInput, 'agent' | 'projectId' | 'model'>, path: string) {
-  return !!evidence?.grants.some((grant) => grant.kind === 'launch' && grant.harness === input.agent && grant.projectId === input.projectId && grant.locationPath === path && (input.model === 'Default' || grant.modelMode === 'custom') && launchChecks.every((check) => grant.checks.includes(check)));
+  return !!evidence?.grants.some((grant) => grant.kind === 'launch' && grant.harness === input.agent && grant.projectId === input.projectId && grant.locationPath === path && grant.model === input.model && launchChecks.every((check) => grant.checks.includes(check)));
 }
+export function approvedModels(evidence: Evidence | undefined, harness: string, projectId: string, path: string) { return [...new Set(evidence?.grants.flatMap((grant) => grant.kind === 'launch' && launchGranted(evidence, { agent: harness, projectId, model: grant.model }, path) && grant.harness === harness ? [grant.model] : []) ?? [])]; }

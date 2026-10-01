@@ -13,7 +13,7 @@ import { HerdrActions } from '../runtime/herdr-actions';
 import { readApprovedIcon, type Icon } from './icons';
 import { targetFingerprint } from './identity';
 import { scopedProjectId } from '../../shared/projects';
-import { verifyEvidence, controlGranted, launchGranted } from '../validation/evidence';
+import { verifyEvidence, controlGranted, launchGranted, approvedModels } from '../validation/evidence';
 import { validateInstalledSchema } from '../protocol/validate';
 
 const knownKinds = ['claude', 'codex', 'opencode', 'pi'];
@@ -87,8 +87,8 @@ export class HerdrTarget implements TargetAdapter {
     }
     const location = this.locations.find((location) => location.projectId === projectId);
     return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id) => {
-      const enabled = !!location && launchGranted(this.evidence(), { agent: id, model: 'Default', projectId: location.projectId }, location.path);
-      return { id, name: harnessName(id), models: enabled ? ['Default'] : [], customModels: !!location && launchGranted(this.evidence(), { agent: id, model: 'validation/custom', projectId: location.projectId }, location.path), launchEnabled: enabled, reason: enabled ? undefined : 'No complete approved live launch proof exists for this target, project and harness.' };
+      const models = location ? approvedModels(this.evidence(), id, location.projectId, location.path) : [];
+      return { id, name: harnessName(id), models, customModels: false, launchEnabled: !!models.length, reason: models.length ? undefined : 'No complete approved live launch proof exists for this target, project and harness.' };
     }) };
   }
   async icon(projectId: string) {

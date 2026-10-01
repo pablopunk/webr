@@ -52,15 +52,15 @@ it('connects a standalone approved application without HERDR_ENV using only owne
 });
 it('fails closed on missing approval, incomplete or tampered evidence, wrong target and expired evidence', async () => {
   const { target, evidence, approve, profile } = await setup(); await target.snapshot();
-  approve(evidence([{ kind: 'control', inputAdapter: 'literal-pilot-v1', checks: ['full-baseline'] }])); expect(target.writable).toBe(false);
-  const proof = evidence([{ kind: 'control', inputAdapter: 'literal-pilot-v1', checks: [...controlChecks] }]); const signed = signEvidence(proof, key);
+  approve(evidence([{ kind: 'control', inputAdapter: 'literal-pilot-v1', scope: 'literal-transport', checks: ['full-baseline'] }])); expect(target.writable).toBe(false);
+  const proof = evidence([{ kind: 'control', inputAdapter: 'literal-pilot-v1', scope: 'literal-transport', checks: [...controlChecks] }]); const signed = signEvidence(proof, key);
   expect(verifyEvidence(JSON.stringify({ ...signed, evidence: { ...proof, expiresAt: proof.expiresAt + 1 } }), key, target.fingerprint)).toBeUndefined();
   expect(verifyEvidence(JSON.stringify(signed), key, targetFingerprint({ ...profile, executable: '/another/herdr' }))).toBeUndefined(); expect(verifyEvidence(JSON.stringify(signed), key, target.fingerprint, proof.expiresAt)).toBeUndefined();
   vi.stubEnv('HERDR_WEB_CONNECT', '0'); const disabled = new HerdrTarget(profile); cleanup.push(() => disabled.close()); await expect(disabled.snapshot()).rejects.toThrow('connection_not_approved');
 });
 it('wires scoped approved control and native launch paths without granting other harnesses or models', async () => {
   const { target, evidence, approve, revoke, cli, calls } = await setup(); await target.snapshot();
-  approve(evidence([{ kind: 'control', inputAdapter: 'literal-pilot-v1', checks: [...controlChecks] }, { kind: 'launch', harness: 'claude', adapter: 'model-argv-v1', projectId: '0123-fixture:project', locationPath: '/fixture', modelMode: 'default', checks: [...launchChecks] }]));
+  approve(evidence([{ kind: 'control', inputAdapter: 'literal-pilot-v1', scope: 'literal-transport', checks: [...controlChecks] }, { kind: 'launch', harness: 'claude', adapter: 'model-argv-v1', projectId: '0123-fixture:project', locationPath: '/fixture', model: 'Default', checks: [...launchChecks] }]));
   expect(target.writable).toBe(true); target.openTerminal('term_fixture', 'control', 80, 24, true, () => {}, () => {}); expect(cli.mock.calls[0][0]).toBe('/fixture/herdr'); expect(cli.mock.calls[0][1]).toContain('control'); expect(cli.mock.calls[0][1]).toContain('--takeover'); expect(cli.mock.calls[0][2].env?.HERDR_ENV).toBeUndefined();
   const input = { ...launch, machineId: target.id, projectId: '0123-fixture:project' }; const id = randomUUID(); const created = await target.create(input, id); await target.start(input, created.paneId, id); await target.prompt(created.paneId, input.prompt, created.terminalId, id, input);
   expect(calls.filter((call) => call.method === 'agent.prompt')).toHaveLength(1); expect(calls.filter((call) => call.method === 'tab.create')).toHaveLength(0);
