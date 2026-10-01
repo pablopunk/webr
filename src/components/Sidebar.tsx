@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { BotAvatar } from 'bot-avatars';
-import { CircleCheck, CircleHelp, LoaderCircle, MessageCircleQuestion, PanelLeftClose, PanelLeftOpen, Plus, Settings2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, CircleCheck, CircleHelp, LoaderCircle, MessageCircleQuestion, PanelLeftClose, PanelLeftOpen, Plus, Settings2, X } from 'lucide-react';
 import { type Project, type Thread, harnessName, relativeTime } from '../lib/models';
 import { avatarForThread } from '../lib/avatars';
 import { ProjectIcon } from './ProjectIcon';
@@ -54,7 +54,7 @@ export function Sidebar({ projects, threads, currentId, mode, collapsed, mobileO
         <nav className="thread-navigation" aria-label="Agent threads">
           {mode === 'projects' ? projects.filter((project) => threads.some((thread) => thread.projectId === project.id)).sort((a, b) => (threads.find((thread) => thread.projectId === b.id)?.updatedAt ?? '').localeCompare(threads.find((thread) => thread.projectId === a.id)?.updatedAt ?? '')).map((project) => <section key={project.id} className="thread-group">
             <button className="group-title" onClick={() => setClosedProjects((value) => value.includes(project.id) ? value.filter((id) => id !== project.id) : [...value, project.id])} aria-expanded={!closedProjects.includes(project.id)}>
-              <span className="group-chevron">{closedProjects.includes(project.id) ? '›' : '⌄'}</span><ProjectIcon project={project} />{project.name}
+              <span className="group-chevron" aria-hidden="true">{closedProjects.includes(project.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</span><ProjectIcon project={project} />{project.name}
             </button>
             {!closedProjects.includes(project.id) && threads.filter((thread) => thread.projectId === project.id).map((thread) => threadLink(thread, false))}
           </section>) : threads.map((thread) => threadLink(thread, true))}
