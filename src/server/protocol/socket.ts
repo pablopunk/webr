@@ -3,14 +3,17 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { NdjsonParser } from './ndjson';
 import { lifecycleSubscriptions } from './native';
+import { requestDeadline, type RpcOptions } from './deadlines';
 
 const envelope = z.object({ id: z.string(), result: z.record(z.string(), z.unknown()).optional(), error: z.object({ code: z.string(), message: z.string() }).optional() });
 const allowed = new Set(['ping', 'session.snapshot', 'events.subscribe', 'server.agent_manifests', 'worktree.create', 'tab.create', 'agent.start', 'agent.get', 'agent.prompt']);
 export class SocketApi {
   private sockets = new Set<Socket>();
   constructor(readonly path: string, readonly deadline = 5000) {}
-  request(method: string, params: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+  request(method: string, params: Record<string, unknown> = {}, options?: RpcOptions): Promise<Record<string, unknown>> {
     if (!allowed.has(method) || method === 'events.subscribe') return Promise.reject(new Error('method_not_allowed'));
+    let deadline: number;
+    try { deadline = requestDeadline(method, params, this.deadline, options); } catch (error) { return Promise.reject(error); }
     return new Promise((resolve, reject) => {
       const id = randomUUID();
       const socket = this.open();
@@ -20,7 +23,7 @@ export class SocketApi {
         done = true; clearTimeout(timer); socket.destroy();
         if (error) reject(error); else resolve(result!);
       };
-      const timer = setTimeout(() => finish(new Error('rpc_timeout')), this.deadline);
+      const timer = setTimeout(() => finish(new Error('rpc_timeout')), deadline);
       const parser = new NdjsonParser((value) => {
         const record = envelope.parse(value);
         if (record.id !== id) throw new Error('request_id_mismatch');

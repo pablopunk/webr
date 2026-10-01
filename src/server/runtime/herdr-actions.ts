@@ -2,8 +2,9 @@ import { z } from 'zod';
 import type { LaunchInput } from '../../shared/runtime';
 import type { LaunchLocation } from './target';
 import { nativePane, nativeTab } from '../protocol/native';
+import { AGENT_READY_TIMEOUT_MS, requestDeadline, type RpcOptions } from '../protocol/deadlines';
 
-type Api = { request(method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>> };
+type Api = { request(method: string, params?: Record<string, unknown>, options?: RpcOptions): Promise<Record<string, unknown>> };
 const startedAgent = z.object({ name: z.string(), terminal_id: z.string(), pane_id: z.string(), agent: z.string(), agent_status: z.enum(['idle', 'done', 'working', 'blocked', 'unknown']) });
 export function modelArguments(kind: string, model: string): string[] {
   if (!['claude', 'codex', 'opencode'].includes(kind) || !/^[A-Za-z0-9_/.:+-]{1,120}$/.test(model)) throw new Error('unsupported_launch_adapter');
@@ -19,7 +20,7 @@ export class HerdrActions {
     if (!location) throw new Error('unknown_project_location');
     const result = await this.api.request(input.worktree ? 'worktree.create' : 'tab.create', input.worktree
       ? { workspace_id: location.workspaceId, branch: 'web/' + threadId, label: input.prompt.split('\n')[0].slice(0, 90), focus: false }
-      : { workspace_id: location.workspaceId, cwd: location.path, label: input.prompt.split('\n')[0].slice(0, 90), focus: false });
+      : { workspace_id: location.workspaceId, cwd: location.path, label: input.prompt.split('\n')[0].slice(0, 90), focus: false }, { timeoutMs: requestDeadline(input.worktree ? 'worktree.create' : 'tab.create', {}) });
     if (result.type !== (input.worktree ? 'worktree_created' : 'tab_created')) throw new Error('unexpected_create_result');
     const pane = nativePane.parse(result.root_pane); const tab = nativeTab.parse(result.tab);
     if (pane.tab_id !== tab.tab_id || pane.workspace_id !== tab.workspace_id) throw new Error('inconsistent_create_result');
@@ -27,7 +28,8 @@ export class HerdrActions {
   }
   async start(input: LaunchInput, paneId: string, threadId: string) {
     this.requireCapability(input);
-    const result = await this.api.request('agent.start', { name: agentName(threadId), kind: input.agent, pane_id: paneId, args: modelArguments(input.agent, input.model), timeout_ms: 30000 });
+    const params = { name: agentName(threadId), kind: input.agent, pane_id: paneId, args: modelArguments(input.agent, input.model), timeout_ms: AGENT_READY_TIMEOUT_MS };
+    const result = await this.api.request('agent.start', params, { timeoutMs: requestDeadline('agent.start', params) });
     const agent = startedAgent.parse(result.agent);
     if (result.type !== 'agent_started' || agent.name !== agentName(threadId) || agent.pane_id !== paneId || agent.agent !== input.agent || !['idle', 'done'].includes(agent.agent_status)) throw new Error('agent_not_ready');
   }

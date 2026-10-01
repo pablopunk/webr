@@ -110,10 +110,10 @@ export class HerdrTarget implements TargetAdapter {
   async start(input: LaunchInput, paneId: string, threadId: string) { return this.actions().start(input, paneId, threadId); }
   async prompt(paneId: string, prompt: string, terminalId: string, threadId: string, input: LaunchInput) { return this.actions().prompt(paneId, prompt, terminalId, threadId, input.agent, input); }
   private actions() {
-    return new HerdrActions({ request: async (method, params) => {
+    return new HerdrActions({ request: async (method, params, options) => {
       const api = await this.connect(); const ping = await api.request('ping');
       if (ping.version !== '0.9.3' || ping.protocol !== 22) { this.compatible = false; throw new Error('unsupported_herdr_version'); }
-      return api.request(method, params);
+      return api.request(method, params, options);
     } }, this.locations, (input) => {
       const location = this.locations.find((location) => location.projectId === input?.projectId);
       if (!this.compatible || !input || !location || !launchGranted(this.evidence(), input, location.path)) throw new Error('launch_capability_not_validated');
