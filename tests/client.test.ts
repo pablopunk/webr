@@ -24,9 +24,10 @@ function setup() {
   const terminal = { resize: vi.fn(), write: (bytes: Uint8Array, finish: () => void) => writes.push({ bytes, finish }) } as unknown as Terminal;
   const manager = new BrowserTerminalManager(() => {}, () => {}); manager.start();
   const [metadata, binary] = BrowserSocket.instances; metadata.open(); binary.open();
-  const pane = manager.mount({ machineId: 'fixture', threadId: '00000000-0000-4000-8000-000000000001', terminalId: 'term_fixture', terminal, mode: 'observe', cols: 80, rows: 24, onState: () => {} });
+  const onState = vi.fn();
+  const pane = manager.mount({ machineId: 'fixture', threadId: '00000000-0000-4000-8000-000000000001', terminalId: 'term_fixture', terminal, mode: 'observe', cols: 80, rows: 24, onState });
   const open = JSON.parse(binary.sent[0]);
-  return { manager, pane, metadata, binary, writes, terminal, open };
+  return { manager, pane, metadata, binary, writes, terminal, open, onState };
 }
 it('opens only two app sockets and ACKs binary output only after xterm finishes it', () => {
   const { manager, binary, writes, open, pane } = setup();
@@ -84,4 +85,24 @@ it('disables input immediately during resize and requires a matching rendered fu
   const deliver = (seq: number, full: boolean, width = 80, height = 24) => binary.onmessage!({ data: encodeFrame({ ...frame(seq, full), width, height, streamId: open.streamId, generation: command.generation }).buffer as ArrayBuffer });
   deliver(1, true); writes[0].finish(); deliver(2, false); pane.resize(120, 30); pane.input('must not send'); writes[1].finish(); pane.input('still no new baseline');
   expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false); deliver(3, true, 120, 30); writes[2].finish(); pane.input('safe now'); expect(JSON.parse(binary.sent.at(-1)!).text).toBe('safe now'); manager.stop();
+});
+it('keeps established input writable during sustained delta rendering without replaying input across takeover', () => {
+  const { manager, pane, binary, open, writes, onState } = setup(); pane.control(); const control = JSON.parse(binary.sent.at(-1)!);
+  const accepted = (generation: number) => binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation, writable: true }) });
+  const deliver = (generation: number, seq: number, full: boolean, width = 80, height = 24) => binary.onmessage!({ data: encodeFrame({ ...frame(seq, full), width, height, streamId: open.streamId, generation }).buffer as ArrayBuffer });
+  const inputs = () => binary.sent.map((message) => JSON.parse(message)).filter((message) => message.type === 'input');
+  accepted(control.generation); deliver(control.generation, 1, true); deliver(control.generation, 2, false); deliver(control.generation, 3, false);
+  pane.input('not before baseline'); expect(inputs()).toHaveLength(0); writes[0].finish();
+  expect(writes).toHaveLength(2); expect(onState.mock.calls.at(-1)?.[1]).toBe(true);
+  pane.input('during first delta'); expect(inputs().at(-1)?.text).toBe('during first delta');
+  writes[1].finish(); pane.input('during second delta'); expect(inputs().at(-1)?.text).toBe('during second delta');
+  pane.control(true); const takeover = JSON.parse(binary.sent.at(-1)!); expect(takeover.takeover).toBe(true); expect(onState.mock.calls.at(-1)?.[1]).toBe(false);
+  writes[2].finish(); accepted(control.generation); pane.input('old acceptance must not authorize'); expect(inputs()).toHaveLength(2);
+  accepted(takeover.generation); deliver(takeover.generation, 1, true); pane.input('not before takeover render'); expect(inputs()).toHaveLength(2); writes[3].finish();
+  pane.input('new lease'); expect(inputs().at(-1)?.generation).toBe(takeover.generation); expect(inputs()).toHaveLength(3);
+  deliver(takeover.generation, 2, false); pane.resize(120, 30); expect(onState.mock.calls.at(-1)?.[1]).toBe(false); pane.input('not during resize'); writes[4].finish(); expect(inputs()).toHaveLength(3);
+  deliver(takeover.generation, 3, true); writes[5].finish(); pane.input('wrong baseline size'); expect(inputs()).toHaveLength(3);
+  deliver(takeover.generation, 4, true, 120, 30); deliver(takeover.generation, 5, false, 120, 30); writes[6].finish();
+  expect(onState.mock.calls.at(-1)?.[1]).toBe(true); pane.input('resized baseline with delta pending'); expect(inputs().at(-1)?.text).toBe('resized baseline with delta pending'); expect(inputs()).toHaveLength(4);
+  manager.stop();
 });

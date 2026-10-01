@@ -59,10 +59,10 @@ export class BrowserTerminalManager {
     pane.renderer?.close();
     pane.renderer = new TerminalRenderer(pane.terminal, (frame) => {
       if (this.panes.get(id) !== pane || pane.generation !== frame.generation) return;
-      this.send({ type: 'ack', streamId: id, generation: frame.generation, seq: frame.seq });
+      if (!this.send({ type: 'ack', streamId: id, generation: frame.generation, seq: frame.seq })) return;
       --pane.pending;
       if (frame.full && (!pane.resizing || frame.width === pane.cols && frame.height === pane.rows)) { pane.baseline = true; pane.resizing = false; }
-      const ready = pane.mode === 'control' && pane.accepted && pane.baseline && pane.pending === 0;
+      const ready = pane.mode === 'control' && pane.accepted && pane.baseline;
       pane.writable = ready;
       if (frame.full) pane.onState(ready ? 'Input control is active.' : 'Read-only', ready);
     });
@@ -87,7 +87,7 @@ export class BrowserTerminalManager {
           const record = JSON.parse(event.data);
           const pane = this.panes.get(record.streamId);
           if (!pane || pane.generation !== record.generation) return;
-          if (record.type === 'stream.opened') { pane.accepted = !!record.writable && pane.mode === 'control'; pane.writable = pane.accepted && pane.baseline && pane.pending === 0; pane.onState(pane.writable ? 'Input control is active.' : 'Waiting for the full baseline; input is disabled.', pane.writable); }
+          if (record.type === 'stream.opened') { pane.accepted = !!record.writable && pane.mode === 'control'; pane.writable = pane.accepted && pane.baseline; pane.onState(pane.writable ? 'Input control is active.' : 'Waiting for the full baseline; input is disabled.', pane.writable); }
           if (record.type === 'stream.closed' || record.type === 'stream.error') {
             pane.writable = false; pane.accepted = false; pane.baseline = false; pane.renderer?.close(); pane.onState(String(record.reason).replaceAll('_', ' '), false);
             if (record.type === 'stream.error' && pane.mode === 'control') { pane.mode = 'observe'; ++pane.generation; pane.sequence = new FrameSequence(); this.open(record.streamId); return; }
@@ -99,7 +99,7 @@ export class BrowserTerminalManager {
         const pane = this.panes.get(frame.streamId);
         if (!pane || pane.generation !== frame.generation) return;
         pane.sequence.accept(frame);
-        ++pane.pending; pane.writable = false;
+        ++pane.pending;
         pane.renderer?.push(frame);
       } catch { this.disconnect(); }
     };
