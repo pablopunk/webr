@@ -81,6 +81,11 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     const input = z.object({ machineId: opaqueId, terminalIds: z.array(opaqueId).min(1).max(256) }).strict().parse(request.body);
     await manager.adopt(input.machineId, id, input.terminalIds); return { adopted: true };
   });
+  app.post('/api/threads/:id/focus', async (request) => {
+    const { id } = z.object({ id: z.uuid() }).parse(request.params);
+    const input = z.object({ machineId: opaqueId, paneId: opaqueId }).strict().parse(request.body);
+    await manager.focusPane(input.machineId, id, input.paneId); return { focused: true };
+  });
   app.get('/api/operations/:id', async (request, reply) => {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
     const operation = manager.database.operation(id);

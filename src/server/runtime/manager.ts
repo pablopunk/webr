@@ -65,6 +65,12 @@ export class RuntimeManager extends EventEmitter {
     if (this.projections.get(machineId)?.threads.some((other) => other.id !== threadId && other.bindingState === 'attached' && other.tabId === tab)) throw new Error('binding_conflict');
     this.database.saveThread({ ...row.metadata, session: supervisor.target.session, tabId: tab, bindingFingerprint: supervisor.target.fingerprint, bindingConfigVersion: supervisor.target.configVersion, semanticSignature: undefined }, terminalIds, tab); this.publish(supervisor);
   }
+  async focusPane(machineId: string, threadId: string, paneId: string) {
+    const supervisor = this.supervisors.get(machineId);
+    const thread = this.projections.get(machineId)?.threads.find((thread) => thread.id === threadId);
+    if (!supervisor?.connected || !thread?.panes.some((pane) => pane.id === paneId) || !supervisor.target.focusPane) throw new Error('invalid_focus');
+    await supervisor.target.focusPane(paneId);
+  }
   private publishAll() { for (const supervisor of this.supervisors.values()) { this.publish(supervisor); supervisor.invalidate(); } }
   private publish(supervisor: TargetSupervisor) {
     const records = supervisor.snapshot ? reconcile(this.database, supervisor.target, supervisor.snapshot) : { threads: this.database.threadRows(supervisor.target.id).map((row) => ({ ...row.metadata, panes: [], bindingState: 'detached' as const, status: 'unknown' as const })), projects: [] };
