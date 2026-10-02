@@ -10,7 +10,7 @@ export class LaunchJournal {
   constructor(private database: MetadataDatabase, private publish: () => void) { database.markInterruptedLaunches(); }
   submit(accountId: string, key: string, input: LaunchInput, target: TargetAdapter) {
     if (this.stopping) throw new Error('gateway_stopping');
-    const thread: Thread = { id: randomUUID(), avatarIndex: this.database.threadRows().length, projectId: input.projectId, machineId: target.id, title: input.prompt.split('\n')[0].slice(0, 90), prompt: input.prompt, agent: input.agent, model: input.model, status: 'unknown', updatedAt: new Date().toISOString(), branch: '', worktree: input.worktree, session: target.session, tabId: '', panes: [], bindingState: 'pending', bindingFingerprint: target.fingerprint, bindingConfigVersion: target.configVersion };
+    const thread: Thread = { id: randomUUID(), avatarIndex: this.database.nextAvatarIndex(), projectId: input.projectId, machineId: target.id, title: input.prompt.split('\n')[0].slice(0, 90), prompt: input.prompt, agent: input.agent, model: input.model, status: 'unknown', updatedAt: new Date().toISOString(), branch: '', worktree: input.worktree, session: target.session, tabId: '', panes: [], bindingState: 'pending', bindingFingerprint: target.fingerprint, bindingConfigVersion: target.configVersion };
     const { operation, created } = this.database.beginLaunch(accountId, key, input, thread);
     if (created) {
       const scope = target.id + '\0' + input.projectId;

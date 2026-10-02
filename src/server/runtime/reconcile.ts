@@ -30,7 +30,7 @@ export function reconcile(database: MetadataDatabase, target: TargetAdapter, sna
     if (launching || saved.some((row) => row.alias === tab.tab_id)) continue;
     const panes = snapshot.panes.filter((pane) => pane.tab_id === tab.tab_id && pane.workspace_id === tab.workspace_id);
     if (!panes.length) continue;
-    const thread: Thread = { id: randomUUID(), avatarIndex: database.threadRows().length, projectId: tabProjects.get(tab.tab_id) ?? '', machineId: target.id, title: threadTitle(tab.label, panes), prompt: '', agent: '', model: '', status: 'unknown', updatedAt: new Date().toISOString(), branch: '', worktree: !!snapshot.workspaces.find((workspace) => workspace.workspace_id === tab.workspace_id)?.worktree?.is_linked_worktree, session: target.session, tabId: tab.tab_id, panes: [], bindingState: 'attached', bindingFingerprint: target.fingerprint, bindingConfigVersion: target.configVersion };
+    const thread: Thread = { id: randomUUID(), avatarIndex: database.nextAvatarIndex(), projectId: tabProjects.get(tab.tab_id) ?? '', machineId: target.id, title: threadTitle(tab.label, panes), prompt: '', agent: '', model: '', status: 'unknown', updatedAt: new Date().toISOString(), branch: '', worktree: !!snapshot.workspaces.find((workspace) => workspace.workspace_id === tab.workspace_id)?.worktree?.is_linked_worktree, session: target.session, tabId: tab.tab_id, panes: [], bindingState: 'attached', bindingFingerprint: target.fingerprint, bindingConfigVersion: target.configVersion };
     database.saveThread(thread, panes.map((pane) => pane.terminal_id), tab.tab_id);
     saved.push(database.threadRows(target.id).find((row) => row.id === thread.id)!);
   }
