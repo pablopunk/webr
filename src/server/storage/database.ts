@@ -1,6 +1,6 @@
-import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { NodeSqliteClient, drizzleClient } from './node-sqlite-client';
 import { and, eq, max } from 'drizzle-orm';
 import type { DeviceSession } from '../auth/sessions';
 import { fileURLToPath } from 'node:url';
@@ -12,15 +12,14 @@ import type { Thread } from '../../lib/models';
 import type { LaunchInput } from '../../shared/runtime';
 
 export class MetadataDatabase {
-  readonly sqlite: Database.Database;
+  readonly sqlite: NodeSqliteClient;
   readonly db;
   constructor(path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-    this.sqlite = new Database(path);
+    this.sqlite = new NodeSqliteClient(path);
     if (path !== ':memory:') chmodSync(path, 0o600);
-    this.sqlite.pragma('journal_mode = WAL');
-    this.sqlite.pragma('foreign_keys = ON');
-    this.db = drizzle(this.sqlite, { schema });
+    this.sqlite.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON');
+    this.db = drizzle(drizzleClient(this.sqlite), { schema });
     migrate(this.db, { migrationsFolder: fileURLToPath(new URL('../../../drizzle', import.meta.url)) });
   }
   close() { this.sqlite.close(); }

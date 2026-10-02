@@ -11,7 +11,7 @@ import { readApprovedIcon } from '../src/server/transport/icons';
 it('migrates a private WAL database repeatedly and retains UUID aliases and avatars after reopening', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'hd-')); const path = join(directory, 'gateway.sqlite');
   try {
-    const first = new MetadataDatabase(path); expect(first.sqlite.pragma('journal_mode', { simple: true })).toBe('wal');
+    const first = new MetadataDatabase(path); expect(first.sqlite.prepare('PRAGMA journal_mode').get()?.journal_mode).toBe('wal');
     const target = new FakeTarget(); const record = reconcile(first, target, target.state).threads[0]; first.close();
     const second = new MetadataDatabase(path);
     expect(reconcile(second, target, target.state).threads[0].id).toBe(record.id); expect(second.threadRows()[0].avatar).toBe(record.avatarIndex);
