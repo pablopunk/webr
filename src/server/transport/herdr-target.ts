@@ -9,6 +9,8 @@ import { SshForward, sshOptions, remoteCommand, quoteShell } from './ssh';
 import type { LaunchInput } from '../../shared/runtime';
 import type { Machine } from '../../lib/machines';
 import { harnessName } from '../../lib/models';
+import { acceptsModelFlag, herdrAgentKinds, isHerdrAgentKind } from '../../shared/agent-kinds';
+import { modelListings, parseModelListing } from './model-discovery';
 import { HerdrActions } from '../runtime/herdr-actions';
 import { readApprovedIcon, type Icon } from './icons';
 import { targetFingerprint } from './identity';
@@ -17,8 +19,8 @@ import { validateInstalledSchema } from '../protocol/validate';
 import { ensureLocalSession } from './local-session';
 import { nativeLocations } from './native-locations';
 
-const knownKinds = ['claude', 'codex', 'opencode', 'pi'];
-const launchableKinds = ['claude', 'codex', 'opencode'];
+const MODEL_LISTING_TIMEOUT_MS = 15_000;
+const MODEL_LISTING_LIMIT = 4 * 1024 * 1024;
 type Dependencies = { process: typeof boundedProcess; cli: typeof openCliStream };
 export class HerdrTarget implements TargetAdapter {
   readonly id; readonly name; readonly session; readonly locations: LaunchLocation[];
@@ -88,16 +90,14 @@ export class HerdrTarget implements TargetAdapter {
   async catalog(_projectId?: string): Promise<Machine> {
     const api = await this.connect();
     await api.request('ping');
-    const present: string[] = [];
-    for (const kind of knownKinds) {
-      try {
-        const command = this.profile.transport === 'local' ? { command: '/bin/sh', args: ['-c', 'command -v "$1" >/dev/null', 'sh', kind] } : { command: 'ssh', args: [...sshOptions, this.profile.host!, 'command -v ' + quoteShell(kind) + ' >/dev/null'] };
-        await this.dependencies.process(command.command, command.args); present.push(kind);
-      } catch {}
-    }
-    return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id) => launchableKinds.includes(id)
-      ? { id, name: harnessName(id), models: ['Default'], customModels: true, launchEnabled: true }
-      : { id, name: harnessName(id), models: [], customModels: false, launchEnabled: false, reason: harnessName(id) + ' cannot be launched from Webr yet.' }) };
+    const run = (command: string, args: string[]) => this.profile.transport === 'local'
+      ? this.dependencies.process(command, args, undefined, MODEL_LISTING_TIMEOUT_MS, MODEL_LISTING_LIMIT)
+      : this.dependencies.process('ssh', [...sshOptions, this.profile.host!, [command, ...args].map(quoteShell).join(' ')], undefined, MODEL_LISTING_TIMEOUT_MS, MODEL_LISTING_LIMIT);
+    const isPresent = (kind: string) => run('/bin/sh', ['-c', 'command -v "$1" >/dev/null', 'sh', kind]).then(() => true, () => false);
+    const listModels = (kind: string) => modelListings[kind] ? run(kind, modelListings[kind].args).then((output) => parseModelListing(kind, output), () => []) : Promise.resolve([]);
+    const present = (await Promise.all(herdrAgentKinds.map(async (kind) => (await isPresent(kind)) ? kind : undefined))).filter((kind): kind is string => !!kind);
+    const discovered = await Promise.all(present.map(listModels));
+    return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id, index) => ({ id, name: harnessName(id), models: ['Default', ...discovered[index]], customModels: acceptsModelFlag(id), launchEnabled: true })) };
   }
   async icon(projectId: string) {
     const location = this.locations.find((location) => location.projectId === projectId);
@@ -114,7 +114,7 @@ export class HerdrTarget implements TargetAdapter {
     this.streams.add(stream); return stream;
   };
   async create(input: LaunchInput, threadId: string) { return this.actions().create(input, threadId); }
-  canLaunch(input: LaunchInput) { return this.compatible && launchableKinds.includes(input.agent) && this.locations.some((location) => location.projectId === input.projectId); }
+  canLaunch(input: LaunchInput) { return this.compatible && isHerdrAgentKind(input.agent) && this.locations.some((location) => location.projectId === input.projectId); }
   async start(input: LaunchInput, paneId: string, threadId: string) { return this.actions().start(input, paneId, threadId); }
   async prompt(paneId: string, prompt: string, terminalId: string, threadId: string, input: LaunchInput) { return this.actions().prompt(paneId, prompt, terminalId, threadId, input.agent, input); }
   async worktrees(projectId: string) { return this.actions().worktrees(this.workspaceOf(projectId)); }

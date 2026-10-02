@@ -15,7 +15,7 @@ it('creates a tab only in the selected workspace when worktree is off', async ()
 });
 it('validates native model argv and refuses unsupported adapters rather than sending shell strings', () => {
   expect(modelArguments('claude', 'Default')).toEqual([]); expect(modelArguments('opencode', 'host/custom')).toEqual(['--model', 'host/custom']);
-  expect(() => modelArguments('pi', 'Default')).toThrow('unsupported_launch_adapter'); expect(() => modelArguments('claude', 'model;unsafe')).toThrow();
+  expect(modelArguments('pi', 'Default')).toEqual([]); expect(modelArguments('pi', 'p/x')).toEqual(['--model', 'p/x']); expect(() => modelArguments('omp', 'x')).toThrow('unsupported_launch_adapter'); expect(() => modelArguments('nope', 'Default')).toThrow('unsupported_launch_adapter'); expect(() => modelArguments('claude', 'model;unsafe')).toThrow();
 });
 it('uses fresh named-agent identity before the only prompt and rejects a changed occupant', async () => {
   const id = randomUUID(); const calls: string[] = [];

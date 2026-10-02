@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { acceptsModelFlag, isHerdrAgentKind } from '../../shared/agent-kinds';
 import type { LaunchInput } from '../../shared/runtime';
 import type { LaunchLocation, TerminalDirection } from './target';
 import { nativePane, nativeTab, type NativeSnapshot } from '../protocol/native';
@@ -16,8 +17,10 @@ const AGENT_SHARE_OF_TERMINAL_SPLIT = 0.5;
 const SETTLED_READS = 3;
 const pause = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
 export function modelArguments(kind: string, model: string): string[] {
-  if (!['claude', 'codex', 'opencode'].includes(kind) || !/^[A-Za-z0-9_/.:+-]{1,120}$/.test(model)) throw new Error('unsupported_launch_adapter');
-  return model === 'Default' ? [] : ['--model', model];
+  if (!isHerdrAgentKind(kind) || !/^[A-Za-z0-9_/.:+-]{1,120}$/.test(model)) throw new Error('unsupported_launch_adapter');
+  if (model === 'Default') return [];
+  if (!acceptsModelFlag(kind)) throw new Error('unsupported_launch_adapter');
+  return ['--model', model];
 }
 export const agentName = (threadId: string) => 'web-' + threadId.replaceAll('-', '').slice(0, 28);
 

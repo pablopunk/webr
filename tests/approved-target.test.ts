@@ -61,8 +61,8 @@ it('offers control and launch for every Herdr-supported harness once the target 
   expect(target.writable).toBe(true); target.openTerminal('term_fixture', 'control', 80, 24, true, () => {}, () => {}); expect(cli.mock.calls[0][0]).toBe('/fixture/herdr'); expect(cli.mock.calls[0][1]).toContain('control'); expect(cli.mock.calls[0][1]).toContain('--takeover');
   const input = { ...launch, machineId: target.id, projectId: '0123-fixture:project' }; const id = randomUUID(); const created = await target.create(input, id); await target.start(input, created.paneId, id); await target.prompt(created.paneId, input.prompt, created.terminalId, id, input);
   expect(calls.filter((call) => call.method === 'agent.prompt')).toHaveLength(1); expect(calls.filter((call) => call.method === 'tab.create')).toHaveLength(0);
-  expect(target.canLaunch({ ...input, agent: 'codex' })).toBe(true); expect(target.canLaunch({ ...input, model: 'custom' })).toBe(true); expect(target.canLaunch({ ...input, agent: 'pi' as 'claude' })).toBe(false);
-  const harnesses = (await target.catalog(input.projectId)).harnesses; expect(harnesses.find((choice) => choice.id === 'claude')).toMatchObject({ launchEnabled: true, customModels: true }); expect(harnesses.find((choice) => choice.id === 'pi')?.launchEnabled).toBe(false);
+  expect(target.canLaunch({ ...input, agent: 'codex' })).toBe(true); expect(target.canLaunch({ ...input, model: 'custom' })).toBe(true); expect(target.canLaunch({ ...input, agent: 'pi' as 'claude' })).toBe(true); expect(target.canLaunch({ ...input, agent: 'nope' as 'claude' })).toBe(false);
+  const harnesses = (await target.catalog(input.projectId)).harnesses; expect(harnesses.find((choice) => choice.id === 'claude')).toMatchObject({ launchEnabled: true, customModels: true }); expect(harnesses.find((choice) => choice.id === 'pi')?.launchEnabled).toBe(true);
   await expect(target.start({ ...input, model: 'bad;model' }, created.paneId, id)).rejects.toThrow('unsupported_launch_adapter');
   target.close(); expect(target.writable).toBe(false); await expect(target.create(input, randomUUID())).rejects.toThrow('launch_unavailable');
 });
