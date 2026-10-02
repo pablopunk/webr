@@ -15,7 +15,7 @@
 .terminal-peek.is-bottom { right: 2px; bottom: 2px; left: 2px; height: 24px; }
 .native-pane-position .terminal-pane { height: 100%; display: flex; flex-direction: column; }
 .native-pane-layout.is-split .terminal-pane { border-radius: 5px; outline: 1px solid var(--line); outline-offset: -1px; transition: outline-color .15s; }
-.native-pane-layout.is-split .terminal-pane.is-active { outline-color: var(--focus-ring); }
+.native-pane-layout.is-split .terminal-pane.is-active { outline-color: color-mix(in srgb, var(--focus-ring) 15%, var(--line-strong)); }
 .terminal-host { flex: 1; min-height: 0; height: auto; overflow: hidden; }
 .terminal-pane { position: relative; }
 .terminal-input-capture { position: absolute; left: 12px; bottom: 8px; width: 2px; height: 2px; opacity: .01; padding: 0; border: 0; resize: none; }
