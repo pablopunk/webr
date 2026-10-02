@@ -11,6 +11,7 @@ const closeReason = (text: string, fallback: string) => /controller.*(already|co
 
 export function openCliStream(command: string, args: string[], options: SpawnOptions, onFrame: (frame: TerminalFrame) => void, onClose: (reason: string) => void): TerminalStream {
   const child = spawn(command, args, { ...options, stdio: ['pipe', 'pipe', 'pipe'], shell: false });
+  child.stdin!.on('error', () => {});
   let closed = false;
   let first = true;
   let stderrBytes = 0;

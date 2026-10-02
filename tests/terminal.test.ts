@@ -109,3 +109,10 @@ it('rejects input until baseline ACK and revokes an expired capability lease wit
   target.streams[0].onFrame(frame()); hub.action('one', { type: 'ack', streamId: 1, generation: 1, seq: 1 }); hub.action('one', { type: 'input', streamId: 1, generation: 1, text: 'valid', paste: false }); expect(target.streams[0].commands).toHaveLength(1);
   target.writable = false; await expect.poll(() => target.streams[0].closed).toBe(true); expect(hub.stats().controllers).toBe(0);
 });
+it('survives a child that already closed its stdin when the terminal is closed', async () => {
+  const { openCliStream } = await import('../src/server/terminal/cli');
+  const script = `exec 0<&-; sleep 0.2; echo '{"type":"terminal.closed","reason":"terminal closed"}'`;
+  const reason = await new Promise<string>((done) => openCliStream('sh', ['-c', script], {}, () => {}, done));
+  expect(reason).toBe('terminal_closed');
+  await new Promise((done) => setTimeout(done, 100));
+});
