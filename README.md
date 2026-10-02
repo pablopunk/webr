@@ -5,7 +5,7 @@
 <p align="center">
   <i align="center">Control your Herdr agents from anywhere.</i>
 </p>
-  
+
 <h1 align="center">webr</h1>
 
 > [!IMPORTANT]
@@ -18,8 +18,8 @@
 Everything is handled automatically via the plugin:
 
 ```sh
-webr plugin install   # start Webr with the Herdr server
-webr open             # open Webr (webr status shows the address)
+webr plugin install
+webr open             # Open the dashboard in your browser
 ```
 
 AGPL-3.0-or-later
