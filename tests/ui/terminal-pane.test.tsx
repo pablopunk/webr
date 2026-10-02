@@ -117,7 +117,7 @@ const stubClipboard = () => { const writeText = vi.fn(async () => {}); vi.stubGl
 it('copies the selection when the mouse is released, like Herdr copy on select', async () => {
   const writeText = stubClipboard(); const view = await mountWritablePane();
   fixture.selection = 'npm run dev'; fireEvent.mouseUp(view.container.querySelector('.terminal-host')!);
-  await waitFor(() => expect(writeText).toHaveBeenCalledWith('npm run dev')); expect(view.container.textContent).toContain('Copied to clipboard');
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith('npm run dev')); await waitFor(() => expect(view.container.textContent).toContain('Copied to clipboard'));
   writeText.mockClear(); fixture.selection = ''; fireEvent.mouseUp(view.container.querySelector('.terminal-host')!); expect(writeText).not.toHaveBeenCalled();
 });
 it('puts the selection on the clipboard for the copy shortcut', async () => {
