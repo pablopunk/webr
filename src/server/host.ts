@@ -90,12 +90,13 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
   });
   app.get('/api/stats', async () => hub.stats());
   if (ssr) {
-    await app.register(staticFiles, { root: resolve('dist/client'), serve: false });
+    const clientRoot = resolve(process.env.HERDR_WEB_DIST ?? 'dist', 'client');
+    await app.register(staticFiles, { root: clientRoot, serve: false });
     app.get('/_astro/*', async (request, reply) => {
       const path = z.string().regex(/^[A-Za-z0-9_./-]+$/).parse((request.params as { '*': string })['*']);
-      const full = resolve('dist/client/_astro', path);
-      if (!full.startsWith(resolve('dist/client/_astro') + '/')) return reply.code(404).send();
-      return reply.sendFile(path, resolve('dist/client/_astro'));
+      const full = resolve(clientRoot, '_astro', path);
+      if (!full.startsWith(resolve(clientRoot, '_astro') + '/')) return reply.code(404).send();
+      return reply.sendFile(path, resolve(clientRoot, '_astro'));
     });
     app.get('/*', async (request, reply) => {
       reply.hijack();

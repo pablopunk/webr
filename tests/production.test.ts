@@ -9,14 +9,14 @@ import { randomUUID } from 'node:crypto';
 import { boundedProcess } from '../src/server/transport/process';
 
 it('starts without an account or secret with coherent SSR, static assets, HTTP and two WS on one port', async () => {
-  await boundedProcess('mise', ['exec', '--', 'pnpm', 'run', 'build'], undefined, 30_000, 1024 * 1024);
-  const directory = await mkdtemp(join(tmpdir(), 'hp-'));
+  const directory = await mkdtemp(join(tmpdir(), 'hp-')); const dist = join(process.cwd(), '.data', 'test-dist-' + randomUUID());
+  await boundedProcess('mise', ['exec', '--', 'pnpm', 'exec', 'astro', 'build', '--outDir', dist], undefined, 30_000, 1024 * 1024);
   const listener = createServer(); await new Promise<void>((resolve) => listener.listen(0, '127.0.0.1', resolve));
   const port = (listener.address() as { port: number }).port; await new Promise<void>((resolve) => listener.close(() => resolve()));
   const origin = 'http://127.0.0.1:' + port;
    const path = join(directory, 'gateway.sqlite');
    const registry = join(directory, 'targets.json'); await writeFile(registry, '[]');
-   const child = spawn(process.execPath, ['--import', 'tsx', 'server/start.ts'], { env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), HERDR_WEB_DATABASE: path, HERDR_WEB_ORIGIN: origin, BETTER_AUTH_SECRET: '', HERDR_WEB_EVIDENCE_KEY: '', HERDR_WEB_TARGETS: registry, HERDR_WEB_CONNECT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+   const child = spawn(process.execPath, ['--import', 'tsx', 'server/start.ts'], { env: { ...process.env, HERDR_WEB_DIST: dist, HOST: '127.0.0.1', PORT: String(port), HERDR_WEB_DATABASE: path, HERDR_WEB_ORIGIN: origin, BETTER_AUTH_SECRET: '', HERDR_WEB_EVIDENCE_KEY: '', HERDR_WEB_TARGETS: registry, HERDR_WEB_CONNECT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = ''; child.stdout.on('data', (chunk) => { output += chunk.toString(); }); child.stderr.on('data', (chunk) => { output += chunk.toString(); });
   const sockets: WebSocket[] = [];
   try {
@@ -38,6 +38,6 @@ it('starts without an account or secret with coherent SSR, static assets, HTTP a
   } finally {
     for (const socket of sockets) socket.close();
     child.kill('SIGTERM'); await new Promise<void>((resolve) => { if (child.exitCode !== null) resolve(); else child.once('exit', () => resolve()); });
-    await rm(directory, { recursive: true, force: true });
+    await rm(directory, { recursive: true, force: true }); await rm(dist, { recursive: true, force: true });
   }
 }, 40_000);

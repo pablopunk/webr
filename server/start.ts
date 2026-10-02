@@ -21,7 +21,7 @@ const database = new MetadataDatabase(process.env.HERDR_WEB_DATABASE ?? '.data/g
 const key = evidenceKey(database);
 const profiles = await loadRegistry(process.env.HERDR_WEB_TARGETS);
 const manager = new RuntimeManager(database, profiles.map((profile) => new HerdrTarget(profile, { read: () => database.getSetting('validation:' + profile.id), key })));
-const { handler } = await import(pathToFileURL(resolve('dist/server/entry.mjs')).href);
+const { handler } = await import(pathToFileURL(resolve(process.env.HERDR_WEB_DIST ?? 'dist', 'server/entry.mjs')).href);
 const tls = process.env.HERDR_WEB_TLS_CERT && process.env.HERDR_WEB_TLS_KEY ? { cert: await readFile(process.env.HERDR_WEB_TLS_CERT), key: await readFile(process.env.HERDR_WEB_TLS_KEY) } : undefined;
 let launchValidationRunning = false;
 const app = await createHost(manager, origin, handler, tls, async (selection) => {
