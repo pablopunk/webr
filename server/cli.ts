@@ -8,6 +8,7 @@ import { defaultDeps, installPlugin, pluginStatus, uninstallWebrPlugin, updatePl
 import { checkHerdr } from './herdr-check';
 import { modeLines, pluginMode } from './plugin/mode';
 import { openWebr, statusLines } from './where';
+import { isPortOpen } from './plugin/probe';
 import { packageInfo } from './package-info';
 import { realUpdateEnvironment, runUpdate } from './update';
 import { refreshLatestVersionCache, updateHint } from './update/hint';
@@ -16,7 +17,7 @@ const HELP = `Webr — control your Herdr agents from anywhere.
 
 Usage
   webr [start] [options]        Run the server in this terminal
-  webr plugin install [options]  Start Webr whenever the Herdr server starts
+  webr plugin install [options]  Start Webr whenever the Herdr server starts, and open it
   webr plugin uninstall          Remove the Herdr plugin
   webr plugin status             Show whether the plugin is installed and Webr is running
   webr invite [--port <port>]    Print a one-time code and QR to connect a device
@@ -27,6 +28,7 @@ Usage
 Options
   --port <port>     Port to listen on (default: first free port from 4444, then remembered)
   --host <address>  Listen on a specific address (default 0.0.0.0, every interface)
+  --no-open         Don't open the browser after "plugin install"
   --origin <url>    Public URL when served through a proxy, e.g. https://mac.tailnet.ts.net
   -v, --version     Print the version
   -h, --help        Print this help
@@ -36,7 +38,7 @@ Localhost never needs a token. Any other device asks for access and you approve 
 `;
 
 const options = {
-  port: { type: 'string' }, host: { type: 'string' }, origin: { type: 'string' },
+  port: { type: 'string' }, host: { type: 'string' }, origin: { type: 'string' }, 'no-open': { type: 'boolean' },
   help: { type: 'boolean', short: 'h' }, version: { type: 'boolean', short: 'v' },
 } as const;
 
@@ -80,6 +82,14 @@ async function pluginCommand(action: string, values: ReturnType<typeof parseComm
   const deps = defaultDeps();
   const lines = action === 'install' ? await installPlugin(pluginSettings(values), deps) : action === 'uninstall' ? await uninstallWebrPlugin(deps) : await pluginStatus(deps);
   for (const line of lines.filter(Boolean)) console.log(line);
+  if (action === 'install' && !values['no-open']) await openWhenUp(knownPort(values.port ? ['--port', values.port] : []));
+}
+
+async function openWhenUp(port: number) {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if (await isPortOpen({ host: '127.0.0.1', port })) return void (await openWebr(port)).forEach((line) => console.log(line));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
 }
 
 export async function main(argv: string[]) {

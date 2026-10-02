@@ -62,7 +62,7 @@ export async function updatePlugin(deps: PluginDeps) {
   if (!installedPlugin(deps.run)) return undefined;
   const address = probeAddress(readPluginConfig(pluginConfigDir(deps.run)));
   if ((await isPortOpen(address)) && !(await stopPluginWebr(deps.stateDir, address))) return [`Webr is running on port ${address.port} but the plugin did not start it. Stop it and run "webr plugin install" to use the new version.`];
-  const refreshed = deps.run('webr', ['plugin', 'install']);
+  const refreshed = deps.run('webr', ['plugin', 'install', '--no-open']);
   return refreshed.ok ? quiet(refreshed.output) : [`The new Webr could not refresh the plugin. Run "webr plugin install". ${quiet(refreshed.output).join(' ')}`];
 }
 
