@@ -59,10 +59,11 @@ const ThreadRow = memo(function ThreadRow({ thread, project, machineName, curren
 function ThreadLink({ thread, project, machineName, current, showProject, editor }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean; editor?: ReactNode }) {
   const launching = isLaunching(thread); const failed = launchFailed(thread);
   const StatusIcon = failed ? TriangleAlert : launching ? undefined : statusBadges[thread.status];
+  const needsAttention = failed || thread.status === 'blocked' || thread.status === 'done';
   const status = launching ? launchLabel(thread) : failed ? 'Launch stopped' : statusLabel[thread.status];
   const context = launching || failed ? status : showProject ? project?.name : harnessName(thread.agent);
   const Row = editor ? 'div' : 'a';
-  return <Tooltip label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`} side="right"><Row className={`thread-row ${current ? 'is-current' : ''}`} href={editor ? undefined : `/threads/${encodeURIComponent(thread.id)}`} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${status}`}>
+  return <Tooltip label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`} side="right"><Row className={`thread-row ${current ? 'is-current' : ''} ${needsAttention ? `needs-attention status-${failed ? 'blocked' : thread.status}` : ''}`} href={editor ? undefined : `/threads/${encodeURIComponent(thread.id)}`} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${status}`}>
     <span className="thread-avatar" aria-hidden="true"><ThreadAvatar thread={thread} working={thread.status === 'working' || launching} size={24} />{StatusIcon && <StatusIcon className={`thread-status status-${failed ? 'blocked' : thread.status}`} size={14} strokeWidth={2.2} />}</span>
     <span className="thread-copy"><span className="thread-context">{showProject && project && !launching && !failed && <ProjectIcon project={project} />}{context}</span>{editor ?? <span className="thread-name">{thread.title}</span>}</span>
     <span className="thread-time">{relativeTime(thread.updatedAt)}</span>
