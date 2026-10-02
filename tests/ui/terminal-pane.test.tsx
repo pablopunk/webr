@@ -77,3 +77,37 @@ it('reports focus to applications that ask for it, so they draw a solid cursor w
   const input = screen.getByLabelText('Terminal input'); fixture.input.mockClear();
   input.blur(); expect(fixture.input).toHaveBeenLastCalledWith('\x1b[O'); input.focus(); expect(fixture.input).toHaveBeenLastCalledWith('\x1b[I');
 });
+const mountWritablePane = async () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
+  const view = render(<TerminalPane pane={{ id: 'w1:p1', terminalId: 'term_fixture', title: 'Agent', kind: 'agent' }} machineId="local" threadId="fixture-thread" active canControl onFocus={() => {}} />);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
+  await act(async () => fixture.mount.mock.calls[0][0].onState('Input control is active.', true));
+  fixture.input.mockClear(); return view;
+};
+const image = (name = 'shot.png', type = 'image/png') => new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], name, { type });
+const filesTransfer = (files: File[]) => ({ files, types: ['Files'], dropEffect: 'none' });
+it('uploads a dropped image and pastes its path into the terminal, with an overlay while dragging', async () => {
+  const upload = vi.fn(async () => ({ ok: true, json: async () => ({ path: '/data/uploads/image-1.png' }) })); vi.stubGlobal('fetch', upload);
+  const view = await mountWritablePane();
+  fireEvent.dragEnter(window, { dataTransfer: filesTransfer([image()]) }); expect(view.container.querySelector('.terminal-drop-overlay')).not.toBeNull();
+  fireEvent.drop(window, { dataTransfer: filesTransfer([image()]) }); expect(view.container.querySelector('.terminal-drop-overlay')).toBeNull();
+  await waitFor(() => expect(fixture.input).toHaveBeenCalledWith('/data/uploads/image-1.png ', true));
+  expect(upload).toHaveBeenCalledWith('/api/uploads?machineId=local', expect.objectContaining({ method: 'POST', headers: { 'Content-Type': 'image/png' } }));
+  expect(view.container.textContent).toContain('Image attached');
+});
+it('attaches a pasted screenshot and several images in one paste', async () => {
+  let count = 0; vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ path: `/u/image ${++count}.png` }) })));
+  await mountWritablePane();
+  const paste = new Event('paste', { bubbles: true, cancelable: true }); Object.assign(paste, { clipboardData: { files: [image('a.png'), image('b.jpg', 'image/jpeg')], getData: () => '' } });
+  document.body.dispatchEvent(paste);
+  await waitFor(() => expect(fixture.input).toHaveBeenCalledWith('/u/image\\ 1.png /u/image\\ 2.png ', true));
+});
+it('explains what went wrong instead of silently ignoring a drop', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, json: async () => ({ error: 'uploads_unsupported_target' }) })));
+  const view = await mountWritablePane();
+  fireEvent.drop(window, { dataTransfer: filesTransfer([new File(['x'], 'notes.txt', { type: 'text/plain' })]) });
+  await waitFor(() => expect(view.container.textContent).toContain('Only PNG, JPEG, GIF and WebP images can be attached.'));
+  fireEvent.drop(window, { dataTransfer: filesTransfer([image()]) });
+  await waitFor(() => expect(view.container.textContent).toContain('Images can be attached only on the Local machine for now.')); expect(fixture.input).not.toHaveBeenCalled();
+});

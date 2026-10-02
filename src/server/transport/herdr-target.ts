@@ -25,6 +25,7 @@ export class HerdrTarget implements TargetAdapter {
   readonly fingerprint; configVersion = 1;
   get enabled() { return this.profile.enabled; }
   get writable() { return this.compatible; }
+  get acceptsLocalFiles() { return this.profile.transport === 'local'; }
   private api?: SocketApi;
   private forwarding?: SshForward;
   private compatible = false;

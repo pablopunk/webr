@@ -33,3 +33,6 @@
 @keyframes launch-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .launch-step.is-active svg { animation: none; } }
 .terminal-host .xterm { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+.terminal-drop-overlay { position: absolute; inset: 8px; z-index: 15; display: grid; place-content: center; justify-items: center; gap: 8px; border: 1.5px dashed var(--line-strong); border-radius: 10px; background: color-mix(in srgb, var(--terminal-bg) 82%, transparent); color: var(--ink); font-size: 13px; pointer-events: none; }
+.terminal-attach-notice { position: absolute; right: 14px; bottom: 12px; z-index: 16; max-width: calc(100% - 28px); padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink-soft); font-size: 12px; }
+.terminal-attach-notice.is-error { color: #d16a64; }

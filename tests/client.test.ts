@@ -133,3 +133,7 @@ it('sends its own size as soon as control opens, so a fresh pane is never left a
   deliver(1, 80, 44); writes[0].finish(); pane.input('still waiting for the right size'); expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false);
   deliver(2, 80, 24); writes[1].finish(); pane.input('now'); expect(JSON.parse(binary.sent.at(-1)!).text).toBe('now'); manager.stop();
 });
+it('escapes image paths the way a terminal drag and drop does', async () => {
+  const { escapePathForTerminal } = await import('../src/client/image-attach');
+  expect(escapePathForTerminal('/Users/me/My Shots/a(1).png')).toBe('/Users/me/My\\ Shots/a\\(1\\).png'); expect(escapePathForTerminal('/plain/image-1.png')).toBe('/plain/image-1.png');
+});

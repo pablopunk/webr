@@ -12,6 +12,7 @@ export type TargetAdapter = {
   enabled?: boolean;
   locations: LaunchLocation[];
   writable: boolean;
+  acceptsLocalFiles?: boolean;
   subscribe(onEvent: () => void, onClose: (reason: string) => void, paneIds?: string[]): Promise<() => void>;
   snapshot(): Promise<NativeSnapshot>;
   catalog(projectId?: string): Promise<Machine>;

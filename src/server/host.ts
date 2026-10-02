@@ -7,11 +7,12 @@ import type { RuntimeManager } from './runtime/manager';
 import { launchInput, opaqueId } from '../shared/runtime';
 import { registerWebsockets } from './websockets';
 import { createWorkspace } from './runtime/workspace';
+import { MAX_IMAGE_BYTES, UploadStore, uploadContentTypes } from './uploads';
 
 const localOwner = 'local';
 type SsrHandler = (request: FastifyRequest['raw'], response: import('node:http').ServerResponse, next: (error?: unknown) => void, locals: Record<string, unknown>) => void;
 
-export async function createHost(manager: RuntimeManager, origin: string, ssr?: SsrHandler, tls?: { key: Buffer; cert: Buffer }) {
+export async function createHost(manager: RuntimeManager, origin: string, ssr?: SsrHandler, tls?: { key: Buffer; cert: Buffer }, uploads = new UploadStore()) {
   const app = Fastify({ logger: false, bodyLimit: 16 * 1024, ...(tls ? { https: tls } : {}), requestTimeout: 10_000 });
   const configuredOrigin = new URL(origin);
   const allowedHosts = new Set([configuredOrigin.host]);
@@ -39,6 +40,15 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     return manager.catalog(machineId, projectId);
   });
   app.get('/api/runtime', async () => manager.bootstrap());
+  app.addContentTypeParser(uploadContentTypes, { parseAs: 'buffer', bodyLimit: MAX_IMAGE_BYTES }, (_request, body, done) => done(null, body));
+  app.post('/api/uploads', { bodyLimit: MAX_IMAGE_BYTES }, async (request, reply) => {
+    const { machineId } = z.object({ machineId: opaqueId }).strict().parse(request.query);
+    const supervisor = manager.supervisors.get(machineId);
+    if (!supervisor?.connected) return reply.code(409).send({ error: 'machine_disconnected' });
+    if (!supervisor.target.acceptsLocalFiles) return reply.code(409).send({ error: 'uploads_unsupported_target' });
+    if (!Buffer.isBuffer(request.body)) return reply.code(415).send({ error: 'unsupported_image' });
+    return { path: await uploads.save(request.headers['content-type'], request.body) };
+  });
   app.post('/api/workspaces', async (request, reply) => {
     const input = z.object({ machineId: opaqueId, path: z.string().startsWith('/').max(1000).refine((path) => !/[\x00-\x1f]/.test(path)), label: z.string().trim().min(1).max(80) }).strict().parse(request.body);
     const key = z.uuid().parse(request.headers['idempotency-key']);
@@ -95,6 +105,10 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
   app.setErrorHandler((error, _request, reply) => {
     const message = error instanceof Error ? error.message : '';
     if (error instanceof z.ZodError) return reply.code(400).send({ error: 'invalid_request' });
+    const status = (error as { statusCode?: number }).statusCode;
+    if (status === 413) return reply.code(413).send({ error: 'image_too_large' });
+    if (status === 415 || message === 'unsupported_image') return reply.code(415).send({ error: 'unsupported_image' });
+    if (status && status >= 400 && status < 500) return reply.code(status).send({ error: 'invalid_request' });
     return reply.code(['idempotency_conflict', 'binding_conflict', 'invalid_adoption'].includes(message) ? 409 : 503).send({ error: ['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected'].includes(message) ? message : 'request_failed' });
   });
   app.addHook('onClose', async () => manager.close());

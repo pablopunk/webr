@@ -6,6 +6,9 @@ import { useRuntime } from '../client/provider';
 import { TerminalInput, terminalKeyBytes } from './TerminalInput';
 import { bindTerminalGestures } from '../client/terminal-gestures';
 import { conflictMessage } from '../client/terminal-manager';
+import { ImagePlus } from 'lucide-react';
+import { useImageAttachments } from './useImageAttachments';
+import { imageFilesFrom } from '../client/image-attach';
 
 function themeColors() {
   const styles = getComputedStyle(document.documentElement);
@@ -38,6 +41,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
   const [message, setMessage] = useState('Connecting…');
   const [writable, setWritable] = useState(false);
   const writableRef = useRef(false);
+  const images = useImageAttachments({ machineId, active, writable: writableRef, send: (text) => { control.current?.input(text, true); } });
 
   useEffect(() => {
     if (!host.current) return;
@@ -99,19 +103,25 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
       if (bytes) { event.preventDefault(); event.stopPropagation(); control.current?.input(bytes); } else if (event.key.length === 1 && !event.ctrlKey) focusInput();
     };
     const onPaste = (event: ClipboardEvent) => {
+      const fromInput = (event.target as HTMLElement).classList?.contains('terminal-input-capture');
+      if (!unfocused(event) && !fromInput) return;
+      const pastedImages = imageFilesFrom(event.clipboardData);
+      if (pastedImages.length) { event.preventDefault(); event.stopPropagation(); void images.attach(pastedImages); return; }
       const text = event.clipboardData?.getData('text/plain');
-      if (!text || !unfocused(event) || (event.target as HTMLElement).classList?.contains('terminal-input-capture')) return;
+      if (!text || fromInput) return;
       event.preventDefault(); event.stopPropagation(); control.current?.input(text, true);
     };
     window.addEventListener('keydown', onKeyDown, true); window.addEventListener('paste', onPaste, true);
     return () => { window.removeEventListener('keydown', onKeyDown, true); window.removeEventListener('paste', onPaste, true); };
-  }, [active, writable]);
+  }, [active, writable, images.attach]);
   useEffect(() => { const refocus = () => { if (active) focusInput(); }; window.addEventListener('focus', refocus); return () => window.removeEventListener('focus', refocus); }, [active, writable]);
 
   return <section ref={section} className={`terminal-pane ${active ? 'is-active' : ''}`} aria-label={`${pane.title} terminal`} onClick={() => { onFocus(); if (canControl && !writableRef.current) control.current?.control(); focusInput(); }}>
     <span className="terminal-status" role="status">{message}</span>
     {message === conflictMessage && <div className="terminal-control-conflict">Another Herdr client controls this terminal.<button type="button" onClick={(event) => { event.stopPropagation(); if (confirm('Replace the other Herdr client that controls this terminal? Its input stops working.')) control.current?.control(true); }}>Take over</button></div>}
     <div ref={host} className="terminal-host" />
+    {images.dragging && <div className="terminal-drop-overlay" aria-hidden="true"><ImagePlus size={22} strokeWidth={1.6} /><span>Drop image to attach</span></div>}
+    {images.notice && <div className={`terminal-attach-notice is-${images.notice.tone}`} role={images.notice.tone === 'error' ? 'alert' : 'status'}>{images.notice.text}</div>}
     {writable && <TerminalInput onInput={(text, paste) => control.current?.input(text, paste)} onFocusChange={(focused) => { if (term.current?.modes.sendFocusMode) control.current?.input(focused ? FOCUS_IN : FOCUS_OUT); }} />}
   </section>;
 }
