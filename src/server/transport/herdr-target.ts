@@ -84,7 +84,7 @@ export class HerdrTarget implements TargetAdapter {
     if (tab.workspace_id !== workspace.workspace_id || pane.workspace_id !== workspace.workspace_id || pane.tab_id !== tab.tab_id) throw new Error('workspace_identity_mismatch');
     return { workspaceId: workspace.workspace_id, tabId: tab.tab_id, terminalId: pane.terminal_id };
   }
-  async catalog(projectId?: string): Promise<Machine> {
+  async catalog(_projectId?: string): Promise<Machine> {
     const api = await this.connect();
     await api.request('ping');
     const present: string[] = [];
@@ -94,7 +94,6 @@ export class HerdrTarget implements TargetAdapter {
         await this.dependencies.process(command.command, command.args); present.push(kind);
       } catch {}
     }
-    const location = this.locations.find((location) => location.projectId === projectId);
     return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id) => launchableKinds.includes(id)
       ? { id, name: harnessName(id), models: ['Default'], customModels: true, launchEnabled: true }
       : { id, name: harnessName(id), models: [], customModels: false, launchEnabled: false, reason: harnessName(id) + ' cannot be launched from Herdr Web yet.' }) };

@@ -1,7 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { discoverLocalSession, localSessionBootstrap, type LocalSessionDependencies } from '../src/server/transport/local-session';
 import { profileSchema } from '../src/server/transport/registry';
-import { MetadataDatabase } from '../src/server/storage/database';
 import { SocketApi } from '../src/server/protocol/socket';
 
 const session = (name: string, running = true) => ({ name, default: name === 'default', running, socket_path: `/test/${name}/herdr.sock` });
