@@ -1,12 +1,11 @@
 import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { MetadataDatabase } from '../src/server/storage/database';
 import { RuntimeManager } from '../src/server/runtime/manager';
 import { loadRegistry } from '../src/server/transport/registry';
 import { HerdrTarget } from '../src/server/transport/herdr-target';
 import { createHost } from '../src/server/host';
 import { serverPort } from './port';
+import { builtSsr, devSsr } from './ssr';
 
 const host = process.env.HOST ?? '127.0.0.1';
 const port = serverPort();
@@ -19,10 +18,10 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invali
 const database = new MetadataDatabase(process.env.WEBR_DATABASE ?? '.data/gateway.sqlite');
 const profiles = await loadRegistry(process.env.WEBR_TARGETS);
 const manager = new RuntimeManager(database, profiles.map((profile) => new HerdrTarget(profile)));
-const { handler } = await import(pathToFileURL(resolve(process.env.WEBR_DIST ?? 'dist', 'server/entry.mjs')).href);
+const ssr = process.env.WEBR_DEV === '1' ? await devSsr(port) : await builtSsr();
 const tls = process.env.WEBR_TLS_CERT && process.env.WEBR_TLS_KEY ? { cert: await readFile(process.env.WEBR_TLS_CERT), key: await readFile(process.env.WEBR_TLS_KEY) } : undefined;
-const app = await createHost(manager, origin, handler, tls);
+const app = await createHost(manager, origin, ssr.handler, tls);
 await app.listen({ host, port });
 manager.start();
 console.log(`Webr listening at ${origin}`);
-for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => { void app.close().finally(() => { database.close(); process.exit(0); }); });
+for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => { void Promise.all([app.close(), ssr.stop()]).finally(() => { database.close(); process.exit(0); }); });

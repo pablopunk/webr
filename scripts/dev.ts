@@ -29,7 +29,6 @@ async function stopPreviousServer() {
 }
 
 await stopPreviousServer();
-execFileSync('pnpm', ['run', 'build'], { stdio: 'inherit' });
-const server = spawn('pnpm', ['start'], { stdio: 'inherit', env: { ...process.env, PORT: String(port) } });
+const server = spawn('pnpm', ['start'], { stdio: 'inherit', env: { ...process.env, PORT: String(port), WEBR_DEV: '1' } });
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => server.kill(signal));
 server.on('exit', (code) => process.exit(code ?? 0));
