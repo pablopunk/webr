@@ -50,7 +50,7 @@
 .thread-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); }
 .thread-name-input { width: 100%; min-width: 0; margin: -2px -4px; padding: 1px 4px; border: 1px solid var(--focus-ring); border-radius: 4px; outline: 0; background: var(--surface); color: var(--ink); font: inherit; }
 .thread-time { grid-column: 3; grid-row: 1; justify-self: end; font: 10px var(--font-mono); color: var(--ink-soft); }
-.thread-status { position: absolute; right: -4px; bottom: -4px; padding: 1px; border-radius: 50%; background: var(--sidebar); color: var(--ink-soft); }
+.thread-status { position: absolute; top: -5px; left: -5px; padding: 1px; border-radius: 50%; background: var(--sidebar); color: var(--ink-soft); }
 .thread-row.is-current .thread-status { background: var(--surface-raised); }
 .thread-row:hover .thread-status { background: var(--card-hover); }
 .thread-status.status-blocked { color: var(--blocked); }

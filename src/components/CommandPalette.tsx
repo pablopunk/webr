@@ -1,8 +1,7 @@
 import { confirmDialog } from './dialogs';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { BotAvatar } from 'bot-avatars';
+import { ThreadAvatar } from './ThreadAvatar';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, FolderTree, LayoutList, Monitor, Moon, PanelBottom, PanelLeft, PanelRight, Plus, Settings2, SquareTerminal, Sun, TerminalSquare, X } from 'lucide-react';
-import { avatarForThread } from '../lib/avatars';
 import type { Project, Thread } from '../lib/models';
 import { defaultShortcuts, formatShortcut, getShortcuts, type ShortcutAction } from './shortcuts';
 import type { SidebarMode } from './Sidebar';
@@ -75,7 +74,7 @@ export function CommandPalette({ open, onClose, projects, threads, thread, focus
       { label: 'Previous pane', icon: <ArrowLeft size={16} />, shortcut: 'previousPane' as const, run: () => focusPane(-1) },
        ...thread.panes.map((pane, index) => ({ label: `Focus ${pane.title}`, icon: <TerminalSquare size={16} />, detail: `Pane ${index + 1}`, run: () => onFocusPane(pane.id) })),
     ] : []),
-    ...threads.map((item) => ({ label: item.title, icon: <BotAvatar {...avatarForThread(item)} size={22} state={item.status === 'working' ? 'working' : 'default'} paused={item.status !== 'working'} />, detail: projects.find((project) => project.id === item.projectId)?.name,
+    ...threads.map((item) => ({ label: item.title, icon: <ThreadAvatar thread={item} working={item.status === 'working'} size={22} />, detail: projects.find((project) => project.id === item.projectId)?.name,
       run: () => { void navigate(`/threads/${encodeURIComponent(item.id)}`); } })),
   ], [projects, threads, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onToggleTerminal, onCloseTerminal]);
 

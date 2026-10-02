@@ -1,14 +1,13 @@
 import { memo, useState, type ReactNode } from 'react';
 import { ContextMenu } from '@base-ui/react/context-menu';
-import { BotAvatar } from 'bot-avatars';
 import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, LayoutList, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Plus, Settings2, Trash2, X } from 'lucide-react';
 import { type Project, type Thread, harnessName, relativeTime } from '../lib/models';
-import { avatarForThread } from '../lib/avatars';
 import { isLaunching, launchFailed, launchLabel } from '../lib/launch';
 import type { Machine } from '../lib/machines';
 import { ProjectIcon } from './ProjectIcon';
 import { OpenWorktree } from './OpenWorktree';
 import { ThreadTitleEditor } from './ThreadTitleEditor';
+import { ThreadAvatar } from './ThreadAvatar';
 import { groupProjectLocations } from '../client/project-groups';
 import { alertDialog, confirmDialog } from './dialogs';
 import { deleteArchivedThreads, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
@@ -63,7 +62,7 @@ function ThreadLink({ thread, project, machineName, current, showProject, editor
   const context = launching || failed ? status : showProject ? project?.name : harnessName(thread.agent);
   const Row = editor ? 'div' : 'a';
   return <Row className={`thread-row ${current ? 'is-current' : ''}`} href={editor ? undefined : `/threads/${encodeURIComponent(thread.id)}`} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${status}`} title={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`}>
-    <span className="thread-avatar" aria-hidden="true"><BotAvatar {...avatarForThread(thread)} state={thread.status === 'working' || launching ? 'working' : 'default'} size={24} paused={thread.status !== 'working' && !launching} />{StatusIcon && <StatusIcon className={`thread-status status-${failed ? 'blocked' : thread.status}`} size={12} strokeWidth={2.2} />}</span>
+    <span className="thread-avatar" aria-hidden="true"><ThreadAvatar thread={thread} working={thread.status === 'working' || launching} size={24} />{StatusIcon && <StatusIcon className={`thread-status status-${failed ? 'blocked' : thread.status}`} size={14} strokeWidth={2.2} />}</span>
     <span className="thread-copy"><span className="thread-context">{showProject && project && !launching && !failed && <ProjectIcon project={project} />}{context}</span>{editor ?? <span className="thread-name">{thread.title}</span>}</span>
     <span className="thread-time">{relativeTime(thread.updatedAt)}</span>
   </Row>;
