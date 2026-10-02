@@ -11,6 +11,8 @@ const REMOTE_HEADERS = { 'X-Forwarded-For': '203.0.113.9' };
 const INSTALLERS = ['npm', 'pnpm', 'bun'] as const;
 type Installer = (typeof INSTALLERS)[number];
 
+const NO_HERDR_SOCKET = '/nonexistent/herdr.sock';
+
 type Sandbox = { root: string; env: NodeJS.ProcessEnv; binDir: string };
 
 const installCommands: Record<Installer, (tarball: string, sandbox: Sandbox) => { command: string; args: string[]; env: NodeJS.ProcessEnv; binDir: string }> = {
@@ -77,7 +79,7 @@ async function verifyInstaller(installer: Installer, tarball: string, root: stri
   step(`${installer}: install ${tarball}`);
   const sandbox: Sandbox = { root, env: {}, binDir: '' };
   const install = installCommands[installer](tarball, sandbox);
-  const env = { ...process.env, ...install.env, WEBR_HOME: join(root, 'webr-home'), PATH: [install.binDir, process.env.PATH].join(delimiter) };
+  const env = { ...process.env, ...install.env, WEBR_HOME: join(root, 'webr-home'), HERDR_SOCKET_PATH: NO_HERDR_SOCKET, PATH: [install.binDir, process.env.PATH].join(delimiter) };
   await run(install.command, install.args, { env, maxBuffer: 16 * 1024 * 1024 });
   const version = (await run('webr', ['--version'], { env })).stdout.trim();
   expect(/^\d+\.\d+\.\d+/.test(version), `webr --version to print a version, got "${version}"`);
