@@ -40,7 +40,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     if (disposed || !host.current) return;
     const terminal = new xterm.Terminal({
       fontFamily: '"DM Mono", ui-monospace, monospace', fontSize: 12.5,
-      lineHeight: 1.55, letterSpacing: 0.15, cursorBlink: true,
+      lineHeight: 1.55, letterSpacing: 0.15, cursorBlink: true, cursorInactiveStyle: 'block',
       allowTransparency: false, scrollback: 0, theme: themeColors(), disableStdin: true,
       linkHandler: { activate: () => {} },
     });
@@ -105,6 +105,6 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     <span className="terminal-status" role="status">{message}</span>
     {message === conflictMessage && <div className="terminal-control-conflict">Another Herdr client controls this terminal.<button type="button" onClick={(event) => { event.stopPropagation(); if (confirm('Replace the other Herdr client that controls this terminal? Its input stops working.')) control.current?.control(true); }}>Take over</button></div>}
     <div ref={host} className="terminal-host" />
-    {writable && <TerminalInput onInput={(text, paste) => control.current?.input(text, paste)} onFocusChange={(focused) => term.current?.element?.classList.toggle('focus', focused)} />}
+    {writable && <TerminalInput onInput={(text, paste) => control.current?.input(text, paste)} />}
   </section>;
 }

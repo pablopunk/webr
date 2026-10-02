@@ -58,14 +58,13 @@ it('sends keys and pastes with no focus anywhere, and leaves other inputs alone'
   const paste = new Event('paste', { bubbles: true, cancelable: true }); Object.assign(paste, { clipboardData: { getData: () => 'pasted text' } }); document.body.dispatchEvent(paste); expect(fixture.input).toHaveBeenLastCalledWith('pasted text', true);
   fixture.input.mockClear(); fireEvent.keyDown(screen.getByLabelText('Search'), { key: 'Enter' }); expect(fixture.input).not.toHaveBeenCalled();
 });
-it('moves focus from the terminal emulator to the input and shows the cursor as active', async () => {
+it('moves focus from the terminal emulator to the input', async () => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   let helper: HTMLTextAreaElement | undefined;
   fixture.mount.mockImplementation((options) => { helper = options.terminal.textarea; return { control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }; });
-  const view = render(<TerminalPane pane={{ id: 'w1:p1', terminalId: 'term_fixture', title: 'Agent', kind: 'agent' }} machineId="fixture" threadId="fixture-thread" active canControl onFocus={() => {}} />);
+  render(<TerminalPane pane={{ id: 'w1:p1', terminalId: 'term_fixture', title: 'Agent', kind: 'agent' }} machineId="fixture" threadId="fixture-thread" active canControl onFocus={() => {}} />);
   await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
   await act(async () => fixture.mount.mock.calls[0][0].onState('Input control is active.', true));
   document.body.append(helper!); helper!.focus();
   expect(document.activeElement).toBe(screen.getByLabelText('Terminal input'));
-  expect(view.container.querySelector('.xterm-screen')?.classList.contains('focus')).toBe(true);
 });
