@@ -17,7 +17,7 @@ export class FakeTarget implements TargetAdapter {
   readHook?: () => Promise<NativeSnapshot>;
   effects: string[] = [];
   failure?: string;
-  streams: { onFrame: (frame: TerminalFrame) => void; closed: boolean; commands: Record<string, unknown>[] }[] = [];
+  streams: { onFrame: (frame: TerminalFrame) => void; onClose: (reason: string) => void; closed: boolean; commands: Record<string, unknown>[] }[] = [];
   private listeners = new Set<() => void>();
   async subscribe(onEvent: () => void, onClose: (reason: string) => void) {
     ++this.subscriptions; ++this.activeSubscriptions; this.listeners.add(onEvent);
@@ -27,8 +27,8 @@ export class FakeTarget implements TargetAdapter {
   }
   async snapshot() { ++this.reads; return this.readHook ? this.readHook() : structuredClone(this.state); }
   async catalog() { return { id: this.id, name: this.name, session: this.session, connected: true, writable: true, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: [{ id: 'claude', name: 'Claude Code', models: ['Default', 'host/model'], launchEnabled: true }] }; }
-  openTerminal: TargetAdapter['openTerminal'] = (_terminal, _mode, _cols, _rows, _takeover, onFrame, _onClose) => {
-    const stream = { onFrame, closed: false, commands: [] as Record<string, unknown>[] }; this.streams.push(stream);
+  openTerminal: TargetAdapter['openTerminal'] = (_terminal, _mode, _cols, _rows, _takeover, onFrame, onClose) => {
+    const stream = { onFrame, onClose, closed: false, commands: [] as Record<string, unknown>[] }; this.streams.push(stream);
     return { send: (command) => { if (stream.closed) throw new Error('closed'); stream.commands.push(command); }, close: () => { stream.closed = true; } };
   };
   private effect(name: string) {

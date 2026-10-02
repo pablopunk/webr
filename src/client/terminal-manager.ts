@@ -5,6 +5,7 @@ import { TerminalRenderer } from './terminal-renderer';
 import { retryDelay } from '../shared/retry';
 
 type VisiblePane = { machineId: string; threadId: string; terminalId: string; terminal: Terminal; mode: 'observe' | 'control'; generation: number; sequence: FrameSequence; renderer?: TerminalRenderer; writable: boolean; accepted: boolean; baseline: boolean; pending: number; resizing: boolean; reason?: string; cols: number; rows: number; onState: (message: string, writable: boolean) => void; attempts: number };
+export const conflictMessage = 'Another controller owns this terminal.';
 export class BrowserTerminalManager {
   private metadata?: WebSocket;
   private binary?: WebSocket;
@@ -89,8 +90,8 @@ export class BrowserTerminalManager {
           if (!pane || pane.generation !== record.generation) return;
           if (record.type === 'stream.opened') { pane.accepted = !!record.writable && pane.mode === 'control'; pane.writable = pane.accepted && pane.baseline; pane.onState(pane.writable ? 'Input control is active.' : pane.reason ?? (pane.accepted ? 'Waiting for the full baseline; input is disabled.' : 'Read-only'), pane.writable); }
           if (record.type === 'stream.closed' || record.type === 'stream.error') {
-            pane.writable = false; pane.accepted = false; pane.baseline = false; pane.renderer?.close(); pane.onState(String(record.reason).replaceAll('_', ' '), false);
-            if (record.type === 'stream.error' && pane.mode === 'control') { pane.reason = record.reason === 'controller_conflict' ? 'Another controller owns this terminal.' : String(record.reason).replaceAll('_', ' '); pane.mode = 'observe'; ++pane.generation; pane.sequence = new FrameSequence(); this.open(record.streamId); return; }
+            pane.writable = false; pane.accepted = false; pane.baseline = false; pane.renderer?.close(); pane.onState(record.reason === 'controller_conflict' ? conflictMessage : String(record.reason).replaceAll('_', ' '), false);
+            if (record.type === 'stream.error' && pane.mode === 'control') { pane.reason = record.reason === 'controller_conflict' ? conflictMessage : String(record.reason).replaceAll('_', ' '); pane.mode = 'observe'; ++pane.generation; pane.sequence = new FrameSequence(); this.open(record.streamId); return; }
             if (record.reason === 'stream_resync_required' && pane.attempts++ < 2) { ++pane.generation; pane.sequence = new FrameSequence(); pane.mode = 'observe'; this.open(record.streamId); }
           }
           return;

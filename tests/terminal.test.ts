@@ -39,14 +39,44 @@ it('closes a stream on a sequence gap and on a stale ACK', async () => {
   target.streams[0].onFrame(frame(1)); target.streams[0].onFrame(frame(3, false)); expect(target.streams[0].closed).toBe(true);
   expect(() => hub.action('one', { type: 'ack', streamId: 1, generation: 1, seq: 1 })).toThrow('stale_lease');
 });
-it('conflicts two controllers, supports only explicit takeover, and rejects stale input after release', async () => {
-  const { target, hub, open } = await setup(); hub.action('one', open);
-  expect(() => hub.action('two', open)).toThrow('controller_conflict');
-  hub.action('two', { ...open, takeover: true }); expect(target.streams[0].closed).toBe(true);
-  expect(() => hub.action('one', { type: 'input', streamId: 1, generation: 1, text: 'unsafe', paste: false })).toThrow('stale_lease');
-  hub.action('two', { type: 'release', streamId: 1, generation: 1 });
-  expect(() => hub.action('two', { type: 'input', streamId: 1, generation: 1, text: 'unsafe', paste: false })).toThrow('stale_lease');
-  expect(target.streams.flatMap((stream) => stream.commands)).toEqual([]);
+const bytesOf = (socket: FakeSocket) => socket.packets.filter((packet): packet is Uint8Array => typeof packet !== 'string').map((packet) => decodeFrame(packet));
+const noticesOf = (socket: FakeSocket) => socket.packets.filter((packet): packet is string => typeof packet === 'string').map((packet) => JSON.parse(packet));
+const acknowledge = (hub: TerminalHub, owner: string, streamId: number, seq: number) => hub.action(owner, { type: 'ack', streamId, generation: 1, seq });
+it('shares one upstream control stream and lets both tabs type in arrival order', async () => {
+  const { target, hub, one, two, open } = await setup(); hub.action('one', open);
+  target.streams[0].onFrame(frame(1, true)); acknowledge(hub, 'one', 1, 1);
+  hub.action('two', { ...open, cols: 100, rows: 30 });
+  expect(target.streams).toHaveLength(1); expect(target.streams[0].commands).toEqual([{ type: 'terminal.resize', cols: 100, rows: 30 }]);
+  target.streams[0].onFrame({ ...frame(2, false), width: 80, height: 24 }); expect(bytesOf(two)).toHaveLength(0);
+  target.streams[0].onFrame({ ...frame(3, true), width: 100, height: 30 });
+  expect(bytesOf(two).map((item) => [item.seq, item.full, item.width])).toEqual([[1, true, 100]]);
+  expect(bytesOf(one).map((item) => item.seq)).toEqual([1, 2, 3]);
+  acknowledge(hub, 'two', 1, 1);
+  hub.action('one', { type: 'input', streamId: 1, generation: 1, text: 'a', paste: false });
+  hub.action('two', { type: 'input', streamId: 1, generation: 1, text: 'b', paste: false });
+  expect(target.streams[0].commands.slice(1)).toEqual([{ type: 'terminal.input', text: 'a' }, { type: 'terminal.input', text: 'b' }]);
+  expect(hub.stats().controllers).toBe(1);
+});
+it('keeps control for the remaining tab and closes upstream only after the last tab leaves', async () => {
+  const { target, hub, open } = await setup(); hub.action('one', open); hub.action('two', open);
+  hub.action('one', { type: 'release', streamId: 1, generation: 1 }); expect(target.streams[0].closed).toBe(false);
+  hub.action('two', { type: 'release', streamId: 1, generation: 1 }); expect(target.streams[0].closed).toBe(true); expect(hub.stats().controllers).toBe(0);
+  expect(() => hub.action('two', { type: 'input', streamId: 1, generation: 1, text: 'x', paste: false })).toThrow('stale_lease');
+});
+it('does not stall a fast tab when another tab stops acknowledging', async () => {
+  const { target, hub, one, two, open } = await setup(2000); hub.action('one', open); hub.action('two', open);
+  target.streams[0].onFrame(frame(1, true, 700)); acknowledge(hub, 'one', 1, 1);
+  target.streams[0].onFrame(frame(2, false, 700)); target.streams[0].onFrame(frame(3, false, 700));
+  expect(noticesOf(two).some((notice) => notice.type === 'stream.closed' && notice.reason === 'stream_resync_required')).toBe(true);
+  expect(target.streams[0].closed).toBe(false);
+  acknowledge(hub, 'one', 1, 2); acknowledge(hub, 'one', 1, 3); expect(bytesOf(one).map((item) => item.seq)).toEqual([1, 2, 3]);
+});
+it('reports a controller owned by another client to every tab and requires an explicit takeover to ask again', async () => {
+  const { target, hub, two, open } = await setup(); hub.action('two', open);
+  target.streams[0].onClose('controller_conflict');
+  expect(noticesOf(two).find((notice) => notice.type === 'stream.closed')?.reason).toBe('controller_conflict');
+  expect(hub.stats().controllers).toBe(0);
+  hub.action('two', { ...open, streamId: 2, generation: 2, takeover: true }); expect(target.streams).toHaveLength(2);
 });
 it('does not give observers scroll, input or resize authority', async () => {
   const { hub, open } = await setup(); hub.action('one', { ...open, mode: 'observe' });

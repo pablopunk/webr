@@ -103,13 +103,16 @@ it('validates strict actions and rejects an idempotency key reused for another p
   expect((await post({ ...launch, prompt: 'Different' })).statusCode).toBe(409);
   expect((await post({ ...launch, shell: 'unsafe' })).statusCode).toBe(400);
 });
-it('refuses two browser instances controlling the same terminal and releases on disconnect', async () => {
+it('shares one terminal control stream between two browser instances and releases it with the last one', async () => {
   const { app, headers, manager, target } = await setup();
   const first = await pair(app, headers); const second = await pair(app, headers);
   const thread = manager.bootstrap().threads[0];
   const action = { type: 'open', streamId: 1, generation: 1, machineId: target.id, threadId: thread.id, terminalId: thread.panes[0].terminalId, mode: 'control', takeover: false, cols: 80, rows: 24 };
-  const errors: string[] = []; second.terminal.on('message', (data, binary) => { if (!binary) errors.push(data.toString()); });
+  const notices: string[] = []; second.terminal.on('message', (data, binary) => { if (!binary) notices.push(data.toString()); });
   first.terminal.send(JSON.stringify(action)); await expect.poll(() => target.streams.length).toBe(1);
-  second.terminal.send(JSON.stringify(action)); await expect.poll(() => errors.join('')).toContain('controller_conflict');
-  first.metadata.close(); await expect.poll(() => target.streams[0].closed).toBe(true);
+  second.terminal.send(JSON.stringify(action)); await expect.poll(() => notices.join('')).toContain('stream.opened');
+  expect(target.streams).toHaveLength(1); expect(notices.join('')).not.toContain('controller_conflict');
+  first.metadata.close(); await expect.poll(() => manager.bootstrap().threads.length).toBeGreaterThan(0);
+  expect(target.streams[0].closed).toBe(false);
+  second.metadata.close(); await expect.poll(() => target.streams[0].closed).toBe(true);
 });
