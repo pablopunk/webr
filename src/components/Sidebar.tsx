@@ -7,7 +7,9 @@ import { avatarForThread } from '../lib/avatars';
 import { isLaunching, launchFailed, launchLabel } from '../lib/launch';
 import type { Machine } from '../lib/machines';
 import { ProjectIcon } from './ProjectIcon';
+import { ThreadTitleEditor } from './ThreadTitleEditor';
 import { groupProjectLocations } from '../client/project-groups';
+import { alertDialog, confirmDialog } from './dialogs';
 import { deleteArchivedThreads, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
 
 export type SidebarMode = 'projects' | 'threads';
@@ -33,44 +35,47 @@ const statusIcons: Record<Exclude<Thread['status'], 'idle'>, typeof CircleHelp> 
   working: LoaderCircle, blocked: MessageCircleQuestion, done: CircleCheck, unknown: CircleHelp,
 };
 
-const reportFailure = (error: unknown) => alert(error instanceof Error ? error.message : 'Herdr could not complete this action.');
-const confirmDelete = (thread: Thread) => { if (confirm(deleteWarning(1))) void deleteThreadPermanently(thread).catch(reportFailure); };
+const reportFailure = (error: unknown) => alertDialog(error instanceof Error ? error.message : 'Herdr could not complete this action.');
+const confirmDelete = async (thread: Thread) => { if (await confirmDialog(deleteWarning(1), { confirmLabel: 'Delete', danger: true })) await deleteThreadPermanently(thread).catch(reportFailure); };
 
 const ThreadRow = memo(function ThreadRow({ thread, project, machineName, current, showProject }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean }) {
   const archived = !!thread.archivedAt;
   const ArchiveIcon = archived ? ArchiveRestore : Archive;
   const archiveLabel = archived ? `Unarchive ${thread.title}` : `Archive ${thread.title}`;
+  const [renaming, setRenaming] = useState(false);
+  const editor = renaming ? <ThreadTitleEditor thread={thread} onDone={() => setRenaming(false)} onError={reportFailure} /> : undefined;
   return <ContextMenu.Root>
-    <ContextMenu.Trigger className="thread-item">
-      <ThreadLink thread={thread} project={project} machineName={machineName} current={current} showProject={showProject} />
+    <ContextMenu.Trigger className="thread-item" onDoubleClick={(event) => { event.preventDefault(); setRenaming(true); }}>
+      <ThreadLink thread={thread} project={project} machineName={machineName} current={current} showProject={showProject} editor={editor} />
       <button type="button" className="thread-archive" aria-label={archiveLabel} title={archived ? 'Unarchive' : 'Archive'} onClick={() => void setThreadArchived(thread, !archived).catch(reportFailure)}><ArchiveIcon size={15} strokeWidth={1.8} aria-hidden="true" /></button>
     </ContextMenu.Trigger>
     <ContextMenu.Portal><ContextMenu.Positioner className="thread-menu-positioner"><ContextMenu.Popup className="thread-menu">
-      <ContextMenu.Item className="thread-menu-item is-danger" onClick={() => confirmDelete(thread)}><Trash2 size={14} aria-hidden="true" />Delete permanently</ContextMenu.Item>
+      <ContextMenu.Item className="thread-menu-item is-danger" onClick={() => void confirmDelete(thread)}><Trash2 size={14} aria-hidden="true" />Delete permanently</ContextMenu.Item>
     </ContextMenu.Popup></ContextMenu.Positioner></ContextMenu.Portal>
   </ContextMenu.Root>;
 });
 
-function ThreadLink({ thread, project, machineName, current, showProject }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean }) {
+function ThreadLink({ thread, project, machineName, current, showProject, editor }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean; editor?: ReactNode }) {
   const launching = isLaunching(thread); const failed = launchFailed(thread);
   const StatusIcon = launching ? LoaderCircle : failed ? TriangleAlert : thread.status === 'idle' ? null : statusIcons[thread.status];
   const status = launching ? launchLabel(thread) : failed ? 'Launch stopped' : statusLabel[thread.status];
   const context = launching || failed ? status : showProject ? project?.name : harnessName(thread.agent);
-  return <a className={`thread-row ${current ? 'is-current' : ''}`} href={`/threads/${encodeURIComponent(thread.id)}`} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${status}`} title={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`}>
+  const Row = editor ? 'div' : 'a';
+  return <Row className={`thread-row ${current ? 'is-current' : ''}`} href={editor ? undefined : `/threads/${encodeURIComponent(thread.id)}`} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${status}`} title={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`}>
     <span className="thread-avatar" aria-hidden="true"><BotAvatar {...avatarForThread(thread)} state={thread.status === 'working' || launching ? 'working' : 'default'} size={24} paused={thread.status !== 'working' && !launching} /></span>
-    <span className="thread-copy"><span className="thread-context">{showProject && project && !launching && !failed && <ProjectIcon project={project} />}{context}</span><span className="thread-name">{thread.title}</span></span>
+    <span className="thread-copy"><span className="thread-context">{showProject && project && !launching && !failed && <ProjectIcon project={project} />}{context}</span>{editor ?? <span className="thread-name">{thread.title}</span>}</span>
     <span className="thread-time">{relativeTime(thread.updatedAt)}</span>
     {StatusIcon && <StatusIcon className={`thread-status status-${launching ? 'working' : failed ? 'blocked' : thread.status}`} size={15} strokeWidth={1.8} aria-hidden="true" />}
-  </a>;
+  </Row>;
 }
 
 function ArchivedThreads({ threads, renderThread }: { threads: Thread[]; renderThread: (thread: Thread) => ReactNode }) {
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const deleteAll = async () => {
-    if (!confirm(deleteWarning(threads.length))) return;
+    if (!await confirmDialog(deleteWarning(threads.length), { confirmLabel: 'Delete all', danger: true })) return;
     setDeleting(true);
-    try { const result = await deleteArchivedThreads(); if (result.failed.length) alert(`${result.failed.length} archived ${result.failed.length === 1 ? 'thread' : 'threads'} could not be deleted.`); }
+    try { const result = await deleteArchivedThreads(); if (result.failed.length) await alertDialog(`${result.failed.length} archived ${result.failed.length === 1 ? 'thread' : 'threads'} could not be deleted.`); }
     catch (error) { reportFailure(error); } finally { setDeleting(false); }
   };
   return <section className="thread-group archived-threads" aria-label="Archived threads">

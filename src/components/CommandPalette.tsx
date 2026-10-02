@@ -1,3 +1,4 @@
+import { confirmDialog } from './dialogs';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { BotAvatar } from 'bot-avatars';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, FolderTree, LayoutList, Monitor, Moon, PanelLeft, Plus, Settings2, Sun, TerminalSquare } from 'lucide-react';
@@ -58,7 +59,7 @@ export function CommandPalette({ open, onClose, projects, threads, thread, focus
       ...(thread.bindingState === 'attached' ? [
         { label: 'Request terminal control', icon: <TerminalSquare size={16} />, run: () => onTerminalAction('control') },
         { label: 'Release terminal control', icon: <TerminalSquare size={16} />, run: () => onTerminalAction('release') },
-        { label: 'Take over terminal control', icon: <TerminalSquare size={16} />, run: () => { if (confirm('Replace the active controller of this terminal?')) onTerminalAction('takeover'); } },
+        { label: 'Take over terminal control', icon: <TerminalSquare size={16} />, run: () => { void confirmDialog('Replace the active controller of this terminal?', { confirmLabel: 'Take over' }).then((accepted) => { if (accepted) onTerminalAction('takeover'); }); } },
       ] : []),
       { label: 'Next pane', icon: <ArrowRight size={16} />, shortcut: 'nextPane' as const, run: () => focusPane(1) },
       { label: 'Previous pane', icon: <ArrowLeft size={16} />, shortcut: 'previousPane' as const, run: () => focusPane(-1) },

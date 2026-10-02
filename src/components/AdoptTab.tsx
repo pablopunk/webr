@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import type { Projection } from '../shared/runtime';
 import type { Thread } from '../lib/models';
+import { confirmDialog } from './dialogs';
 export function AdoptTab({ thread, tabs }: { thread: Thread; tabs: NonNullable<Projection['availableTabs']> }) {
   const [tabId, setTabId] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   const selected = tabs.find((tab) => tab.tabId === tabId && !tab.bound);
   return <form className="adoption-picker" onSubmit={async (event) => {
-    event.preventDefault(); if (!selected || busy || !confirm(`Bind this thread to ${selected.label} (${selected.tabId}) and its ${selected.panes.length} current terminals without sending the old prompt?`)) return;
-    setBusy(true); setError('');
+    event.preventDefault(); if (!selected || busy) return;
+    setBusy(true);
+    if (!await confirmDialog(`Bind this thread to ${selected.label} (${selected.tabId}) and its ${selected.panes.length} current terminals without sending the old prompt?`, { confirmLabel: 'Bind' })) { setBusy(false); return; } setError('');
     try {
       const response = await fetch(`/api/threads/${encodeURIComponent(thread.id)}/adopt`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ machineId: thread.machineId, terminalIds: selected.panes.map((pane) => pane.terminalId) }) });
       if (!response.ok) throw new Error('The tab changed or is already bound; select it again after refresh.');
