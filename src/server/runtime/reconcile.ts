@@ -38,7 +38,7 @@ export function reconcile(database: MetadataDatabase, target: TargetAdapter, sna
   const threads = saved.map((row): Thread => {
     const tab = snapshot.tabs.find((tab) => tab.tab_id === row.alias);
     const members = tab ? snapshot.panes.filter((pane) => pane.tab_id === tab.tab_id && pane.workspace_id === tab.workspace_id) : [];
-    const attached = sameBinding(row.metadata, target) && members.some((pane) => row.anchors.includes(pane.terminal_id));
+    const attached = sameBinding(row.metadata, target) && members.length > 0;
     const panes = attached ? members : [];
     const signature = JSON.stringify([tab?.label, panes.map((pane) => [pane.terminal_id, pane.pane_id, pane.agent, pane.agent_status, pane.title, pane.terminal_title_stripped, pane.focused, snapshot.agents.find((agent) => agent.terminal_id === pane.terminal_id)?.state_change_seq])]);
     const meaningfulChange = attached && row.metadata.semanticSignature !== signature;

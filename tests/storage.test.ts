@@ -20,14 +20,13 @@ it('migrates a private WAL database repeatedly and retains UUID aliases and avat
     expect(second.registerProfile('fixture', 'fixture', 'two', target.locations)).toBe(2); second.close();
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
-it('requires explicit adoption of a new terminal identity after cold restore and never reruns a prompt', async () => {
+it('reattaches a thread to its tab after cold restore and never reruns a prompt', async () => {
   const database = new MetadataDatabase(':memory:'); const target = new FakeTarget(); const manager = new RuntimeManager(database, [target]);
   try {
     manager.start(); await expect.poll(() => manager.bootstrap().threads.length).toBe(1); const id = manager.bootstrap().threads[0].id;
     target.state.panes[0].terminal_id = 'term_restored'; target.event!();
-    await expect.poll(() => manager.bootstrap().threads[0].bindingState).toBe('detached');
-    expect(() => manager.binding(target.id, id, 'term_restored')).toThrow('binding_invalid');
-    await manager.adopt(target.id, id, ['term_restored']); expect(manager.bootstrap().threads[0].bindingState).toBe('attached'); expect(target.effects).toEqual([]);
+    await expect.poll(() => manager.bootstrap().threads[0].panes[0]?.terminalId).toBe('term_restored');
+    expect(manager.bootstrap().threads[0]).toMatchObject({ id, bindingState: 'attached' }); expect(() => manager.binding(target.id, id, 'term_restored')).not.toThrow(); expect(target.effects).toEqual([]);
   } finally { await manager.close(); database.close(); }
 });
 it('scans only fixed icon candidates within an approved target root and does not follow escaping symlinks', async () => {

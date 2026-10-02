@@ -57,11 +57,10 @@ it('updates the worktree tooltip when the checkout mode changes', async () => {
   show();
   const user = userEvent.setup();
   const checkbox = screen.getByRole('checkbox', { name: 'Create a new worktree' });
-  const tooltip = screen.getByRole('tooltip');
-  expect(tooltip.textContent).toBe('new worktree');
-  expect(checkbox.getAttribute('aria-describedby')).toBe(tooltip.id);
-  await user.click(checkbox);
-  expect(tooltip.textContent).toBe('current checkout');
-  await user.click(checkbox);
-  expect(tooltip.textContent).toBe('new worktree');
+  await user.hover(checkbox);
+  expect(await screen.findByText('new worktree')).toBeTruthy();
+  await user.click(checkbox); await user.unhover(checkbox); await user.hover(checkbox);
+  expect(await screen.findByText('current checkout')).toBeTruthy();
+  await user.click(checkbox); await user.unhover(checkbox); await user.hover(checkbox);
+  expect(await screen.findByText('new worktree')).toBeTruthy();
 });

@@ -40,14 +40,14 @@ it('shares one upstream subscription among all manager consumers', async () => {
   manager.on('projection', () => {}); manager.on('projection', () => {}); manager.start();
   await expect.poll(() => manager.bootstrap().machines[0].connected).toBe(true); expect(target.activeSubscriptions).toBe(1);
 });
-it('keeps same-tab terminal lineage when a pane ID changes but never guesses cold-restore identity', () => {
+it('keeps same-tab terminal lineage when a pane ID or terminal ID changes after a Herdr restart', () => {
   const target = new FakeTarget(); const db = database();
   const original = reconcile(db, target, target.state).threads[0];
   target.state.panes[0].pane_id = 'w2:p4';
   expect(reconcile(db, target, target.state).threads[0].panes[0].id).toBe('w2:p4');
   target.state.panes[0].terminal_id = 'term_new';
   const detached = reconcile(db, target, target.state).threads.find((thread) => thread.id === original.id)!;
-  expect(detached.bindingState).toBe('detached'); expect(detached.panes).toEqual([]);
+  expect(detached.bindingState).toBe('attached'); expect(detached.panes[0].terminalId).toBe('term_new');
 });
 it('uses the agent pane title instead of a numeric tab label and updates an existing thread', () => {
   const target = new FakeTarget(); const db = database();
