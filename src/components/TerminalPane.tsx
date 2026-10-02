@@ -22,6 +22,11 @@ function themeColors() {
   };
 }
 
+const TERMINAL_FONT_FAMILY = '"JetBrains Mono", "Herdr Symbols", ui-monospace, Menlo, monospace';
+const TERMINAL_FONT_SIZE = 13;
+const loadTerminalFonts = () => typeof document === 'undefined' || !document.fonts ? Promise.resolve() : Promise.all([
+  document.fonts.load(`400 ${TERMINAL_FONT_SIZE}px "JetBrains Mono"`), document.fonts.load(`700 ${TERMINAL_FONT_SIZE}px "JetBrains Mono"`), document.fonts.load(`${TERMINAL_FONT_SIZE}px "Herdr Symbols"`, '\ue0b0'),
+]).then(() => undefined, () => undefined);
 const FOCUS_IN = '\x1b[I';
 const FOCUS_OUT = '\x1b[O';
 export function TerminalPane({ pane, machineId, threadId, active, canControl, onFocus }: { pane: Pane; machineId: string; threadId: string; active: boolean; canControl: boolean; onFocus: () => void }) {
@@ -38,11 +43,11 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     if (!host.current) return;
     let disposed = false;
     let cleanup = () => {};
-    void Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit')]).then(([xterm, { FitAddon }]) => {
+    void Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit'), loadTerminalFonts()]).then(([xterm, { FitAddon }]) => {
     if (disposed || !host.current) return;
     const terminal = new xterm.Terminal({
-      fontFamily: '"DM Mono", ui-monospace, monospace', fontSize: 12.5,
-      lineHeight: 1.55, letterSpacing: 0.15, cursorBlink: true, cursorInactiveStyle: 'block',
+      fontFamily: TERMINAL_FONT_FAMILY, fontSize: TERMINAL_FONT_SIZE,
+      lineHeight: 1.2, letterSpacing: 0, cursorBlink: true, cursorInactiveStyle: 'block',
       allowTransparency: false, scrollback: 0, theme: themeColors(), disableStdin: true,
       linkHandler: { activate: () => {} },
     });

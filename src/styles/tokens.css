@@ -31,7 +31,7 @@
   --shadow: 0 1px 2px rgb(28 32 35 / 3%), 0 10px 36px rgb(28 32 35 / 3%);
   --ease: cubic-bezier(.22, 1, .36, 1);
   --font-ui: 'DM Sans', Inter, system-ui, sans-serif;
-  --font-mono: 'DM Mono', ui-monospace, monospace;
+  --font-mono: 'JetBrains Mono', 'Herdr Symbols', ui-monospace, Menlo, monospace;
 }
 
 html[data-theme='dark'] {

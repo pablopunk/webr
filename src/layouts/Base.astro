@@ -1,6 +1,7 @@
 ---
 import '../styles/global.css';
 import { ClientRouter } from 'astro:transitions';
+import monoFont from '../assets/fonts/jetbrains-mono.woff2?url';
 const { title = 'Herdr Web' } = Astro.props;
 ---
 <!doctype html>
@@ -12,9 +13,10 @@ const { title = 'Herdr Web' } = Astro.props;
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#f8f8f7" />
     <title>{title} · Herdr Web</title>
+    <link rel="preload" as="font" type="font/woff2" href={monoFont} crossorigin />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <script is:inline>
       function restoreHerdrTheme() {
         let preference = 'system';

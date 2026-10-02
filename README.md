@@ -91,6 +91,10 @@ SSH profiles use `"transport": "ssh"` and require `host` plus the verified absol
 Explicit registry profiles require `HERDR_WEB_CONNECT=1`; automatic Local does not. **The production gateway does not require `HERDR_ENV`; it can run outside a pane.** Disabled profiles remain visible but are not probed. A configured profile is not proof of a healthy connection. Failed target and browser connections use bounded exponential retry with jitter.
 
 
+## Fonts
+
+The terminal uses JetBrains Mono (open source, SIL OFL 1.1) as a 52 KB variable-weight file, plus a 142 KB subset of Symbols Nerd Font Mono for Powerline, Seti and Devicons file icons and Octicons git icons. Both are bundled from `src/assets/fonts/` and served by the app itself, with no external font request for the terminal. Ligatures are off. See `src/assets/fonts/README.md` for licenses and how to rebuild the subsets, for example to add Font Awesome or Material icons.
+
 ## Runtime and browser behavior
 
 - The gateway subscribes and waits for the subscription acknowledgement before its first authoritative snapshot.

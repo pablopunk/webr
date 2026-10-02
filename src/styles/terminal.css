@@ -32,3 +32,4 @@
 .launch-retry { justify-self: start; padding: 7px 11px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-raised); color: var(--ink); font-size: 12px; text-decoration: none; }
 @keyframes launch-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .launch-step.is-active svg { animation: none; } }
+.terminal-host .xterm { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }

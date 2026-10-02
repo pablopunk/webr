@@ -1,0 +1,2 @@
+@font-face { font-family: 'JetBrains Mono'; src: url('../assets/fonts/jetbrains-mono.woff2') format('woff2'); font-weight: 100 800; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Herdr Symbols'; src: url('../assets/fonts/symbols-nerd.woff2') format('woff2'); font-display: swap; unicode-range: U+E0A0-E0D7, U+E5FA-E6B7, U+E700-E7C5, U+F400-F4A8; }
