@@ -22,10 +22,12 @@ export async function validateLaunch(owner: Ownership, scratch: Scratch, selecte
   checkout.agentName = 'webv-' + randomUUID().replaceAll('-', '').slice(0, 26); checkout.harness = selected.harness;
   await owner.journal.record({ event: 'launch-identity', resource: checkout, harness: selected.harness, model: selected.model });
   const started = await owner.effect('agent.start', { name: checkout.agentName, kind: selected.harness, pane_id: checkout.paneId, args, timeout_ms: 30000 });
-  const agentSchema = z.object({ name: z.literal(checkout.agentName), terminal_id: z.literal(checkout.terminalId), pane_id: z.literal(checkout.paneId), agent: z.literal(selected.harness), agent_status: z.enum(['idle', 'done', 'working', 'blocked', 'unknown']), interactive_ready: z.boolean().optional() });
-  const agent = agentSchema.parse(started.agent);
+  const identity = { name: z.literal(checkout.agentName), terminal_id: z.literal(checkout.terminalId), pane_id: z.literal(checkout.paneId), agent_status: z.enum(['idle', 'done', 'working', 'blocked', 'unknown']), interactive_ready: z.boolean().optional() };
+  const startedAgentSchema = z.object({ ...identity, agent: z.string().nullable().optional() });
+  const agentSchema = z.object({ ...identity, agent: z.literal(selected.harness) });
+  const agent = startedAgentSchema.parse(started.agent);
   const argv = z.array(z.string()).min(1).parse(started.argv);
-  if (!['idle', 'done'].includes(agent.agent_status) || agent.interactive_ready === false || args.length && JSON.stringify(argv.slice(-args.length)) !== JSON.stringify(args)) throw new Error('Actual native model argv or startup readiness was not proved');
+  if (!['idle', 'done'].includes(agent.agent_status) || agent.interactive_ready === false || args.length && JSON.stringify(argv.slice(-args.length)) !== JSON.stringify(args)) throw new Error('Actual native model argv or startup readiness was not proved: ' + JSON.stringify({ status: agent.agent_status, interactiveReady: agent.interactive_ready, expectedArgs: args, argv: argv.slice(-4) }));
   await owner.fresh(checkout); const current = agentSchema.parse((await transport.request('agent.get', { target: checkout.agentName })).agent);
   if (!['idle', 'done'].includes(current.agent_status)) throw new Error('The owned fresh agent is not ready for a prompt');
   const token = 'HERDR-VALIDATED-' + randomUUID(); const encoded = Buffer.from(token).toString('base64');
