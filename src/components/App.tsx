@@ -60,22 +60,22 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
   }, []);
 
   useEffect(() => {
-    setCollapsed(localStorage.getItem('herdr-sidebar-collapsed') === 'true');
-    setMode(localStorage.getItem('herdr-sidebar-mode') === 'projects' ? 'projects' : 'threads');
+    setCollapsed(localStorage.getItem('webr-sidebar-collapsed') === 'true');
+    setMode(localStorage.getItem('webr-sidebar-mode') === 'projects' ? 'projects' : 'threads');
     const media = matchMedia('(prefers-color-scheme: dark)');
-    const onChange = () => { if ((localStorage.getItem('herdr-theme') ?? 'system') === 'system') applyTheme('system'); };
+    const onChange = () => { if ((localStorage.getItem('webr-theme') ?? 'system') === 'system') applyTheme('system'); };
     media.addEventListener('change', onChange);
     return () => media.removeEventListener('change', onChange);
   }, []);
 
   const toggleSidebar = useCallback(() => {
     if (window.matchMedia('(max-width: 760px)').matches) { setMobileOpen((value) => !value); return; }
-    setCollapsed((value) => { localStorage.setItem('herdr-sidebar-collapsed', String(!value)); return !value; });
+    setCollapsed((value) => { localStorage.setItem('webr-sidebar-collapsed', String(!value)); return !value; });
   }, []);
 
   const changeMode = useCallback((value: SidebarMode) => {
     setMode(value);
-    localStorage.setItem('herdr-sidebar-mode', value);
+    localStorage.setItem('webr-sidebar-mode', value);
   }, []);
 
   useEffect(() => {

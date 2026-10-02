@@ -11,7 +11,7 @@ export function SettingsView({ onOpenSidebar }: {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    setWorktree(localStorage.getItem('herdr-new-worktree') !== 'false');
+    setWorktree(localStorage.getItem('webr-new-worktree') !== 'false');
     setShortcuts(getShortcuts());
   }, []);
 
@@ -24,7 +24,7 @@ export function SettingsView({ onOpenSidebar }: {
     if (Object.entries(shortcuts).some(([name, key]) => name !== action && key === combo)) { setError('That shortcut is already in use.'); return; }
     const next = { ...shortcuts, [action]: combo };
     setShortcuts(next);
-    localStorage.setItem('herdr-shortcuts', JSON.stringify(next));
+    localStorage.setItem('webr-shortcuts', JSON.stringify(next));
     setRecording(null); setError('');
   };
 
@@ -32,8 +32,8 @@ export function SettingsView({ onOpenSidebar }: {
     <button className="mobile-menu" onClick={onOpenSidebar}>Threads</button>
     <h1>Settings</h1>
     <section><h2>Appearance</h2><div className="settings-row"><span>Theme</span><ThemeControl expanded /></div></section>
-    <section><h2>New threads</h2><label className="settings-row"><span>Create a new worktree by default</span><input type="checkbox" checked={worktree} onChange={(event) => { setWorktree(event.target.checked); localStorage.setItem('herdr-new-worktree', String(event.target.checked)); }} /></label></section>
-    <section id="shortcuts"><div className="settings-section-title"><h2>Keyboard shortcuts</h2><button onClick={() => { setShortcuts(defaultShortcuts); localStorage.removeItem('herdr-shortcuts'); setRecording(null); setError(''); }}>Reset</button></div>
+    <section><h2>New threads</h2><label className="settings-row"><span>Create a new worktree by default</span><input type="checkbox" checked={worktree} onChange={(event) => { setWorktree(event.target.checked); localStorage.setItem('webr-new-worktree', String(event.target.checked)); }} /></label></section>
+    <section id="shortcuts"><div className="settings-section-title"><h2>Keyboard shortcuts</h2><button onClick={() => { setShortcuts(defaultShortcuts); localStorage.removeItem('webr-shortcuts'); setRecording(null); setError(''); }}>Reset</button></div>
       <p className="settings-note">Press ⌘K for all actions and threads.</p>
       {(Object.keys(shortcutLabels) as ShortcutAction[]).map((action) => <div className="settings-row" key={action}><span>{shortcutLabels[action]}</span><button className="shortcut-key" data-recording={recording === action} onClick={() => { setRecording(action); setError(''); }} onKeyDown={(event) => recording === action && recordKey(event, action)} aria-label={`Change ${shortcutLabels[action]} shortcut`}>{recording === action ? 'Press keys…' : shortcutKeys(shortcuts[action]).map((key, index) => <kbd key={index}>{key}</kbd>)}</button></div>)}
       {error && <p role="alert" className="form-error">{error}</p>}

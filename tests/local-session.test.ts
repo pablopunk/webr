@@ -9,7 +9,7 @@ const missing = () => Object.assign(new Error('socket_unavailable'), { code: 'EN
 const profile = profileSchema.parse({ id: 'local', name: 'Local', session: 'default', enabled: true, transport: 'local', socket: '/test/herdr.sock', locations: [], automatic: true });
 const dependencies = (): LocalSessionDependencies => ({ process: vi.fn(async () => 'herdr 0.9.3'), exists: vi.fn(async () => false), ping: vi.fn(async () => ({ version: '0.9.3', protocol: 22 })), start: vi.fn(async () => {}), sleep: vi.fn(async () => {}) });
 it('preserves the socket error code so bootstrap can distinguish absence from a failed live connection', async () => {
-  const api = new SocketApi('/private/var/herdr-web-nonexistent-' + process.pid + '.sock');
+  const api = new SocketApi('/private/var/webr-nonexistent-' + process.pid + '.sock');
   try { await expect(api.request('ping')).rejects.toMatchObject({ message: 'socket_unavailable', code: 'ENOENT' }); }
   finally { api.close(); }
 });

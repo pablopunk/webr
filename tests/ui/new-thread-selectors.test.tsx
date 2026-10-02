@@ -41,7 +41,7 @@ it('restores the last harness independently for each project', async () => {
   await waitFor(() => expect(screen.getByRole('combobox', { name: 'Harness: Claude Code' })).toBeDefined());
   await user.click(screen.getByRole('combobox', { name: 'Harness: Claude Code' }));
   await user.click(await screen.findByRole('option', { name: 'Codex' }));
-  expect(localStorage.getItem('herdr-last-harness:local:local:first')).toBe('codex');
+  expect(localStorage.getItem('webr-last-harness:local:local:first')).toBe('codex');
   await user.click(screen.getByRole('combobox', { name: /Project: First/ }));
   await user.click(await screen.findByRole('option', { name: 'Second' }));
   await waitFor(() => expect(screen.getByRole('combobox', { name: 'Harness: Codex' })).toBeDefined());
@@ -50,7 +50,7 @@ it('restores the last harness independently for each project', async () => {
   await user.click(screen.getByRole('combobox', { name: /Project: Second/ }));
   await user.click(await screen.findByRole('option', { name: 'First' }));
   await waitFor(() => expect(screen.getByRole('combobox', { name: 'Harness: Codex' })).toBeDefined());
-  expect(localStorage.getItem('herdr-last-harness:local:local:second')).toBe('claude');
+  expect(localStorage.getItem('webr-last-harness:local:local:second')).toBe('claude');
 });
 
 it('updates the worktree tooltip when the checkout mode changes', async () => {

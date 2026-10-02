@@ -9,7 +9,7 @@ import { useMachineCatalog } from '../client/catalog';
 import { navigate } from 'astro:transitions/client';
 import { CreateWorkspace } from './CreateWorkspace';
 
-const harnessPreference = (machineId: string, projectId: string) => `herdr-last-harness:${machineId}:${projectId}`;
+const harnessPreference = (machineId: string, projectId: string) => `webr-last-harness:${machineId}:${projectId}`;
 
 export function NewThreadView({ projects, machines, selectedProjectId, onOpenSidebar }: {
   projects: Project[]; machines: Machine[]; selectedProjectId?: string; onOpenSidebar: () => void;
@@ -33,7 +33,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   }));
   const selectedHarness = machine.harnesses.find((choice) => choice.id === harness);
   const canSubmit = !!(prompt.trim() && !images.uploading && model.trim() && machine.connected && machineProjects.some((project) => project.id === projectId) && selectedHarness?.launchEnabled) && !busy;
-  useEffect(() => { setWorktree(localStorage.getItem('herdr-new-worktree') !== 'false'); }, []);
+  useEffect(() => { setWorktree(localStorage.getItem('webr-new-worktree') !== 'false'); }, []);
   useEffect(() => {
     if (!projectId || !catalog.data) return;
     const choices = catalog.data.harnesses;

@@ -6,5 +6,5 @@ const thread = bootstrap.threads.find((thread) => thread.id === Astro.params.id)
 if (!thread) Astro.response.status = 404;
 ---
 <Base title={thread?.title ?? 'Thread not found'}>
-  <App page={thread ? 'thread' : 'missing'} threadId={Astro.params.id} bootstrap={bootstrap} client:load transition:persist="herdr-app" />
+  <App page={thread ? 'thread' : 'missing'} threadId={Astro.params.id} bootstrap={bootstrap} client:load transition:persist="webr-app" />
 </Base>

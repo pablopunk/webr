@@ -16,13 +16,13 @@ it('starts without an account or secret with coherent SSR, static assets, HTTP a
   const origin = 'http://127.0.0.1:' + port;
    const path = join(directory, 'gateway.sqlite');
    const registry = join(directory, 'targets.json'); await writeFile(registry, '[]');
-   const child = spawn(process.execPath, ['--import', 'tsx', 'server/start.ts'], { env: { ...process.env, HERDR_WEB_DIST: dist, HOST: '127.0.0.1', PORT: String(port), HERDR_WEB_DATABASE: path, HERDR_WEB_ORIGIN: origin, BETTER_AUTH_SECRET: '', HERDR_WEB_EVIDENCE_KEY: '', HERDR_WEB_TARGETS: registry, HERDR_WEB_CONNECT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+   const child = spawn(process.execPath, ['--import', 'tsx', 'server/start.ts'], { env: { ...process.env, WEBR_DIST: dist, HOST: '127.0.0.1', PORT: String(port), WEBR_DATABASE: path, WEBR_ORIGIN: origin, BETTER_AUTH_SECRET: '', WEBR_EVIDENCE_KEY: '', WEBR_TARGETS: registry, WEBR_CONNECT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = ''; child.stdout.on('data', (chunk) => { output += chunk.toString(); }); child.stderr.on('data', (chunk) => { output += chunk.toString(); });
   const sockets: WebSocket[] = [];
   try {
-    await expect.poll(() => output, { timeout: 5000 }).toContain('Herdr Web listening');
+    await expect.poll(() => output, { timeout: 5000 }).toContain('Webr listening');
     const anonymous = await fetch(origin + '/api/runtime'); expect(anonymous.status).toBe(200); expect(anonymous.headers.getSetCookie()).toEqual([]);
-    const page = await fetch(origin + '/new'); const html = await page.text(); expect(page.status).toBe(200); expect(html).toContain('What do you want to build today?'); expect(html).toContain('herdr-app'); expect(html).not.toContain('Build machine (demo)');
+    const page = await fetch(origin + '/new'); const html = await page.text(); expect(page.status).toBe(200); expect(html).toContain('What do you want to build today?'); expect(html).toContain('webr-app'); expect(html).not.toContain('Build machine (demo)');
     const localPage = await fetch(origin + '/new', { headers: { host: 'localhost:' + port } });
     expect(localPage.status).toBe(200); expect(await localPage.text()).toContain('What do you want to build today?');
     const asset = html.match(/(?:src|href)="(\/_astro\/[^"?]+\.(?:js|css))"/)?.[1]; expect(asset).toBeDefined();

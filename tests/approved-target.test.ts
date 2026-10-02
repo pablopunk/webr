@@ -14,7 +14,7 @@ import { openCliStream } from '../src/server/terminal/cli';
 const cleanup: (() => void | Promise<unknown>)[] = [];
 afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn(); vi.unstubAllEnvs(); });
 async function setup(automatic = false, empty = false) {
-  vi.stubEnv('HERDR_ENV', undefined); vi.stubEnv('HERDR_WEB_CONNECT', '1');
+  vi.stubEnv('HERDR_ENV', undefined); vi.stubEnv('WEBR_CONNECT', '1');
   const directory = await mkdtemp(join(tmpdir(), 'hc-')); cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const path = join(directory, 'api.sock'); const sockets = new Set<Socket>(); const calls: { method: string; params: Record<string, unknown> }[] = [];
   const state = snapshot(); let agent: Record<string, unknown> = {};
@@ -53,7 +53,7 @@ it('connects a standalone approved application without HERDR_ENV using only owne
   expect(process.mock.calls[0][0]).toBe('/fixture/herdr'); expect(globalThis.process.env.HERDR_ENV).toBeUndefined(); expect(target.writable).toBe(true); unsubscribe();
 });
 it('refuses to connect unless the target is approved', async () => {
-  const { profile } = await setup(); vi.stubEnv('HERDR_WEB_CONNECT', '0');
+  const { profile } = await setup(); vi.stubEnv('WEBR_CONNECT', '0');
   const disabled = new HerdrTarget(profile); cleanup.push(() => disabled.close()); await expect(disabled.snapshot()).rejects.toThrow('connection_not_approved');
 });
 it('offers control and launch for every Herdr-supported harness once the target is compatible', async () => {
@@ -72,7 +72,7 @@ it('accepts native opaque profile IDs and rejects unsupported bundled fields bef
   await expect(invalid.snapshot()).rejects.toThrow('unsupported_herdr_schema'); expect(invalid.writable).toBe(false);
 });
 it('connects automatic Local without a registry opt-in and discovers native projects without changing agents', async () => {
-  const { target, calls } = await setup(true); vi.stubEnv('HERDR_WEB_CONNECT', undefined);
+  const { target, calls } = await setup(true); vi.stubEnv('WEBR_CONNECT', undefined);
   const state = await target.snapshot();
   expect(state.panes[0].terminal_id).toBe('term_fixture'); expect(target.locations).toHaveLength(1);
   expect(target.writable).toBe(true);
@@ -81,7 +81,7 @@ it('connects automatic Local without a registry opt-in and discovers native proj
   expect(calls.every((call) => ['ping', 'session.snapshot'].includes(call.method))).toBe(true);
 });
 it('accepts a connected empty session and creates its first workspace through Herdr with no source or focus change', async () => {
-  const { target, calls } = await setup(true, true); vi.stubEnv('HERDR_WEB_CONNECT', undefined);
+  const { target, calls } = await setup(true, true); vi.stubEnv('WEBR_CONNECT', undefined);
   expect((await target.snapshot()).workspaces).toEqual([]); expect(target.locations).toEqual([]);
   const result = await target.createWorkspace('/fixture', 'Project', randomUUID());
   expect(result).toMatchObject({ workspaceId: 'w1', terminalId: 'term_fixture' });

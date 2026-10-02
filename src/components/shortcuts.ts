@@ -14,7 +14,7 @@ export const defaultShortcuts: Record<ShortcutAction, string> = {
 
 export function getShortcuts(): Record<ShortcutAction, string> {
   try {
-    const saved = JSON.parse(localStorage.getItem('herdr-shortcuts') ?? '{}');
+    const saved = JSON.parse(localStorage.getItem('webr-shortcuts') ?? '{}');
     return { ...defaultShortcuts, ...saved };
   } catch {
     return defaultShortcuts;

@@ -52,7 +52,7 @@ export function CommandPalette({ open, onClose, projects, threads, thread, focus
     ...(['system', 'light', 'dark'] as const).map((theme) => ({
       label: `${theme[0].toUpperCase()}${theme.slice(1)} theme`,
       icon: theme === 'system' ? <Monitor size={16} /> : theme === 'light' ? <Sun size={16} /> : <Moon size={16} />,
-      run: () => { localStorage.setItem('herdr-theme', theme); applyTheme(theme); window.dispatchEvent(new Event('herdr-theme-change')); },
+      run: () => { localStorage.setItem('webr-theme', theme); applyTheme(theme); window.dispatchEvent(new Event('webr-theme-change')); },
     })),
     ...(thread ? [
       { label: 'Copy thread link', icon: <Copy size={16} />, run: () => { void navigator.clipboard.writeText(location.href); } },

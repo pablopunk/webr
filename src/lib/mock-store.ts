@@ -6,7 +6,7 @@ import { findMachine } from './machines';
 
 const dataFile = join(process.cwd(), '.data', 'threads.json');
 let pendingWrite: Promise<unknown> = Promise.resolve();
-const requireFixtureMode = () => { if (process.env.NODE_ENV !== 'test' && !(process.env.HERDR_WEB_FIXTURES === '1' && process.env.NODE_ENV !== 'production')) throw new Error('Mock data requires explicit fixture mode'); };
+const requireFixtureMode = () => { if (process.env.NODE_ENV !== 'test' && !(process.env.WEBR_FIXTURES === '1' && process.env.NODE_ENV !== 'production')) throw new Error('Mock data requires explicit fixture mode'); };
 
 async function savedThreads(): Promise<Thread[]> {
   try {

@@ -13,24 +13,24 @@ export function ThemeControl({ expanded = false }: { expanded?: boolean }) {
   const [preference, setPreference] = useState<ThemePreference>('system');
 
   useEffect(() => {
-    const saved = localStorage.getItem('herdr-theme');
+    const saved = localStorage.getItem('webr-theme');
     const initial = saved === 'light' || saved === 'dark' ? saved : 'system';
     setPreference(initial);
     applyTheme(initial);
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const onChange = () => {
-      const current = (localStorage.getItem('herdr-theme') as ThemePreference) || 'system';
+      const current = (localStorage.getItem('webr-theme') as ThemePreference) || 'system';
       setPreference(current);
       applyTheme(current);
     };
     media.addEventListener('change', onChange);
-    window.addEventListener('herdr-theme-change', onChange);
-    return () => { media.removeEventListener('change', onChange); window.removeEventListener('herdr-theme-change', onChange); };
+    window.addEventListener('webr-theme-change', onChange);
+    return () => { media.removeEventListener('change', onChange); window.removeEventListener('webr-theme-change', onChange); };
   }, []);
 
   const select = (value: ThemePreference) => {
     setPreference(value);
-    localStorage.setItem('herdr-theme', value);
+    localStorage.setItem('webr-theme', value);
     applyTheme(value);
   };
 

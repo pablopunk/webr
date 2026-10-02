@@ -28,10 +28,10 @@ function themeColors() {
   };
 }
 
-const TERMINAL_FONT_FAMILY = '"JetBrains Mono", "Herdr Symbols", ui-monospace, Menlo, monospace';
+const TERMINAL_FONT_FAMILY = '"JetBrains Mono", "Webr Symbols", ui-monospace, Menlo, monospace';
 const TERMINAL_FONT_SIZE = 13;
 const loadTerminalFonts = () => typeof document === 'undefined' || !document.fonts ? Promise.resolve() : Promise.all([
-  document.fonts.load(`400 ${TERMINAL_FONT_SIZE}px "JetBrains Mono"`), document.fonts.load(`700 ${TERMINAL_FONT_SIZE}px "JetBrains Mono"`), document.fonts.load(`${TERMINAL_FONT_SIZE}px "Herdr Symbols"`, '\ue0b0'),
+  document.fonts.load(`400 ${TERMINAL_FONT_SIZE}px "JetBrains Mono"`), document.fonts.load(`700 ${TERMINAL_FONT_SIZE}px "JetBrains Mono"`), document.fonts.load(`${TERMINAL_FONT_SIZE}px "Webr Symbols"`, '\ue0b0'),
 ]).then(() => undefined, () => undefined);
 const FOCUS_IN = '\x1b[I';
 const FOCUS_OUT = '\x1b[O';

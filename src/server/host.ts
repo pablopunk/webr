@@ -121,7 +121,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
   });
   app.get('/api/stats', async () => hub.stats());
   if (ssr) {
-    const clientRoot = resolve(process.env.HERDR_WEB_DIST ?? 'dist', 'client');
+    const clientRoot = resolve(process.env.WEBR_DIST ?? 'dist', 'client');
     await app.register(staticFiles, { root: clientRoot, serve: false });
     app.get('/_astro/*', async (request, reply) => {
       const path = z.string().regex(/^[A-Za-z0-9_./-]+$/).parse((request.params as { '*': string })['*']);

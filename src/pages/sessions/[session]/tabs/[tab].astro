@@ -7,5 +7,5 @@ const thread = machineId ? bootstrap.threads.find((item) => item.machineId === m
 if (!thread) Astro.response.status = 404;
 ---
 <Base title={thread?.title ?? 'Tab not found'}>
-  <App page={thread ? 'thread' : 'missing'} threadId={thread?.id} bootstrap={bootstrap} client:load transition:persist="herdr-app" />
+  <App page={thread ? 'thread' : 'missing'} threadId={thread?.id} bootstrap={bootstrap} client:load transition:persist="webr-app" />
 </Base>

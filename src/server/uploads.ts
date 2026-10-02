@@ -21,7 +21,7 @@ export function imageExtension(contentType: string | undefined, bytes: Buffer) {
 }
 
 export class UploadStore {
-  constructor(readonly directory = resolve(process.env.HERDR_WEB_UPLOADS ?? '.data/uploads'), private lifetimeMs = UPLOAD_LIFETIME_MS) {}
+  constructor(readonly directory = resolve(process.env.WEBR_UPLOADS ?? '.data/uploads'), private lifetimeMs = UPLOAD_LIFETIME_MS) {}
   async save(contentType: string | undefined, bytes: Buffer) {
     const extension = imageExtension(contentType, bytes);
     await mkdir(this.directory, { recursive: true, mode: 0o700 });

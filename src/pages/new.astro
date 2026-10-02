@@ -5,5 +5,5 @@ const bootstrap = Astro.locals.runtime.bootstrap();
 const projectId = Astro.url.searchParams.get('project') ?? undefined;
 ---
 <Base title="New thread">
-  <App page="new" projectId={projectId} bootstrap={bootstrap} client:load transition:persist="herdr-app" />
+  <App page="new" projectId={projectId} bootstrap={bootstrap} client:load transition:persist="webr-app" />
 </Base>

@@ -48,7 +48,7 @@ export class HerdrTarget implements TargetAdapter {
     if (this.connecting) return this.connecting;
     if (this.api) return this.api;
     this.connecting ??= (async () => {
-      if (!this.profile.enabled || !(this.profile.automatic && this.profile.transport === 'local') && process.env.HERDR_WEB_CONNECT !== '1') throw new Error('connection_not_approved');
+      if (!this.profile.enabled || !(this.profile.automatic && this.profile.transport === 'local') && process.env.WEBR_CONNECT !== '1') throw new Error('connection_not_approved');
       if (this.profile.automatic && this.profile.transport === 'local') await ensureLocalSession(this.profile);
       if (this.profile.transport === 'ssh') {
         this.forwarding = new SshForward(this.profile.host!, this.profile.socket!);
@@ -97,7 +97,7 @@ export class HerdrTarget implements TargetAdapter {
     }
     return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id) => launchableKinds.includes(id)
       ? { id, name: harnessName(id), models: ['Default'], customModels: true, launchEnabled: true }
-      : { id, name: harnessName(id), models: [], customModels: false, launchEnabled: false, reason: harnessName(id) + ' cannot be launched from Herdr Web yet.' }) };
+      : { id, name: harnessName(id), models: [], customModels: false, launchEnabled: false, reason: harnessName(id) + ' cannot be launched from Webr yet.' }) };
   }
   async icon(projectId: string) {
     const location = this.locations.find((location) => location.projectId === projectId);
