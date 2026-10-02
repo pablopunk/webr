@@ -29,7 +29,7 @@ echo "$@" >> "${calls}"
 case "$2" in
   list) if [ -f "${registry}" ]; then echo "{\\"result\\":{\\"plugins\\":[{\\"plugin_id\\":\\"${PLUGIN_ID}\\",\\"plugin_root\\":\\"${pluginRoot}\\",\\"source\\":{\\"kind\\":\\"$(cat "${registry}")\\"}}]}}"; else echo '{"result":{"plugins":[]}}'; fi ;;
   config-dir) echo "${join(root, 'config')}" ;;
-  install) echo github > "${registry}" ;;
+  install) if [ "$(cat "${registry}" 2>/dev/null)" = local ]; then echo "plugin pablopunk.webr is already linked from a local path; uninstall/unlink it before installing from GitHub" >&2; exit 1; fi; echo github > "${registry}" ;;
   link) echo local > "${registry}" ;;
   uninstall|unlink) rm -f "${registry}" ;;
 esac
@@ -140,7 +140,8 @@ it('links the checkout in dev mode and restores the GitHub plugin afterwards', (
   restore();
   expect(existsSync(join(herdr.state, 'dev.json'))).toBe(false);
   expect(readFileSync(herdr.registry, 'utf8').trim()).toBe('github');
-  expect(herdr.calls().slice(-2)).toEqual(['plugin link /checkout/plugin', `plugin install ${PLUGIN_SOURCE} --yes`]);
+  const mutations = herdr.calls().filter((call) => /^plugin (link|unlink|install)/.test(call));
+  expect(mutations).toEqual(['plugin link /checkout/plugin', `plugin unlink ${PLUGIN_ID}`, `plugin install ${PLUGIN_SOURCE} --yes`]);
 });
 
 it('stops the production Webr for dev and starts it again when dev stops', async () => {

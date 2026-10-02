@@ -7,13 +7,13 @@ import { readPluginConfig } from './config';
 import { startNow } from './index';
 import { probeAddress } from './probe';
 import { stopPluginWebr } from './stop';
-import { installFromGithub, installedPlugin, linkLocalPlugin, pluginConfigDir } from './herdr';
+import { installedPlugin, linkLocalPlugin, pluginConfigDir, replaceWithGithub } from './herdr';
 
 type Restore = () => void;
 const nothingToRestore: Restore = () => {};
 
 function restorePrevious(previous: ReturnType<typeof installedPlugin>, run: RunCommand) {
-  if (previous?.kind === 'github') return installFromGithub(run);
+  if (previous?.kind === 'github') return replaceWithGithub(run);
   if (previous) return linkLocalPlugin(run, previous.root);
 }
 

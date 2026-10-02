@@ -7,7 +7,7 @@ import { isPortOpen, probeAddress } from './probe';
 import { stopPluginWebr } from './stop';
 import { modeLines, pluginMode } from './mode';
 import { DEV_FILE } from './files';
-import { installFromGithub, installedPlugin, pluginConfigDir, requireGit, requireHerdr, uninstallPlugin, unlinkLocalPlugin } from './herdr';
+import { installFromGithub, installedPlugin, replaceWithGithub, pluginConfigDir, requireGit, requireHerdr, uninstallPlugin, unlinkLocalPlugin } from './herdr';
 
 export type PluginDeps = {
   run: RunCommand;
@@ -80,6 +80,6 @@ export async function fixPlugin(deps: PluginDeps) {
   if (mode.kind === 'production') return [await isPortOpen(probeAddress(readPluginConfig(configDir))) ? 'Production is active and Webr is running. Nothing to fix.' : startNow(plugin.root, configDir, deps)];
   rmSync(join(deps.stateDir, DEV_FILE), { force: true });
   requireGit(deps.run);
-  installFromGithub(deps.run);
+  replaceWithGithub(deps.run);
   return ['Restored the production plugin.', ...((await restartPluginWebr(deps)) ?? [])];
 }

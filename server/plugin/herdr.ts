@@ -31,3 +31,8 @@ export const installFromGithub = (run: RunCommand) => succeeded(run('herdr', ['p
 export const uninstallPlugin = (run: RunCommand) => succeeded(run('herdr', ['plugin', 'uninstall', PLUGIN_ID]), 'uninstall the plugin');
 export const linkLocalPlugin = (run: RunCommand, directory: string) => succeeded(run('herdr', ['plugin', 'link', directory]), 'link the plugin');
 export const unlinkLocalPlugin = (run: RunCommand) => succeeded(run('herdr', ['plugin', 'unlink', PLUGIN_ID]), 'unlink the plugin');
+
+export function replaceWithGithub(run: RunCommand) {
+  if (installedPlugin(run)?.kind === 'local') unlinkLocalPlugin(run);
+  installFromGithub(run);
+}
