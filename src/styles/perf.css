@@ -1,0 +1,1 @@
+.perf-overlay { position: fixed; z-index: 40; right: 8px; bottom: 8px; padding: 4px 8px; border-radius: 6px; background: rgb(0 0 0 / 78%); color: #d7ffd7; font: 11px/1.5 ui-monospace, monospace; font-variant-numeric: tabular-nums; pointer-events: none; }
