@@ -1,20 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { carriesFiles, imageFilesFrom, uploadImagesAsTerminalText } from '../client/image-attach';
+import type { ShowTerminalNotice } from './useTerminalNotice';
 
-type Notice = { text: string; tone: 'info' | 'error' };
 const ONLY_IMAGES = 'Only PNG, JPEG, GIF and WebP images can be attached.';
 const attachingLabel = (count: number) => count === 1 ? 'Attaching image…' : `Attaching ${count} images…`;
 const attachedLabel = (count: number) => count === 1 ? 'Image attached' : `${count} images attached`;
 
-export function useImageAttachments({ machineId, active, writable, send }: { machineId: string; active: boolean; writable: RefObject<boolean>; send: (text: string) => void }) {
+export function useImageAttachments({ machineId, active, writable, send, show }: { machineId: string; active: boolean; writable: RefObject<boolean>; send: (text: string) => void; show: ShowTerminalNotice }) {
   const [dragging, setDragging] = useState(false);
-  const [notice, setNotice] = useState<Notice | null>(null);
-  const hide = useRef<ReturnType<typeof setTimeout>>(undefined);
   const sendRef = useRef(send); sendRef.current = send;
-  const show = useCallback((text: string, tone: Notice['tone'], durationMs?: number) => {
-    clearTimeout(hide.current); setNotice({ text, tone });
-    if (durationMs) hide.current = setTimeout(() => setNotice(null), durationMs);
-  }, []);
   const attach = useCallback(async (files: File[]) => {
     if (!files.length) { show(ONLY_IMAGES, 'error', 4000); return; }
     if (!writable.current) { show('Wait until the terminal accepts input, then attach the image again.', 'error', 4000); return; }
@@ -33,6 +27,5 @@ export function useImageAttachments({ machineId, active, writable, send }: { mac
     window.addEventListener('dragenter', enter); window.addEventListener('dragover', over); window.addEventListener('dragleave', leave); window.addEventListener('drop', drop);
     return () => { window.removeEventListener('dragenter', enter); window.removeEventListener('dragover', over); window.removeEventListener('dragleave', leave); window.removeEventListener('drop', drop); setDragging(false); };
   }, [active, attach]);
-  useEffect(() => () => clearTimeout(hide.current), []);
-  return { dragging, notice, attach };
+  return { dragging, attach };
 }

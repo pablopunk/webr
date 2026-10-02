@@ -9,6 +9,8 @@ import { conflictMessage } from '../client/terminal-manager';
 import { ImagePlus } from 'lucide-react';
 import { useImageAttachments } from './useImageAttachments';
 import { imageFilesFrom } from '../client/image-attach';
+import { bindTerminalClipboard } from '../client/terminal-clipboard';
+import { useTerminalNotice } from './useTerminalNotice';
 
 function themeColors() {
   const styles = getComputedStyle(document.documentElement);
@@ -41,7 +43,9 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
   const [message, setMessage] = useState('Connecting…');
   const [writable, setWritable] = useState(false);
   const writableRef = useRef(false);
-  const images = useImageAttachments({ machineId, active, writable: writableRef, send: (text) => { control.current?.input(text, true); } });
+  const { notice, show } = useTerminalNotice();
+  const images = useImageAttachments({ machineId, active, writable: writableRef, show, send: (text) => { control.current?.input(text, true); } });
+  const showCopyResult = useRef((copied: boolean) => {}); showCopyResult.current = (copied) => copied ? show('Copied to clipboard', 'info', 1200) : show('The browser blocked clipboard access.', 'error', 4000);
 
   useEffect(() => {
     if (!host.current) return;
@@ -59,9 +63,9 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     term.current = terminal;
     const redirectFocus = () => { if (writableRef.current) host.current?.parentElement?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus(); };
     terminal.textarea?.addEventListener('focus', redirectFocus);
-    const clipboard = terminal.parser.registerOscHandler(52, () => true);
+    const clipboard = bindTerminalClipboard(host.current, terminal, () => writableRef.current, (copied) => showCopyResult.current(copied));
     const links = terminal.parser.registerOscHandler(8, () => true);
-    if (!pane.terminalId) { terminal.dispose(); return; }
+    if (!pane.terminalId) { clipboard(); terminal.dispose(); return; }
     const fit = new FitAddon(); terminal.loadAddon(fit);
     const estimatedViewport = () => ({ cols: Math.floor((host.current?.clientWidth ?? 640) / 8), rows: Math.floor((host.current?.clientHeight ?? 400) / 20) });
     const measuredViewport = () => { try { return fit.proposeDimensions(); } catch { return undefined; } };
@@ -83,7 +87,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
       writableRef.current = false; gestures();
       window.removeEventListener('focus', claimSize); document.removeEventListener('visibilitychange', claimSize);
       terminal.textarea?.removeEventListener('focus', redirectFocus);
-      clipboard.dispose(); links.dispose(); resize.disconnect(); colorObserver.disconnect();
+      clipboard(); links.dispose(); resize.disconnect(); colorObserver.disconnect();
       terminal.dispose(); term.current = null;
     };
     }).catch(() => setMessage('The terminal could not load.'));
@@ -121,7 +125,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     {message === conflictMessage && <div className="terminal-control-conflict">Another Herdr client controls this terminal.<button type="button" onClick={(event) => { event.stopPropagation(); if (confirm('Replace the other Herdr client that controls this terminal? Its input stops working.')) control.current?.control(true); }}>Take over</button></div>}
     <div ref={host} className="terminal-host" />
     {images.dragging && <div className="terminal-drop-overlay" aria-hidden="true"><ImagePlus size={22} strokeWidth={1.6} /><span>Drop image to attach</span></div>}
-    {images.notice && <div className={`terminal-attach-notice is-${images.notice.tone}`} role={images.notice.tone === 'error' ? 'alert' : 'status'}>{images.notice.text}</div>}
+    {notice && <div className={`terminal-attach-notice is-${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.text}</div>}
     {writable && <TerminalInput onInput={(text, paste) => control.current?.input(text, paste)} onFocusChange={(focused) => { if (term.current?.modes.sendFocusMode) control.current?.input(focused ? FOCUS_IN : FOCUS_OUT); }} />}
   </section>;
 }

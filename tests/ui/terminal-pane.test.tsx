@@ -2,18 +2,18 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { TerminalPane } from '../../src/components/TerminalPane';
 
-const fixture = vi.hoisted(() => ({ onData: vi.fn(), control: vi.fn(), observe: vi.fn(), input: vi.fn(), close: vi.fn(), mount: vi.fn() }));
+const fixture = vi.hoisted(() => ({ onData: vi.fn(), control: vi.fn(), observe: vi.fn(), input: vi.fn(), close: vi.fn(), mount: vi.fn(), selection: '', osc: new Map<number, (data: string) => boolean>() }));
 vi.mock('../../src/client/provider', () => ({ useRuntime: () => ({ terminals: fixture }) }));
 vi.mock('@xterm/xterm', () => ({ Terminal: class {
   options = {}; cols = 80; rows = 24; element?: HTMLElement; onData = fixture.onData;
-  parser = { registerOscHandler: () => ({ dispose() {} }) };
+  parser = { registerOscHandler: (code: number, handler: (data: string) => boolean) => { fixture.osc.set(code, handler); return { dispose() { fixture.osc.delete(code); } }; } };
   loadAddon() {}
   textarea = document.createElement('textarea'); modes = { sendFocusMode: true };
   open(host: HTMLElement) { this.element = document.createElement('div'); this.element.className = 'xterm-screen'; host.append(this.element); }
-  hasSelection() { return false; } getSelection() { return 'selected text'; } dispose() {}
+  hasSelection() { return !!fixture.selection; } getSelection() { return fixture.selection; } dispose() {}
 } }));
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { proposeDimensions() { return { cols: 90, rows: 31 }; } } }));
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); fixture.selection = ''; });
 it('keeps terminals free of control bars and leaves right-click to the browser', async () => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   fixture.mount.mockImplementation((options) => { options.onState('Read-only', false); return { control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }; });
@@ -110,4 +110,28 @@ it('explains what went wrong instead of silently ignoring a drop', async () => {
   await waitFor(() => expect(view.container.textContent).toContain('Only PNG, JPEG, GIF and WebP images can be attached.'));
   fireEvent.drop(window, { dataTransfer: filesTransfer([image()]) });
   await waitFor(() => expect(view.container.textContent).toContain('Images can be attached only on the Local machine for now.')); expect(fixture.input).not.toHaveBeenCalled();
+});
+const stubClipboard = () => { const writeText = vi.fn(async () => {}); vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } }); return writeText; };
+it('copies the selection when the mouse is released, like Herdr copy on select', async () => {
+  const writeText = stubClipboard(); const view = await mountWritablePane();
+  fixture.selection = 'npm run dev'; fireEvent.mouseUp(view.container.querySelector('.terminal-host')!);
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith('npm run dev')); expect(view.container.textContent).toContain('Copied to clipboard');
+  writeText.mockClear(); fixture.selection = ''; fireEvent.mouseUp(view.container.querySelector('.terminal-host')!); expect(writeText).not.toHaveBeenCalled();
+});
+it('puts the selection on the clipboard for the copy shortcut', async () => {
+  await mountWritablePane(); fixture.selection = 'selected text';
+  const setData = vi.fn(); const copy = new Event('copy', { bubbles: true, cancelable: true }); Object.assign(copy, { clipboardData: { setData } });
+  window.dispatchEvent(copy); expect(setData).toHaveBeenCalledWith('text/plain', 'selected text'); expect(copy.defaultPrevented).toBe(true);
+});
+it('copies text that the controlled terminal application sends with OSC 52', async () => {
+  const writeText = stubClipboard(); await mountWritablePane();
+  expect(fixture.osc.get(52)!('c;' + btoa('copied by agent'))).toBe(true);
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith('copied by agent'));
+});
+it('ignores OSC 52 clipboard writes on a read-only pane', async () => {
+  const writeText = stubClipboard(); vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  fixture.mount.mockImplementation((options) => { options.onState('Read-only', false); return { control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }; });
+  render(<TerminalPane pane={{ id: 'w1:p1', terminalId: 'term_fixture', title: 'Agent', kind: 'agent' }} machineId="fixture" threadId="fixture-thread" active canControl={false} onFocus={() => {}} />);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
+  fixture.osc.get(52)!('c;' + btoa('secret')); await Promise.resolve(); expect(writeText).not.toHaveBeenCalled();
 });
