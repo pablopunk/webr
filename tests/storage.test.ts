@@ -38,3 +38,18 @@ it('scans only fixed icon candidates within an approved target root and does not
     expect((await readApprovedIcon(root))?.contentType).toBe('image/x-icon');
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+it('finds a branded app favicon in a monorepo without selecting another app or escaping its root', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'hi-'));
+  const root = join(directory, 'maze', 'monorepo');
+  const apps = join(root, 'apps');
+  try {
+    await mkdir(join(apps, 'report-webapp', 'public'), { recursive: true });
+    await mkdir(join(apps, 'maze-webapp', 'public'), { recursive: true });
+    await writeFile(join(apps, 'report-webapp', 'public', 'favicon.ico'), 'report');
+    await writeFile(join(apps, 'maze-webapp', 'public', 'favicon.ico'), 'maze');
+    expect((await readApprovedIcon(root))?.bytes.toString()).toBe('maze');
+    await writeFile(join(directory, 'outside.ico'), 'outside');
+    await symlink(join(directory, 'outside.ico'), join(root, 'favicon.ico'));
+    expect((await readApprovedIcon(root))?.bytes.toString()).toBe('maze');
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
