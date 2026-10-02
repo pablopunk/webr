@@ -4,6 +4,7 @@ import type { NativeSnapshot } from '../protocol/native';
 import type { Project, Thread } from '../../lib/models';
 import type { TargetAdapter } from './target';
 
+export const projectNameKey = (machineId: string, logicalId: string) => `project-name:${machineId}:${logicalId}`;
 export const projectIdentity = (machineId: string, repository: string) => createHash('sha256').update(machineId + '\0' + repository).digest('hex').slice(0, 32);
 const sameBinding = (thread: Thread, target: TargetAdapter) => thread.session === target.session && thread.bindingFingerprint === target.fingerprint && thread.bindingConfigVersion === target.configVersion;
 const paneStatus = (panes: NativeSnapshot['panes']) => { const agents = panes.filter((pane) => pane.agent); return ['blocked', 'working', 'done', 'idle', 'unknown'].find((status) => (agents.length ? agents : panes).some((pane) => pane.agent_status === status)) as Thread['status'] | undefined; };
@@ -22,7 +23,8 @@ export function reconcile(database: MetadataDatabase, target: TargetAdapter, sna
     const cwd = workspace.worktree?.repo_root ?? snapshot.panes.find((pane) => pane.workspace_id === workspace.workspace_id)?.cwd ?? '';
     const location = target.locations.find((location) => location.workspaceId === workspace.workspace_id || location.path === cwd);
     const id = location?.projectId ?? projectIdentity(target.id, workspace.worktree?.repo_key ?? (cwd || workspace.workspace_id));
-    if (!projects.some((project) => project.id === id)) projects.push({ id, machineId: target.id, localId: location?.localId, logicalId: location?.logicalId ?? workspace.worktree?.repo_key ?? id, name: workspace.worktree?.repo_name ?? workspace.label, path: location?.path ?? cwd, color: '#9b83df', initial: (workspace.label[0] ?? 'P').toUpperCase(), iconUrl: target.icon && location ? `/api/projects/${encodeURIComponent(target.id)}/${encodeURIComponent(id)}/icon` : undefined });
+    const logicalId = location?.logicalId ?? workspace.worktree?.repo_key ?? id;
+    if (!projects.some((project) => project.id === id)) projects.push({ id, machineId: target.id, localId: location?.localId, logicalId, name: database.getSetting(projectNameKey(target.id, logicalId)) ?? workspace.worktree?.repo_name ?? workspace.label, path: location?.path ?? cwd, color: '#9b83df', initial: (workspace.label[0] ?? 'P').toUpperCase(), iconUrl: target.icon && location ? `/api/projects/${encodeURIComponent(target.id)}/${encodeURIComponent(id)}/icon` : undefined });
     for (const tab of snapshot.tabs.filter((tab) => tab.workspace_id === workspace.workspace_id)) tabProjects.set(tab.tab_id, id);
   }
   const launching = database.operations().some((operation) => operation.input.machineId === target.id && ['pending', 'running'].includes(operation.state));

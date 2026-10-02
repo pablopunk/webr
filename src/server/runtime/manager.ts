@@ -3,7 +3,7 @@ import type { TargetAdapter, TerminalDirection } from './target';
 import type { Thread } from '../../lib/models';
 import { threadAgent, threadShell } from '../../lib/terminal-split';
 import { TargetSupervisor } from './supervisor';
-import { reconcile } from './reconcile';
+import { projectNameKey, reconcile } from './reconcile';
 import type { MetadataDatabase } from '../storage/database';
 import type { Bootstrap, Projection } from '../../shared/runtime';
 import type { Machine } from '../../lib/machines';
@@ -107,6 +107,12 @@ export class RuntimeManager extends EventEmitter {
     const row = this.database.threadRows(machineId).find((row) => row.id === threadId);
     if (!supervisor || !row) throw new Error('thread_not_found');
     this.database.saveThread({ ...row.metadata, archivedAt: archived ? new Date().toISOString() : undefined }, row.anchors, row.alias);
+    this.publish(supervisor);
+  }
+  renameProject(machineId: string, logicalId: string, name: string) {
+    const supervisor = this.supervisors.get(machineId);
+    if (!supervisor) throw new Error('machine_disconnected');
+    this.database.setSetting(projectNameKey(machineId, logicalId), name);
     this.publish(supervisor);
   }
   async renameThread(machineId: string, threadId: string, title: string) {

@@ -1,15 +1,17 @@
 import { memo, useRef, useState, type ReactNode } from 'react';
 import { ContextMenu } from '@base-ui/react/context-menu';
-import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, GitBranch, LayoutList, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Settings2, SquarePen, Trash2, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, GitBranch, LayoutList, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Settings2, SquarePen, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { type Project, type Thread, harnessName, relativeTime } from '../lib/models';
 import { isLaunching, launchFailed, launchLabel } from '../lib/launch';
 import type { Machine } from '../lib/machines';
 import { ProjectIcon } from './ProjectIcon';
 import { OpenWorktree } from './OpenWorktree';
 import { ThreadTitleEditor } from './ThreadTitleEditor';
+import { ProjectNameEditor } from './ProjectNameEditor';
 import { ThreadAvatar } from './ThreadAvatar';
 import { Tooltip } from './Tooltip';
 import { useFlipList } from './useFlipList';
+import { navigate } from 'astro:transitions/client';
 import { groupProjectLocations } from '../client/project-groups';
 import { alertDialog, confirmDialog } from './dialogs';
 import { deleteArchivedThreads, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
@@ -72,6 +74,23 @@ function ThreadLink({ thread, project, machineName, current, showProject, editor
   </Row></Tooltip>;
 }
 
+function ProjectGroupHeader({ project, closed, onToggle }: { project: Project; closed: boolean; onToggle: () => void }) {
+  const [renaming, setRenaming] = useState(false);
+  const Title = renaming ? 'div' : 'button';
+  const label = renaming ? <ProjectNameEditor project={project} onDone={() => setRenaming(false)} onError={reportFailure} /> : <span className="group-name">{project.name}</span>;
+  return <ContextMenu.Root>
+    <ContextMenu.Trigger className="group-header">
+      <Title className="group-title" onClick={renaming ? undefined : onToggle} aria-expanded={renaming ? undefined : !closed}>
+        <span className="group-chevron" aria-hidden="true">{closed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</span><ProjectIcon project={project} />{label}
+      </Title>
+    </ContextMenu.Trigger>
+    <ContextMenu.Portal><ContextMenu.Positioner className="thread-menu-positioner"><ContextMenu.Popup className="thread-menu">
+      <ContextMenu.Item className="thread-menu-item" onClick={() => void navigate(`/new?project=${encodeURIComponent(project.id)}`)}><Plus size={14} aria-hidden="true" />New thread</ContextMenu.Item>
+      <ContextMenu.Item className="thread-menu-item" onClick={() => setRenaming(true)}><Pencil size={14} aria-hidden="true" />Rename project</ContextMenu.Item>
+    </ContextMenu.Popup></ContextMenu.Positioner></ContextMenu.Portal>
+  </ContextMenu.Root>;
+}
+
 function ArchivedThreads({ threads, renderThread }: { threads: Thread[]; renderThread: (thread: Thread) => ReactNode }) {
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -125,12 +144,7 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
       {!collapsed && <>
         <nav ref={navigation} className="thread-navigation" aria-label="Agent threads">
           {mode === 'projects' ? projectGroups.filter((group) => threads.some((thread) => group.locations.includes(thread.projectId))).sort((a, b) => (threads.find((thread) => b.locations.includes(thread.projectId))?.updatedAt ?? '').localeCompare(threads.find((thread) => a.locations.includes(thread.projectId))?.updatedAt ?? '')).map(({ id, project, locations }) => <section key={id} className="thread-group">
-            <div className="group-header">
-              <button className="group-title" onClick={() => setClosedProjects((value) => value.includes(id) ? value.filter((item) => item !== id) : [...value, id])} aria-expanded={!closedProjects.includes(id)}>
-                <span className="group-chevron" aria-hidden="true">{closedProjects.includes(id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</span><ProjectIcon project={project} /><span className="group-name">{project.name}</span>
-              </button>
-              <Tooltip label={`New thread in ${project.name}`}><a className="group-new-thread" href={`/new?project=${encodeURIComponent(project.id)}`} aria-label={`New thread in ${project.name}`}><SquarePen size={15} aria-hidden="true" /></a></Tooltip>
-            </div>
+            <ProjectGroupHeader project={project} closed={closedProjects.includes(id)} onToggle={() => setClosedProjects((value) => value.includes(id) ? value.filter((item) => item !== id) : [...value, id])} />
             {!closedProjects.includes(id) && threads.filter((thread) => locations.includes(thread.projectId)).map((thread) => threadLink(thread, false))}
           </section>) : threads.map((thread) => threadLink(thread, true))}
           {!threads.length && !archived.length && <p className="sidebar-empty">No agents yet. Press ⌘K to start one.</p>}

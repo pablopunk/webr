@@ -19,7 +19,8 @@ Everything is handled automatically via the plugin:
 
 ```sh
 webr plugin install
-webr open             # Open the dashboard in your browser
 ```
+
+## LICENSE
 
 AGPL-3.0-or-later

@@ -115,6 +115,10 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     const input = z.object({ machineId: opaqueId, archived: z.boolean() }).strict().parse(request.body);
     manager.archive(input.machineId, id, input.archived); return { archived: input.archived };
   });
+  app.post('/api/projects/rename', async (request) => {
+    const input = z.object({ machineId: opaqueId, logicalId: z.string().min(1).max(1000), name: z.string().trim().min(1).max(90).refine((name) => !/[\x00-\x1f\x7f]/.test(name)) }).strict().parse(request.body);
+    manager.renameProject(input.machineId, input.logicalId, input.name); return { name: input.name };
+  });
   app.post('/api/threads/:id/rename', async (request) => {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
     const input = z.object({ machineId: opaqueId, title: z.string().trim().min(1).max(90).refine((title) => !/[\x00-\x1f\x7f]/.test(title)) }).strict().parse(request.body);

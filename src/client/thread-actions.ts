@@ -1,4 +1,4 @@
-import type { Thread } from '../lib/models';
+import type { Project, Thread } from '../lib/models';
 
 const actionErrors: Record<string, string> = {
   machine_disconnected: 'The machine is not connected.',
@@ -15,6 +15,7 @@ async function post(path: string, body: Record<string, unknown> = {}) {
 
 export const setThreadArchived = (thread: Thread, archived: boolean) => post(`/api/threads/${encodeURIComponent(thread.id)}/archive`, { machineId: thread.machineId, archived });
 export const renameThread = (thread: Thread, title: string) => post(`/api/threads/${encodeURIComponent(thread.id)}/rename`, { machineId: thread.machineId, title });
+export const renameProject = (project: Project, name: string) => post('/api/projects/rename', { machineId: project.machineId ?? 'local', logicalId: project.logicalId ?? project.id, name });
 export type TerminalDirection = 'right' | 'down';
 export const toggleThreadTerminal = (thread: Thread, direction: TerminalDirection) => post(`/api/threads/${encodeURIComponent(thread.id)}/terminal`, { machineId: thread.machineId, direction }) as Promise<{ paneId: string; hidden: boolean }>;
 export const closeThreadTerminal = (thread: Thread) => post(`/api/threads/${encodeURIComponent(thread.id)}/terminal/close`, { machineId: thread.machineId });

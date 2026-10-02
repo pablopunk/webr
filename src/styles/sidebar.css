@@ -66,17 +66,17 @@
 .thread-project.has-icon img { opacity: 1; }
 .group-header { display: flex; align-items: center; min-width: 0; }
 .group-title { display: flex; flex: 1; align-items: center; min-width: 0; gap: 6px; padding: 8px; border: 0; border-radius: 5px; background: none; color: var(--ink-soft); font-size: 11px; text-align: left; }
-.group-title:hover { background: var(--surface-hover); color: var(--ink); }
+.group-title:hover { color: var(--ink); }
+.thread-group { border-radius: 7px; }
+.thread-group:has(> .group-header:hover) { background: var(--surface-hover); }
 .group-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.group-new-thread { display: grid; flex: none; place-items: center; width: 28px; height: 28px; margin-right: 4px; border-radius: 5px; color: var(--ink-soft); }
-.group-new-thread:hover { background: var(--surface-hover); color: var(--ink); }
 .group-chevron { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 12px; height: 17px; }
 .thread-group + .thread-group { margin-top: 8px; }
 .sidebar-footer { display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; flex: none; border-top: 1px solid var(--line); }
 .sidebar-settings { display: flex; align-items: center; gap: 10px; height: 35px; flex: 1; padding: 0 12px; border-radius: 6px; color: var(--ink-soft); font-size: 11.5px; }
-.sidebar-palette { padding: 3px 6px; border: 1px solid var(--line-strong); border-radius: 4px; background: transparent; color: var(--ink-soft); }
+.sidebar-palette { display: inline-flex; align-items: center; justify-content: center; padding: 3px 6px; border: 1px solid var(--line-strong); border-radius: 4px; background: transparent; color: var(--ink-soft); }
 .sidebar-palette:hover { color: var(--ink); background: var(--surface-hover); }
-.sidebar-palette kbd { font: 10px var(--font-mono); }
+.sidebar-palette kbd { font: 10px/1 var(--font-mono); }
 .sidebar-settings:hover { color: var(--ink); background: var(--surface-hover); }
 .sidebar-empty { padding: 8px; color: var(--ink-muted); font-size: 11px; }
 .sidebar-scrim, .mobile-close { display: none; }

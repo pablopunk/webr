@@ -2,7 +2,7 @@ import { readdir, realpath, stat, readFile } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 
 const contentTypes: Record<string, string> = { '.ico': 'image/x-icon', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp' };
-const directories = ['', 'public', 'static', 'assets', 'web/public', 'app/public', 'src/assets', 'src/app', 'frontend/public'];
+const directories = ['', 'public', 'static', 'assets', 'web', 'web/public', 'app/public', 'src/assets', 'src/app', 'frontend/public'];
 export type Icon = { bytes: Buffer; contentType: string };
 
 function withinRoot(root: string, path: string) {
