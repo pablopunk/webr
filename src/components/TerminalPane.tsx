@@ -80,17 +80,15 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
 
   const focusInput = () => { if (writable && !term.current?.hasSelection()) host.current?.parentElement?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus(); };
   useEffect(() => { if (active) focusInput(); }, [active, writable]);
+  useEffect(() => { const refocus = () => { if (active) focusInput(); }; window.addEventListener('focus', refocus); return () => window.removeEventListener('focus', refocus); }, [active, writable]);
 
-  return <section className={`terminal-pane ${active ? 'is-active' : ''}`} aria-label={`${pane.title} terminal`} onClick={() => { onFocus(); if (!menu) focusInput(); }} onContextMenu={(event) => { if (event.altKey || event.shiftKey) return; event.preventDefault(); onFocus(); const rect = event.currentTarget.getBoundingClientRect(); setMenu({ x: Math.max(0, Math.min(event.clientX - rect.left, rect.width - 220)), y: Math.max(0, Math.min(event.clientY - rect.top, rect.height - 180)) }); }}>
+  return <section className={`terminal-pane ${active ? 'is-active' : ''}`} aria-label={`${pane.title} terminal`} onClick={() => { onFocus(); if (canControl && !writableRef.current) control.current?.control(); if (!menu) focusInput(); }} onContextMenu={(event) => { if (event.altKey || event.shiftKey) return; event.preventDefault(); onFocus(); const rect = event.currentTarget.getBoundingClientRect(); setMenu({ x: Math.max(0, Math.min(event.clientX - rect.left, rect.width - 220)), y: Math.max(0, Math.min(event.clientY - rect.top, rect.height - 180)) }); }}>
     <span className="terminal-status" role="status">{message}</span>
     {message === conflictMessage && <div className="terminal-control-conflict">Another Herdr client controls this terminal.<button type="button" onClick={(event) => { event.stopPropagation(); if (confirm('Replace the other Herdr client that controls this terminal? Its input stops working.')) control.current?.control(true); }}>Take over</button></div>}
     <div ref={host} className="terminal-host" />
     {writable && <TerminalInput onInput={(text, paste) => control.current?.input(text, paste)} />}
     {menu && <div role="menu" aria-label="Terminal actions" className="terminal-context-menu" style={{ left: menu.x, top: menu.y }} onKeyDown={(event) => { if (event.key === 'Escape') setMenu(null); }}>
       <small>{message}</small>
-      <button role="menuitem" onClick={() => { control.current?.control(); setMenu(null); }}>Request control</button>
-      <button role="menuitem" onClick={() => { if (confirm('Replace the active terminal controller?')) control.current?.control(true); setMenu(null); }}>Take over</button>
-      <button role="menuitem" onClick={() => { control.current?.observe(); setMenu(null); }}>Release control</button>
       <button role="menuitem" onClick={() => { const selection = term.current?.getSelection(); if (selection) void navigator.clipboard.writeText(selection); setMenu(null); }}>Copy selection</button>
       <button role="menuitem" onClick={() => setMenu(null)}>Close menu</button>
     </div>}

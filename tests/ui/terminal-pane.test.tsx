@@ -13,12 +13,12 @@ vi.mock('@xterm/xterm', () => ({ Terminal: class {
 } }));
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { proposeDimensions() { return { cols: 90, rows: 31 }; } } }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
-it('keeps terminals free of permanent control bars and exposes explicit controls only in the context menu', async () => {
+it('keeps terminals free of control bars and offers only copy in the context menu', async () => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   fixture.mount.mockImplementation((options) => { options.onState('Read-only', false); return { control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }; });
   const view = render(<TerminalPane pane={{ id: 'w1:p1', terminalId: 'term_fixture', title: 'Shell', kind: 'shell' }} machineId="fixture" threadId="fixture-thread" active canControl={false} onFocus={() => {}} />);
   await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1)); expect(screen.queryByText('Request control')).toBeNull(); expect(view.container.querySelector('.terminal-controls')).toBeNull(); expect(fixture.onData).not.toHaveBeenCalled();
-  fireEvent.contextMenu(screen.getByLabelText('Shell terminal'), { clientX: 20, clientY: 20 }); fireEvent.click(screen.getByText('Request control')); expect(fixture.control).toHaveBeenCalledTimes(1);
+  fireEvent.contextMenu(screen.getByLabelText('Shell terminal'), { clientX: 20, clientY: 20 }); expect(screen.queryByText('Request control')).toBeNull(); expect(screen.queryByText('Take over')).toBeNull(); expect(screen.queryByText('Release control')).toBeNull(); expect(screen.getByText('Copy selection')).toBeDefined();
   await act(async () => fixture.mount.mock.calls[0][0].onState('Input control is active.', true)); expect(screen.getByLabelText('Terminal input')).toBeDefined();
   view.unmount(); expect(fixture.close).toHaveBeenCalledTimes(1);
 });
@@ -37,4 +37,11 @@ it('requests control only for an approved active pane and passes typed keys to t
   expect(fixture.observe).toHaveBeenCalledTimes(1);
   view.rerender(<TerminalPane {...props} active />);
   expect(fixture.control).toHaveBeenCalledTimes(1);
+});
+it('requests control by itself when a read-only pane is clicked, with no menu', async () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  fixture.mount.mockImplementation((options) => { options.onState('Read-only', false); return { control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }; });
+  render(<TerminalPane pane={{ id: 'w1:p1', terminalId: 'term_fixture', title: 'Agent', kind: 'agent' }} machineId="fixture" threadId="fixture-thread" active canControl onFocus={() => {}} />);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1)); fixture.control.mockClear();
+  fireEvent.click(screen.getByLabelText('Agent terminal')); expect(fixture.control).toHaveBeenCalledTimes(1);
 });
