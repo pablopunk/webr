@@ -12,6 +12,7 @@ import { conflictMessage } from '../client/terminal-manager';
 import { ImagePlus } from 'lucide-react';
 import { useImageAttachments } from './useImageAttachments';
 import { imageFilesFrom } from '../client/image-attach';
+import { openLinkOnModifierClick } from '../client/terminal-links';
 import { bindTerminalClipboard } from '../client/terminal-clipboard';
 import { useTerminalNotice } from './useTerminalNotice';
 
@@ -58,7 +59,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     if (!host.current) return;
     let disposed = false;
     let cleanup = () => {};
-    void Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit'), loadTerminalFonts()]).then(([xterm, { FitAddon }]) => {
+    void Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit'), import('@xterm/addon-web-links'), loadTerminalFonts()]).then(([xterm, { FitAddon }, { WebLinksAddon }]) => {
     if (disposed || !host.current) return;
     const terminal = new xterm.Terminal({
       fontFamily: TERMINAL_FONT_FAMILY, fontSize: TERMINAL_FONT_SIZE,
@@ -75,6 +76,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     const links = terminal.parser.registerOscHandler(8, () => true);
     if (!pane.terminalId) { clipboard(); terminal.dispose(); return; }
     const fit = new FitAddon(); terminal.loadAddon(fit);
+    terminal.loadAddon(new WebLinksAddon(openLinkOnModifierClick));
     const estimatedViewport = () => ({ cols: Math.floor((host.current?.clientWidth ?? 640) / 8), rows: Math.floor((host.current?.clientHeight ?? 400) / 20) });
     const measuredViewport = () => { try { return fit.proposeDimensions(); } catch { return undefined; } };
     const viewport = () => { const { cols, rows } = measuredViewport() ?? estimatedViewport(); return { cols: Math.max(2, Math.min(500, cols)), rows: Math.max(1, Math.min(300, rows)) }; };

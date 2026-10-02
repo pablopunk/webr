@@ -14,6 +14,7 @@ vi.mock('@xterm/xterm', () => ({ Terminal: class {
   focus() { this.textarea.focus(); }
   hasSelection() { return !!fixture.selection; } getSelection() { return fixture.selection; } dispose() {}
 } }));
+vi.mock('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }));
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { proposeDimensions() { return { cols: 90, rows: 31 }; } } }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); fixture.selection = ''; });
 it('keeps terminals free of control bars and leaves right-click to the browser', async () => {
