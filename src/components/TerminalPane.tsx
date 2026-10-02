@@ -96,8 +96,10 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
   }, [pane.id, pane.terminalId, machineId, threadId, terminals, canControl]);
 
 
-  const focusInput = () => { if (writable && !term.current?.hasSelection()) host.current?.parentElement?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus(); };
+  const showCursorAsFocused = () => term.current?.focus();
+  const focusInput = () => { if (!writable || term.current?.hasSelection()) return; showCursorAsFocused(); host.current?.parentElement?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus(); };
   useEffect(() => { if (active) focusInput(); }, [active, writable]);
+  useEffect(() => { if (term.current) term.current.options.cursorInactiveStyle = active ? 'block' : 'outline'; }, [active, writable]);
   useEffect(() => {
     if (!active || !writable) return;
     const unfocused = (event: Event) => event.target === document.body || event.target === document.documentElement || section.current?.contains(event.target as Node);

@@ -10,6 +10,7 @@ vi.mock('@xterm/xterm', () => ({ Terminal: class {
   loadAddon() {}
   textarea = document.createElement('textarea'); modes = { sendFocusMode: true };
   open(host: HTMLElement) { this.element = document.createElement('div'); this.element.className = 'xterm-screen'; host.append(this.element); }
+  focus() { this.textarea.focus(); }
   hasSelection() { return !!fixture.selection; } getSelection() { return fixture.selection; } dispose() {}
 } }));
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { proposeDimensions() { return { cols: 90, rows: 31 }; } } }));
@@ -148,4 +149,15 @@ it('takes focus on pointer down even when the terminal swallows the click', asyn
   const onFocus = vi.fn();
   render(<TerminalPane pane={{ id: 'w1:p2', terminalId: 'term_shell', title: 'Shell', kind: 'shell' }} machineId="fixture" threadId="fixture-thread" active={false} canControl onFocus={onFocus} />);
   fireEvent.pointerDown(screen.getByLabelText('Shell terminal')); expect(onFocus).toHaveBeenCalledOnce();
+});
+it('draws a solid cursor in the focused pane and an outline in the other one', async () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
+  const props = { pane: { id: 'w1:p2', terminalId: 'term_shell', title: 'Shell', kind: 'shell' as const }, machineId: 'fixture', threadId: 'fixture-thread', canControl: true, onFocus: () => {} };
+  const view = render(<TerminalPane {...props} active={false} />);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
+  const { terminal, onState } = fixture.mount.mock.calls[0][0];
+  await act(async () => onState('Input control is active.', true)); expect(terminal.options.cursorInactiveStyle).toBe('outline');
+  view.rerender(<TerminalPane {...props} active />); expect(terminal.options.cursorInactiveStyle).toBe('block');
+  expect(document.activeElement).toBe(screen.getByLabelText('Terminal input'));
 });
