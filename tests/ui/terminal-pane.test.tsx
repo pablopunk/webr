@@ -6,6 +6,7 @@ const fixture = vi.hoisted(() => ({ onData: vi.fn(), control: vi.fn(), observe: 
 vi.mock('../../src/client/provider', () => ({ useRuntime: () => ({ terminals: fixture }) }));
 vi.mock('@xterm/xterm', () => ({ Terminal: class {
   options = {}; cols = 80; rows = 24; element?: HTMLElement; onData = fixture.onData;
+  attachCustomWheelEventHandler() {}
   parser = { registerOscHandler: (code: number, handler: (data: string) => boolean) => { fixture.osc.set(code, handler); return { dispose() { fixture.osc.delete(code); } }; } };
   loadAddon() {}
   textarea = document.createElement('textarea'); modes = { sendFocusMode: true };

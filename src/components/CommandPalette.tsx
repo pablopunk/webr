@@ -1,15 +1,18 @@
-import { confirmDialog } from './dialogs';
+import { alertDialog, confirmDialog } from './dialogs';
 import { Tooltip } from './Tooltip';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThreadAvatar } from './ThreadAvatar';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, FolderTree, LayoutList, Monitor, Moon, PanelBottom, PanelLeft, PanelRight, Plus, Settings2, SquareTerminal, Sun, TerminalSquare, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, FolderTree, Gauge, LayoutList, Monitor, Moon, PanelBottom, PanelLeft, PanelRight, Plus, Settings2, SquareTerminal, Sun, TerminalSquare, X } from 'lucide-react';
 import type { Project, Thread } from '../lib/models';
 import { defaultShortcuts, formatShortcut, getShortcuts, type ShortcutAction } from './shortcuts';
 import type { SidebarMode } from './Sidebar';
 import { applyTheme } from './ThemeControl';
 import { navigate } from 'astro:transitions/client';
-import type { TerminalDirection } from '../client/thread-actions';
+import { setThreadArchived, type TerminalDirection } from '../client/thread-actions';
 import { threadShell } from '../lib/terminal-split';
+import { perfAvailable, perfVisible, setPerfVisible } from '../client/perf';
+
+const reportFailure = (error: unknown) => alertDialog(error instanceof Error ? error.message : 'Herdr could not complete this action.');
 
 type Command = { label: string; icon: ReactNode; detail?: string; shortcut?: ShortcutAction; run: () => void };
 
@@ -45,6 +48,7 @@ export function CommandPalette({ open, onClose, projects, threads, thread, focus
   const commands = useMemo<Command[]>(() => [
     { label: 'New thread', icon: <Plus size={16} />, shortcut: 'newThread', run: () => { void navigate(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`); } },
     { label: 'Settings', icon: <Settings2 size={16} />, run: () => { void navigate('/settings'); } },
+    ...(perfAvailable ? [{ label: 'Toggle performance overlay', icon: <Gauge size={16} />, detail: 'Dev only', run: () => setPerfVisible(!perfVisible()) }] : []),
     { label: 'Toggle sidebar', icon: <PanelLeft size={16} />, shortcut: 'toggleSidebar', run: onToggleSidebar },
     ...(threads.length ? [
       { label: 'Next thread', icon: <ArrowDown size={16} />, shortcut: 'nextThread' as const, run: () => navigateThread(1) },
@@ -58,6 +62,7 @@ export function CommandPalette({ open, onClose, projects, threads, thread, focus
       run: () => { localStorage.setItem('webr-theme', theme); applyTheme(theme); window.dispatchEvent(new Event('webr-theme-change')); },
     })),
     ...(thread ? [
+      { label: thread.archivedAt ? 'Unarchive thread' : 'Archive thread', icon: thread.archivedAt ? <ArchiveRestore size={16} /> : <Archive size={16} />, run: () => { void setThreadArchived(thread, !thread.archivedAt).catch(reportFailure); } },
       { label: 'Copy thread link', icon: <Copy size={16} />, run: () => { void navigator.clipboard.writeText(location.href); } },
       ...(thread.bindingState === 'attached' ? threadShell(thread) ? [
         { label: 'Toggle terminal', icon: <SquareTerminal size={16} />, shortcut: 'toggleTerminal' as const, run: () => onToggleTerminal() },

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PanelLeft, Search } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
+import { PerfOverlay } from './PerfOverlay';
 import { PairingPrompt } from './PairingPrompt';
 import { NewThreadView } from './NewThreadView';
 import { SettingsView } from './SettingsView';
@@ -14,6 +15,7 @@ import { useStore } from 'zustand';
 import { RuntimeProvider, useRuntime, useRuntimeSelector } from '../client/provider';
 import type { Bootstrap } from '../shared/runtime';
 import { appShortcutAction } from '../client/keyboard';
+import { perfAvailable, startPerf } from '../client/perf';
 import { closeThreadTerminal, toggleThreadTerminal, type TerminalDirection } from '../client/thread-actions';
 import { currentTerminalDirection, threadAgent, threadShell } from '../lib/terminal-split';
 import { alertDialog } from './dialogs';
@@ -44,6 +46,7 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(startPerf, []);
   const [mode, setMode] = useState<SidebarMode>('threads');
   const scope = `${thread?.machineId ?? ''}:${thread?.id ?? ''}`;
   const storedFocus = useStore(ui, (state) => state.focusedPanes[scope]);
@@ -146,6 +149,7 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
       {page === 'missing' && <main className="not-found"><h1>Thread not found</h1><a href="/">Open a thread</a></main>}
     </div>
     {page === 'thread' && <div className="mobile-controls"><button aria-label="Open sidebar" onClick={toggleSidebar}><PanelLeft size={16} /></button><button aria-label="Open command palette" onClick={() => setPaletteOpen(true)}><Search size={16} /></button></div>}
+    {perfAvailable && <PerfOverlay />}
     <PairingPrompt />
     <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projects={projects} threads={threads} thread={thread} focusedPane={focusedPane}
       mode={mode} onModeChange={changeMode} onToggleSidebar={toggleSidebar} onFocusPane={focusPane} onTerminalAction={(action) => { const pane = thread?.panes.find((pane) => pane.id === focusedPane); if (thread && pane?.terminalId) terminals.command(thread.machineId, thread.id, pane.terminalId, action); }}

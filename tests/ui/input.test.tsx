@@ -38,7 +38,7 @@ it('reserves plain or Shift pointer gestures for selection and only forwards del
   pointer(false); pointer(true, true); expect(mouse).not.toHaveBeenCalled();
   pointer(true); expect(mouse).toHaveBeenCalledExactlyOnceWith('down', 'left', 12, 5, 0);
   let tick = () => {}; vi.stubGlobal('requestAnimationFrame', (run: () => void) => { tick = run; return 1; }); vi.stubGlobal('cancelAnimationFrame', () => {});
-  host.dispatchEvent(new WheelEvent('wheel', { deltaY: -25, cancelable: true })); host.dispatchEvent(new WheelEvent('wheel', { deltaY: -20, cancelable: true })); tick(); expect(scroll).toHaveBeenCalledExactlyOnceWith('up', 2);
+  host.dispatchEvent(new WheelEvent('wheel', { deltaY: -25, cancelable: true })); host.dispatchEvent(new WheelEvent('wheel', { deltaY: -20, cancelable: true })); tick(); expect(scroll).toHaveBeenCalledExactlyOnceWith('up', 62, 1, 1);
   writable = false; pointer(true); host.dispatchEvent(new WheelEvent('wheel', { deltaY: 40 })); expect(mouse).toHaveBeenCalledTimes(1); expect(scroll).toHaveBeenCalledTimes(1);
   dispose(); host.remove();
 });

@@ -61,6 +61,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
       linkHandler: { activate: () => {} },
     });
     terminal.open(host.current);
+    terminal.attachCustomWheelEventHandler(() => false);
     term.current = terminal;
     const redirectFocus = () => { if (writableRef.current) host.current?.parentElement?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus(); };
     terminal.textarea?.addEventListener('focus', redirectFocus);
