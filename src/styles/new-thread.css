@@ -24,8 +24,6 @@
 .worktree-option input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .worktree-option:has(input:not(:checked)) { color: var(--ink-muted); }
 .worktree-option:has(input:checked) { background: var(--surface-muted); color: var(--ink); }
-.worktree-tooltip { position: absolute; z-index: 2; right: 0; bottom: calc(100% + 8px); padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); font-size: 11px; font-weight: 500; white-space: nowrap; opacity: 0; transform: translateY(5px); pointer-events: none; transition: opacity .16s ease, transform .16s ease; }
-.worktree-option:hover .worktree-tooltip, .worktree-option:focus-within .worktree-tooltip { opacity: 1; transform: translateY(0); }
 .composer-send { display: inline-grid; place-items: center; flex: none; width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--action-blue); color: #fff; }
 .composer-send:hover:not(:disabled) { filter: brightness(1.12); }
 .composer-send:disabled { background: var(--surface-active); color: var(--ink-muted); cursor: not-allowed; }

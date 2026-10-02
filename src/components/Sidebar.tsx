@@ -8,6 +8,7 @@ import { ProjectIcon } from './ProjectIcon';
 import { OpenWorktree } from './OpenWorktree';
 import { ThreadTitleEditor } from './ThreadTitleEditor';
 import { ThreadAvatar } from './ThreadAvatar';
+import { Tooltip } from './Tooltip';
 import { groupProjectLocations } from '../client/project-groups';
 import { alertDialog, confirmDialog } from './dialogs';
 import { deleteArchivedThreads, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
@@ -47,7 +48,7 @@ const ThreadRow = memo(function ThreadRow({ thread, project, machineName, curren
   return <ContextMenu.Root>
     <ContextMenu.Trigger className="thread-item" onDoubleClick={(event) => { event.preventDefault(); setRenaming(true); }}>
       <ThreadLink thread={thread} project={project} machineName={machineName} current={current} showProject={showProject} editor={editor} />
-      <button type="button" className="thread-archive" aria-label={archiveLabel} title={archived ? 'Unarchive' : 'Archive'} onClick={() => void setThreadArchived(thread, !archived).catch(reportFailure)}><ArchiveIcon size={15} strokeWidth={1.8} aria-hidden="true" /></button>
+      <Tooltip label={archived ? 'Unarchive' : 'Archive'}><button type="button" className="thread-archive" aria-label={archiveLabel} onClick={() => void setThreadArchived(thread, !archived).catch(reportFailure)}><ArchiveIcon size={15} strokeWidth={1.8} aria-hidden="true" /></button></Tooltip>
     </ContextMenu.Trigger>
     <ContextMenu.Portal><ContextMenu.Positioner className="thread-menu-positioner"><ContextMenu.Popup className="thread-menu">
       <ContextMenu.Item className="thread-menu-item is-danger" onClick={() => void confirmDelete(thread)}><Trash2 size={14} aria-hidden="true" />Delete permanently</ContextMenu.Item>
@@ -61,11 +62,11 @@ function ThreadLink({ thread, project, machineName, current, showProject, editor
   const status = launching ? launchLabel(thread) : failed ? 'Launch stopped' : statusLabel[thread.status];
   const context = launching || failed ? status : showProject ? project?.name : harnessName(thread.agent);
   const Row = editor ? 'div' : 'a';
-  return <Row className={`thread-row ${current ? 'is-current' : ''}`} href={editor ? undefined : `/threads/${encodeURIComponent(thread.id)}`} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${status}`} title={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`}>
+  return <Tooltip label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`} side="right"><Row className={`thread-row ${current ? 'is-current' : ''}`} href={editor ? undefined : `/threads/${encodeURIComponent(thread.id)}`} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${status}`}>
     <span className="thread-avatar" aria-hidden="true"><ThreadAvatar thread={thread} working={thread.status === 'working' || launching} size={24} />{StatusIcon && <StatusIcon className={`thread-status status-${failed ? 'blocked' : thread.status}`} size={14} strokeWidth={2.2} />}</span>
     <span className="thread-copy"><span className="thread-context">{showProject && project && !launching && !failed && <ProjectIcon project={project} />}{context}</span>{editor ?? <span className="thread-name">{thread.title}</span>}</span>
     <span className="thread-time">{relativeTime(thread.updatedAt)}</span>
-  </Row>;
+  </Row></Tooltip>;
 }
 
 function ArchivedThreads({ threads, renderThread }: { threads: Thread[]; renderThread: (thread: Thread) => ReactNode }) {
@@ -107,13 +108,13 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
         <button className="icon-button mobile-close" aria-label="Close sidebar" onClick={onCloseMobile}><X size={16} /></button>
       </div>
       <div className="sidebar-actions">
-        <a className="sidebar-new-thread" href={`/new${currentProjectId ? `?project=${encodeURIComponent(currentProjectId)}` : ''}`} aria-label="New thread" title="New thread">
+        <Tooltip label="New thread"><a className="sidebar-new-thread" href={`/new${currentProjectId ? `?project=${encodeURIComponent(currentProjectId)}` : ''}`} aria-label="New thread">
           <Plus size={16} aria-hidden="true" />{!collapsed && <span>New thread</span>}
-        </a>
+        </a></Tooltip>
         <OpenWorktree projects={projects} />
         {!collapsed && <div className="sidebar-view-switch" role="group" aria-label="Sidebar layout">
-          <button type="button" aria-label="Show threads" title="Show threads" aria-pressed={mode === 'threads'} onClick={() => onModeChange('threads')}><LayoutList size={16} aria-hidden="true" /></button>
-          <button type="button" aria-label="Group by project" title="Group by project" aria-pressed={mode === 'projects'} onClick={() => onModeChange('projects')}><FolderTree size={16} aria-hidden="true" /></button>
+          <Tooltip label="Show threads"><button type="button" aria-label="Show threads" aria-pressed={mode === 'threads'} onClick={() => onModeChange('threads')}><LayoutList size={16} aria-hidden="true" /></button></Tooltip>
+          <Tooltip label="Group by project"><button type="button" aria-label="Group by project" aria-pressed={mode === 'projects'} onClick={() => onModeChange('projects')}><FolderTree size={16} aria-hidden="true" /></button></Tooltip>
         </div>}
       </div>
       {!collapsed && <>
@@ -123,7 +124,7 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
               <button className="group-title" onClick={() => setClosedProjects((value) => value.includes(id) ? value.filter((item) => item !== id) : [...value, id])} aria-expanded={!closedProjects.includes(id)}>
                 <span className="group-chevron" aria-hidden="true">{closedProjects.includes(id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</span><ProjectIcon project={project} /><span className="group-name">{project.name}</span>
               </button>
-              <a className="group-new-thread" href={`/new?project=${encodeURIComponent(project.id)}`} aria-label={`New thread in ${project.name}`} title={`New thread in ${project.name}`}><Plus size={15} aria-hidden="true" /></a>
+              <Tooltip label={`New thread in ${project.name}`}><a className="group-new-thread" href={`/new?project=${encodeURIComponent(project.id)}`} aria-label={`New thread in ${project.name}`}><Plus size={15} aria-hidden="true" /></a></Tooltip>
             </div>
             {!closedProjects.includes(id) && threads.filter((thread) => locations.includes(thread.projectId)).map((thread) => threadLink(thread, false))}
           </section>) : threads.map((thread) => threadLink(thread, true))}

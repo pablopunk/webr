@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Combobox } from '@base-ui/react/combobox';
 import { Check, ChevronDown, Search } from 'lucide-react';
+import { Tooltip } from './Tooltip';
 
 export type ComposerOption = {
   value: string;
@@ -25,11 +26,11 @@ export function ComposerCombobox({ label, value, options, onChange, icon, allowC
     inputValue={query} onInputValueChange={setQuery} onOpenChange={() => setQuery('')}
     itemToStringLabel={(option) => option.label} isItemEqualToValue={(a, b) => a.value === b.value}
     onValueChange={(option) => { if (option && !option.disabled) onChange(option.value); }}>
-    <Combobox.Trigger className="composer-select" aria-label={`${label}: ${selected.label}`} title={`${label}: ${selected.label}`}>
+    <Tooltip label={`${label}: ${selected.label}`}><Combobox.Trigger className="composer-select" aria-label={`${label}: ${selected.label}`}>
       <span className="composer-select-icon" aria-hidden="true">{selected.icon ?? icon}</span>
       <span className="composer-select-label">{selected.shortLabel ?? (selected.label || label)}</span>
       <ChevronDown className="composer-select-caret" size={11} aria-hidden="true" />
-    </Combobox.Trigger>
+    </Combobox.Trigger></Tooltip>
     <Combobox.Portal>
       <Combobox.Positioner className="composer-select-positioner" sideOffset={6} align="start" collisionPadding={12}>
         <Combobox.Popup className="composer-select-popup" aria-label={`${label} options`}>

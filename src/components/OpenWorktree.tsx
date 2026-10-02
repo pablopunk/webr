@@ -6,6 +6,7 @@ import { ChevronRight, GitBranch, Search } from 'lucide-react';
 import type { Project } from '../lib/models';
 import { ProjectIcon } from './ProjectIcon';
 import { alertDialog } from './dialogs';
+import { Tooltip } from './Tooltip';
 
 type Worktree = { path: string; branch: string | null; label: string };
 const projectQuery = (project: Project) => new URLSearchParams({ machineId: project.machineId ?? 'local', projectId: project.id });
@@ -38,9 +39,9 @@ function WorktreeSearch({ project }: { project: Project }) {
       <input autoFocus aria-label="Search worktrees" placeholder="Search worktrees…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={keepTypingInsideInput} />
     </div>
     <div className="worktree-menu-list">
-      {matches.map((worktree) => <Menu.Item key={worktree.path} className="thread-menu-item" title={worktree.path} onClick={() => void openAndShow(project, worktree)}>
+      {matches.map((worktree) => <Tooltip key={worktree.path} label={worktree.path} side="right"><Menu.Item className="thread-menu-item" onClick={() => void openAndShow(project, worktree)}>
         <GitBranch size={14} aria-hidden="true" /><span className="worktree-menu-name">{worktreeName(worktree)}<small>{folderName(worktree)}</small></span>
-      </Menu.Item>)}
+      </Menu.Item></Tooltip>)}
       {worktrees.isError && <p className="worktree-menu-note" role="alert">Could not list worktrees.</p>}
       {worktrees.data && !matches.length && <p className="worktree-menu-note">{worktrees.data.length ? 'No matches' : 'Every worktree already has a thread'}</p>}
     </div>
@@ -49,9 +50,9 @@ function WorktreeSearch({ project }: { project: Project }) {
 
 export function OpenWorktree({ projects }: { projects: Project[] }) {
   return <Menu.Root>
-    <Menu.Trigger className="sidebar-open-worktree" aria-label="Open existing worktree" title="Open existing worktree" disabled={!projects.length}>
+    <Tooltip label="Open existing worktree"><Menu.Trigger className="sidebar-open-worktree" aria-label="Open existing worktree" disabled={!projects.length}>
       <Search size={16} aria-hidden="true" />
-    </Menu.Trigger>
+    </Menu.Trigger></Tooltip>
     <Menu.Portal><Menu.Positioner className="thread-menu-positioner" sideOffset={6} align="start"><Menu.Popup className="thread-menu">
       {projects.map((project) => <Menu.SubmenuRoot key={`${project.machineId}:${project.id}`}>
         <Menu.SubmenuTrigger className="thread-menu-item"><ProjectIcon project={project} /><span>{project.name}</span><ChevronRight size={14} aria-hidden="true" className="worktree-menu-chevron" /></Menu.SubmenuTrigger>

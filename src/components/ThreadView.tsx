@@ -7,14 +7,15 @@ import { LaunchProgress } from './LaunchProgress';
 import { isLaunching, launchFailed } from '../lib/launch';
 import { hiddenTerminalLayout, type PeekSide } from '../lib/terminal-split';
 import { TerminalSquare } from 'lucide-react';
+import { Tooltip } from './Tooltip';
 
 const PEEK_SIZE = '28px';
 const besidePeek = (side: PeekSide) => side === 'right' ? { left: 0, top: 0, width: `calc(100% - ${PEEK_SIZE})`, height: '100%' } : { left: 0, top: 0, width: '100%', height: `calc(100% - ${PEEK_SIZE})` };
 
 function TerminalPeek({ side, onOpen }: { side: PeekSide; onOpen: () => void }) {
-  return <button type="button" className={`terminal-peek is-${side}`} aria-label="Show terminal" title="Show terminal" onClick={onOpen}>
+  return <Tooltip label="Show terminal" side={side === 'right' ? 'left' : 'top'}><button type="button" className={`terminal-peek is-${side}`} aria-label="Show terminal" onClick={onOpen}>
     <TerminalSquare size={14} strokeWidth={1.8} aria-hidden="true" /><span>Terminal</span>
-  </button>;
+  </button></Tooltip>;
 }
 
 export function ThreadView({ thread, layouts, tabs, connected, canControl, onFocusPane, focusedPane, onToggleTerminal }: {

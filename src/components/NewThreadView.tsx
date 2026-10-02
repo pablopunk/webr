@@ -10,6 +10,7 @@ import { navigate } from 'astro:transitions/client';
 import { CreateWorkspace } from './CreateWorkspace';
 import { initialWorktreeChoice, recordWorktreeChoice } from '../client/new-session-behavior';
 import { clearNewThreadDraft, readNewThreadDraft, writeNewThreadDraft } from '../client/new-thread-draft';
+import { Tooltip } from './Tooltip';
 
 const harnessPreference = (machineId: string, projectId: string) => `webr-last-harness:${machineId}:${projectId}`;
 
@@ -104,7 +105,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     </> : <>
     <form className={`thread-composer ${images.dragging ? 'is-dropping' : ''}`} onSubmit={submit} aria-busy={busy} {...images.handlers}>
       {(images.attachments.length > 0 || images.uploading > 0) && <ul className="composer-images" aria-label="Attached images">
-        {images.attachments.map((image) => <li key={image.id}><img src={image.preview} alt={image.name} /><button type="button" aria-label={`Remove ${image.name}`} title="Remove image" onClick={() => images.remove(image.id)}><X size={12} strokeWidth={2.4} /></button></li>)}
+        {images.attachments.map((image) => <li key={image.id}><img src={image.preview} alt={image.name} /><Tooltip label="Remove image"><button type="button" aria-label={`Remove ${image.name}`} onClick={() => images.remove(image.id)}><X size={12} strokeWidth={2.4} /></button></Tooltip></li>)}
         {Array.from({ length: images.uploading }, (_, index) => <li key={'uploading-' + index} className="is-uploading" aria-label="Uploading image" />)}
       </ul>}
       <textarea autoFocus required maxLength={8000} value={prompt} onChange={(event) => setPrompt(event.target.value)}
@@ -114,9 +115,9 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
         <LaunchSelectors machine={machine} machines={machines} projects={machineProjects} projectId={projectId} harness={harness} model={model}
           onMachineChange={changeMachine} onProjectChange={changeProject} onHarnessChange={changeHarness} onModelChange={setModel}
           onAddProject={machine.connected && machine.id === 'local' ? () => setCreatingWorkspace(true) : undefined} />
-        <label className="worktree-option"><input type="checkbox" checked={worktree} onChange={(event) => setWorktree(event.target.checked)} aria-label="Create a new worktree" aria-describedby="worktree-mode-tooltip" /><GitBranch size={15} aria-hidden="true" /><span className="worktree-tooltip" id="worktree-mode-tooltip" role="tooltip">{worktree ? 'new worktree' : 'current checkout'}</span></label>
+        <Tooltip label={worktree ? 'new worktree' : 'current checkout'}><label className="worktree-option"><input type="checkbox" checked={worktree} onChange={(event) => setWorktree(event.target.checked)} aria-label="Create a new worktree" /><GitBranch size={15} aria-hidden="true" /></label></Tooltip>
         <div className="composer-actions">
-          <button className="composer-send" type="submit" disabled={!canSubmit} aria-label="Create thread" title="Create thread">{busy ? '…' : <ArrowUp size={18} strokeWidth={2.2} />}</button>
+          <Tooltip label="Create thread"><button className="composer-send" type="submit" disabled={!canSubmit} aria-label="Create thread">{busy ? '…' : <ArrowUp size={18} strokeWidth={2.2} />}</button></Tooltip>
         </div>
       </div>
     </form>

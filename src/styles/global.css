@@ -7,5 +7,6 @@
 @import './combobox.css';
 @import './terminal.css';
 @import './palette.css';
+@import './tooltip.css';
 
 ::view-transition-group(root), ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }

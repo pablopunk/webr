@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Monitor, Moon, Sun } from 'lucide-react';
+import { Tooltip } from './Tooltip';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -37,11 +38,11 @@ export function ThemeControl({ expanded = false }: { expanded?: boolean }) {
   return (
     <div className={expanded ? 'theme-control theme-control--expanded' : 'theme-control'} role="group" aria-label="Color theme">
       {([['system', Monitor], ['light', Sun], ['dark', Moon]] as const).map(([value, Icon]) => (
-        <button key={value} type="button" aria-label={`${value} theme`} aria-pressed={preference === value}
+        <Tooltip key={value} label={`${value[0].toUpperCase()}${value.slice(1)} theme`}><button type="button" aria-label={`${value} theme`} aria-pressed={preference === value}
           className={preference === value ? 'theme-option is-selected' : 'theme-option'}
-          onClick={() => select(value)} title={`${value[0].toUpperCase()}${value.slice(1)} theme`}>
+          onClick={() => select(value)}>
           <Icon size={15} strokeWidth={1.8} />{expanded && <span>{value}</span>}
-        </button>
+        </button></Tooltip>
       ))}
     </div>
   );

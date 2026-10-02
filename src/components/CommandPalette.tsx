@@ -1,4 +1,5 @@
 import { confirmDialog } from './dialogs';
+import { Tooltip } from './Tooltip';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThreadAvatar } from './ThreadAvatar';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, FolderTree, LayoutList, Monitor, Moon, PanelBottom, PanelLeft, PanelRight, Plus, Settings2, SquareTerminal, Sun, TerminalSquare, X } from 'lucide-react';
@@ -93,7 +94,7 @@ export function CommandPalette({ open, onClose, projects, threads, thread, focus
       <input ref={input} aria-label="Search commands and threads" placeholder="Search threads and actions…" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(0); }} />
       <div className="palette-results" role="listbox" aria-label="Results">
         {matching.map((command, index) => <button role="option" aria-selected={selected === index} className={selected === index ? 'is-selected' : ''} key={`${command.label}-${index}`} onMouseEnter={() => setSelected(index)} onClick={() => run(command)}>
-          <span className="palette-icon" aria-hidden="true">{command.icon}</span><span className="palette-label">{command.label}</span>{command.detail && <small>{command.detail}</small>}{command.shortcut && <kbd title={shortcuts[command.shortcut]}>{formatShortcut(shortcuts[command.shortcut])}</kbd>}
+          <span className="palette-icon" aria-hidden="true">{command.icon}</span><span className="palette-label">{command.label}</span>{command.detail && <small>{command.detail}</small>}{command.shortcut && <Tooltip label={shortcuts[command.shortcut]}><kbd>{formatShortcut(shortcuts[command.shortcut])}</kbd></Tooltip>}
         </button>)}
         {!matching.length && <p>No results</p>}
       </div>
