@@ -53,3 +53,12 @@ it('finds a branded app favicon in a monorepo without selecting another app or e
     expect((await readApprovedIcon(root))?.bytes.toString()).toBe('maze');
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+it('focuses only a pane that belongs to the thread so Herdr marks finished work as seen', async () => {
+  const database = new MetadataDatabase(':memory:'); const target = new FakeTarget(); const manager = new RuntimeManager(database, [target]);
+  try {
+    manager.start(); await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+    const thread = manager.bootstrap().threads[0];
+    await manager.focusPane(target.id, thread.id, thread.panes[0].id); expect(target.focused).toEqual([thread.panes[0].id]);
+    await expect(manager.focusPane(target.id, thread.id, 'w9:p9')).rejects.toThrow('invalid_focus'); expect(target.focused).toHaveLength(1);
+  } finally { await manager.close(); database.close(); }
+});

@@ -116,6 +116,7 @@ export class HerdrTarget implements TargetAdapter {
   canLaunch(input: LaunchInput) { return this.compatible && launchableKinds.includes(input.agent) && this.locations.some((location) => location.projectId === input.projectId); }
   async start(input: LaunchInput, paneId: string, threadId: string) { return this.actions().start(input, paneId, threadId); }
   async prompt(paneId: string, prompt: string, terminalId: string, threadId: string, input: LaunchInput) { return this.actions().prompt(paneId, prompt, terminalId, threadId, input.agent, input); }
+  async focusPane(paneId: string) { return this.actions().focus(paneId); }
   private actions() {
     return new HerdrActions({ request: async (method, params, options) => {
       const api = await this.connect(); const ping = await api.request('ping');

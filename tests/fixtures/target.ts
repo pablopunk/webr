@@ -46,6 +46,8 @@ export class FakeTarget implements TargetAdapter {
   }
   async start(_input: LaunchInput, paneId: string) { this.effect('start'); this.state.panes.find((pane) => pane.pane_id === paneId)!.agent = 'claude'; }
   async prompt(paneId: string, _prompt: string, terminalId: string) { if (!this.state.panes.some((pane) => pane.pane_id === paneId && pane.terminal_id === terminalId && pane.agent === 'claude')) throw new Error('occupant_changed'); this.effect('prompt'); }
+  focused: string[] = [];
+  async focusPane(paneId: string) { this.focused.push(paneId); }
   close() { ++this.closed; }
 }
 export const launch: LaunchInput = { machineId: 'fixture', projectId: 'fixture:project', prompt: 'Test launch', agent: 'claude', model: 'Default', worktree: true };

@@ -66,6 +66,7 @@ export class HerdrActions {
     } while (Date.now() < end);
     throw new Error('agent_not_ready');
   }
+  async focus(paneId: string) { await this.api.request('pane.focus', { pane_id: paneId }); }
   async prompt(paneId: string, prompt: string, terminalId: string, threadId: string, kind: string, input?: LaunchInput) {
     this.requireCapability(input);
     const name = agentName(threadId);
