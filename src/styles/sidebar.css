@@ -34,6 +34,9 @@
 .worktree-menu { width: 260px; padding: 0; overflow: hidden; }
 .worktree-menu-list { max-height: min(320px, var(--available-height)); padding: 4px; overflow-y: auto; }
 .worktree-menu-note { margin: 0; padding: 8px; color: var(--ink-soft); font-size: 12px; }
+.thread-menu-item > svg, .thread-menu-item > .thread-project { flex: none; }
+.worktree-menu-name { display: grid; min-width: 0; overflow-wrap: anywhere; }
+.worktree-menu-name small { color: var(--ink-soft); font-size: 10.5px; }
 .worktree-menu-chevron { margin-left: auto; color: var(--ink-soft); }
 .thread-menu-item.is-danger { color: var(--danger); }
 .archived-threads { flex: none; max-height: 45%; overflow-y: auto; padding: 6px 8px; border-top: 1px solid var(--line); scrollbar-width: thin; }

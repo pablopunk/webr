@@ -10,6 +10,8 @@ import { alertDialog } from './dialogs';
 type Worktree = { path: string; branch: string | null; label: string };
 const projectQuery = (project: Project) => new URLSearchParams({ machineId: project.machineId ?? 'local', projectId: project.id });
 const worktreeName = (worktree: Worktree) => worktree.branch ?? worktree.label;
+const folderName = (worktree: Worktree) => worktree.path.split('/').at(-1) ?? '';
+const matchesSearch = (worktree: Worktree, query: string) => `${worktreeName(worktree)} ${folderName(worktree)}`.toLowerCase().includes(query.trim().toLowerCase());
 
 const fetchWorktrees = async (project: Project, signal: AbortSignal) => {
   const response = await fetch(`/api/worktrees?${projectQuery(project)}`, { signal });
@@ -30,14 +32,14 @@ const keepTypingInsideInput = (event: React.KeyboardEvent) => { if (event.key.le
 function WorktreeSearch({ project }: { project: Project }) {
   const [query, setQuery] = useState('');
   const worktrees = useQuery({ queryKey: ['worktrees', project.machineId, project.id], queryFn: ({ signal }) => fetchWorktrees(project, signal) });
-  const matches = (worktrees.data ?? []).filter((worktree) => worktreeName(worktree).toLowerCase().includes(query.trim().toLowerCase()));
+  const matches = (worktrees.data ?? []).filter((worktree) => matchesSearch(worktree, query));
   return <>
     <div className="composer-select-search"><Search size={14} aria-hidden="true" />
       <input autoFocus aria-label="Search worktrees" placeholder="Search worktrees…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={keepTypingInsideInput} />
     </div>
     <div className="worktree-menu-list">
       {matches.map((worktree) => <Menu.Item key={worktree.path} className="thread-menu-item" title={worktree.path} onClick={() => void openAndShow(project, worktree)}>
-        <GitBranch size={14} aria-hidden="true" /><span>{worktreeName(worktree)}</span>
+        <GitBranch size={14} aria-hidden="true" /><span className="worktree-menu-name">{worktreeName(worktree)}<small>{folderName(worktree)}</small></span>
       </Menu.Item>)}
       {worktrees.isError && <p className="worktree-menu-note" role="alert">Could not list worktrees.</p>}
       {worktrees.data && !matches.length && <p className="worktree-menu-note">{worktrees.data.length ? 'No matches' : 'Every worktree already has a thread'}</p>}
