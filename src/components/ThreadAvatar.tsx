@@ -4,6 +4,7 @@ import type { Thread } from '../lib/models';
 import { avatarForThread } from '../lib/avatars';
 
 const TIME_FOR_A_JUMP_TO_LAND_MS = 2000;
+const FACE_FORWARD = 0;
 
 function usePauseAfterLanding(working: boolean) {
   const [paused, setPaused] = useState(!working);
@@ -17,5 +18,6 @@ function usePauseAfterLanding(working: boolean) {
 
 export function ThreadAvatar({ thread, working, size }: { thread: Thread; working: boolean; size: number }) {
   const paused = usePauseAfterLanding(working);
-  return <BotAvatar {...avatarForThread(thread)} state={working ? 'working' : 'default'} size={size} paused={paused} />;
+  const remountIntoTheRestPose = paused ? 'rest' : 'moving';
+  return <BotAvatar key={remountIntoTheRestPose} {...avatarForThread(thread)} state={working ? 'working' : 'default'} size={size} paused={paused} turn={working ? undefined : FACE_FORWARD} />;
 }
