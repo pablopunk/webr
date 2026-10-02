@@ -1,6 +1,5 @@
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import { NodeSqliteClient, drizzleClient } from './node-sqlite-client';
+import { NodeSqliteClient } from './node-sqlite-client';
+import { openMigratedDrizzle } from './drizzle-node-sqlite';
 import { and, eq, max } from 'drizzle-orm';
 import type { DeviceSession } from '../auth/sessions';
 import { fileURLToPath } from 'node:url';
@@ -19,8 +18,7 @@ export class MetadataDatabase {
     this.sqlite = new NodeSqliteClient(path);
     if (path !== ':memory:') chmodSync(path, 0o600);
     this.sqlite.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON');
-    this.db = drizzle(drizzleClient(this.sqlite), { schema });
-    migrate(this.db, { migrationsFolder: fileURLToPath(new URL('../../../drizzle', import.meta.url)) });
+    this.db = openMigratedDrizzle(this.sqlite, schema, fileURLToPath(new URL('../../../drizzle', import.meta.url)));
   }
   close() { this.sqlite.close(); }
   getSetting(key: string) { return this.db.select().from(schema.settings).where(eq(schema.settings.key, key)).get()?.value; }

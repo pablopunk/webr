@@ -1,5 +1,6 @@
 import { DatabaseSync, type StatementSync, type SQLInputValue } from 'node:sqlite';
 
+export type RunResult = { changes: number | bigint; lastInsertRowid: number | bigint };
 type BindValues = SQLInputValue[];
 type Behavior = 'deferred' | 'immediate' | 'exclusive';
 
@@ -41,5 +42,3 @@ export class NodeSqliteClient {
     });
   }
 }
-
-export function drizzleClient(client: NodeSqliteClient) { return client as never; }
