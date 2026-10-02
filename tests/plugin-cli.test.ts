@@ -101,7 +101,7 @@ it('updates the plugin by stopping the running Webr and letting the new webr rei
   const herdr = fakeHerdr('github');
   const webr = await startFakeWebr(herdr);
   expect(await updatePlugin(herdr.deps())).toEqual(['refreshed']);
-  expect(herdr.webrCalls()).toEqual(['plugin install']);
+  expect(herdr.webrCalls()).toEqual(['plugin install --no-open']);
   await webr.exited;
 });
 
