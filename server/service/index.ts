@@ -10,8 +10,8 @@ import type { CommandResult, RunCommand, ServicePlatform, ServiceSpec } from './
 
 const PERSISTED_ENV = ['PATH', 'XDG_CONFIG_HOME', 'HERDR_CONFIG_PATH', 'WEBR_HOME', 'WEBR_DATABASE', 'WEBR_TARGETS', 'WEBR_ORIGIN', 'WEBR_TLS_CERT', 'WEBR_TLS_KEY'];
 
-export const realRun: RunCommand = (command, args): CommandResult => {
-  const result = spawnSync(command, args, { encoding: 'utf8' });
+export const realRun: RunCommand = (command, args, env): CommandResult => {
+  const result = spawnSync(command, args, { encoding: 'utf8', env: env ? { ...process.env, ...env } : undefined });
   return { ok: result.status === 0, output: `${result.stdout ?? ''}${result.stderr ?? ''}${result.error?.message ?? ''}` };
 };
 

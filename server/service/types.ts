@@ -8,7 +8,7 @@ export type ServiceSpec = {
 };
 
 export type CommandResult = { ok: boolean; output: string };
-export type RunCommand = (command: string, args: string[]) => CommandResult;
+export type RunCommand = (command: string, args: string[], env?: NodeJS.ProcessEnv) => CommandResult;
 export type ServiceStatus = { installed: boolean; running: boolean };
 
 export type ServicePlatform = {

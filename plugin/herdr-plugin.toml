@@ -1,0 +1,9 @@
+id = "pablopunk.webr"
+name = "Webr"
+version = "0.1.0"
+min_herdr_version = "0.7.0"
+description = "Starts Webr, the web UI for Herdr agents, whenever the Herdr server starts."
+platforms = ["macos", "linux"]
+
+[[startup]]
+command = ["node", "launch.mjs"]

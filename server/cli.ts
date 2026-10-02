@@ -7,6 +7,8 @@ import { webrHome } from './home';
 import { runServer } from './run';
 import { platformFor, runServiceAction, type ServiceAction } from './service';
 import { serverPort } from './port';
+import { defaultDeps, installPlugin, pluginStatus, uninstallWebrPlugin } from './plugin';
+import { confirmOnTerminal } from './plugin/confirm';
 
 const HELP = `Webr — control your Herdr agents from anywhere.
 
@@ -15,6 +17,9 @@ Usage
   webr service install [options] Run Webr in the background, starting at login
   webr service uninstall         Stop and remove the background service
   webr service status            Show whether the service is installed and running
+  webr plugin install [options]  Start Webr whenever the Herdr server starts
+  webr plugin uninstall          Remove the Herdr plugin
+  webr plugin status             Show whether the plugin is installed and Webr is running
   webr invite [--port <port>]    Print a one-time code and QR to connect a device
 
 Options
@@ -62,6 +67,18 @@ async function invite(port: number) {
   if (!urls.length) console.log('Webr is only reachable from this computer. Restart it with --lan or --origin to connect other devices.');
 }
 
+const pluginSettings = (values: ReturnType<typeof parseCommand>['values']) => ({
+  ...(values.port ? { port: serverPort(['--port', values.port], {}) } : {}),
+  ...(values.lan ? { host: '0.0.0.0' } : values.host ? { host: values.host } : {}),
+  ...(values.origin ? { origin: values.origin } : {}),
+});
+
+async function pluginCommand(action: string, values: ReturnType<typeof parseCommand>['values']) {
+  const deps = defaultDeps(confirmOnTerminal);
+  const lines = action === 'install' ? await installPlugin(pluginSettings(values), deps) : action === 'uninstall' ? uninstallWebrPlugin(deps) : await pluginStatus(deps);
+  for (const line of lines.filter(Boolean)) console.log(line);
+}
+
 export async function main(argv: string[]) {
   const { values, positionals } = parseCommand(argv);
   const [command = 'start', subcommand] = positionals;
@@ -74,5 +91,6 @@ export async function main(argv: string[]) {
     for (const line of runServiceAction(subcommand as ServiceAction, serverFlags(values))) console.log(line);
     return;
   }
+  if (command === 'plugin' && ['install', 'uninstall', 'status'].includes(subcommand ?? '')) return pluginCommand(subcommand!, values);
   throw new Error(`Unknown command: ${positionals.join(' ')}\n\n${HELP}`);
 }
