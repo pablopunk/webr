@@ -18,6 +18,7 @@ import { scopedProjectId } from '../../shared/projects';
 import { validateInstalledSchema } from '../protocol/validate';
 import { ensureLocalSession } from './local-session';
 import { nativeLocations } from './native-locations';
+import { expandHome, listLocalDirectories, suggestDirectories } from '../directories';
 
 const MODEL_LISTING_TIMEOUT_MS = 15_000;
 const MODEL_LISTING_LIMIT = 4 * 1024 * 1024;
@@ -81,8 +82,8 @@ export class HerdrTarget implements TargetAdapter {
     return snapshot;
   }
   async createWorkspace(path: string, label: string, requestId: string) {
-    if (this.profile.transport !== 'local' || !this.profile.automatic || !this.compatible) throw new Error('workspace_creation_unavailable');
-    const result = await (await this.connect()).request('workspace.create', { cwd: path, label, focus: false }, { timeoutMs: 30_000, requestId });
+    if (!this.profile.automatic || !this.compatible) throw new Error('workspace_creation_unavailable');
+    const result = await (await this.connect()).request('workspace.create', { cwd: await this.expandHome(path), label, focus: false }, { timeoutMs: 30_000, requestId });
     const workspace = nativeWorkspace.parse(result.workspace); const tab = nativeTab.parse(result.tab); const pane = nativePane.parse(result.root_pane);
     if (tab.workspace_id !== workspace.workspace_id || pane.workspace_id !== workspace.workspace_id || pane.tab_id !== tab.tab_id) throw new Error('workspace_identity_mismatch');
     return { workspaceId: workspace.workspace_id, tabId: tab.tab_id, terminalId: pane.terminal_id };
@@ -90,15 +91,28 @@ export class HerdrTarget implements TargetAdapter {
   async catalog(_projectId?: string): Promise<Machine> {
     const api = await this.connect();
     await api.request('ping');
-    const run = (command: string, args: string[]) => this.profile.transport === 'local'
-      ? this.dependencies.process(command, args, undefined, MODEL_LISTING_TIMEOUT_MS, MODEL_LISTING_LIMIT)
-      : this.dependencies.process('ssh', [...sshOptions, this.profile.host!, [command, ...args].map(quoteShell).join(' ')], undefined, MODEL_LISTING_TIMEOUT_MS, MODEL_LISTING_LIMIT);
+    const run = (command: string, args: string[]) => this.runOnTarget(command, args);
     const isPresent = (kind: string) => run('/bin/sh', ['-c', 'command -v "$1" >/dev/null', 'sh', kind]).then(() => true, () => false);
     const listModels = (kind: string) => modelListings[kind] ? run(kind, modelListings[kind].args).then((output) => parseModelListing(kind, output), () => []) : Promise.resolve([]);
     const present = (await Promise.all(herdrAgentKinds.map(async (kind) => (await isPresent(kind)) ? kind : undefined))).filter((kind): kind is string => !!kind);
     const discovered = await Promise.all(present.map(listModels));
     return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id, index) => ({ id, name: harnessName(id), models: ['Default', ...discovered[index]], customModels: acceptsModelFlag(id), launchEnabled: true })) };
   }
+  private runOnTarget(command: string, args: string[]) {
+    return this.profile.transport === 'local'
+      ? this.dependencies.process(command, args, undefined, MODEL_LISTING_TIMEOUT_MS, MODEL_LISTING_LIMIT)
+      : this.dependencies.process('ssh', [...sshOptions, this.profile.host!, [command, ...args].map(quoteShell).join(' ')], undefined, MODEL_LISTING_TIMEOUT_MS, MODEL_LISTING_LIMIT);
+  }
+  private async expandHome(path: string) {
+    if (this.profile.transport === 'local') return expandHome(path);
+    if (path !== '~' && !path.startsWith('~/')) return path;
+    return (await this.runOnTarget('/bin/sh', ['-c', 'printf %s "$HOME"'])) + path.slice(1);
+  }
+  private listRemoteDirectories = async (parent: string) => {
+    const script = 'case "$1" in "~") d="$HOME";; "~/"*) d="$HOME/${1#"~/"}";; *) d="$1";; esac; cd "$d" 2>/dev/null && ls -1Ap | grep "/$" | sed "s|/$||"';
+    return (await this.runOnTarget('/bin/sh', ['-c', script, 'sh', parent]).catch(() => '')).split('\n').filter(Boolean);
+  };
+  suggestDirectories(prefix: string) { return suggestDirectories(prefix, this.profile.transport === 'local' ? listLocalDirectories : this.listRemoteDirectories); }
   async icon(projectId: string) {
     const location = this.locations.find((location) => location.projectId === projectId);
     if (this.profile.transport !== 'local' || !location) return;

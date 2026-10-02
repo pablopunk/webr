@@ -13,3 +13,9 @@ it('lists matching directories only, hides dotfolders unless asked and ignores n
   expect(await suggestDirectories('relative')).toEqual([]);
   expect(await suggestDirectories('/definitely/not/here/x')).toEqual([]);
 });
+
+it('filters names from any lister, so a remote machine can supply its own directories', async () => {
+  const remote = async (parent: string) => parent === '~/' ? ['src', 'other', '.cache'] : [];
+  expect(await suggestDirectories('~/s', remote)).toEqual(['~/src/']);
+  expect(await suggestDirectories('~/.', remote)).toEqual(['~/.cache/']);
+});
