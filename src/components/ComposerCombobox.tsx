@@ -10,9 +10,9 @@ export type ComposerOption = {
   disabled?: boolean;
 };
 
-export function ComposerCombobox({ label, value, options, onChange, icon, allowCustom = false }: {
+export function ComposerCombobox({ label, value, options, onChange, icon, allowCustom = false, action }: {
   label: string; value: string; options: ComposerOption[]; onChange: (value: string) => void;
-  icon?: ReactNode; allowCustom?: boolean;
+  icon?: ReactNode; allowCustom?: boolean; action?: { label: string; icon: ReactNode; onClick: () => void };
 }) {
   const [query, setQuery] = useState('');
   const selected = options.find((option) => option.value === value) ?? { value, label: value };
@@ -32,7 +32,7 @@ export function ComposerCombobox({ label, value, options, onChange, icon, allowC
     </Combobox.Trigger>
     <Combobox.Portal>
       <Combobox.Positioner className="composer-select-positioner" sideOffset={6} align="start" collisionPadding={12}>
-        <Combobox.Popup className="composer-select-popup">
+        <Combobox.Popup className="composer-select-popup" aria-label={`${label} options`}>
           <div className="composer-select-search"><Search size={14} aria-hidden="true" /><Combobox.Input aria-label={`Search ${label.toLowerCase()}`} placeholder={`Search ${label.toLowerCase()}…`} maxLength={allowCustom ? 120 : undefined} /></div>
           <Combobox.Empty className="composer-select-empty">No matches</Combobox.Empty>
           <Combobox.List className="composer-select-list">
@@ -41,6 +41,9 @@ export function ComposerCombobox({ label, value, options, onChange, icon, allowC
               <Combobox.ItemIndicator className="composer-select-check"><Check size={14} /></Combobox.ItemIndicator>
             </Combobox.Item>}
           </Combobox.List>
+          {action && <button type="button" className="composer-select-action" onClick={action.onClick}>
+            {action.icon}<span>{action.label}</span>
+          </button>}
         </Combobox.Popup>
       </Combobox.Positioner>
     </Combobox.Portal>

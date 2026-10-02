@@ -50,7 +50,8 @@ export function Sidebar({ projects, threads, machines, currentId, mode, onModeCh
 
   return <>
     {mobileOpen && <button className="sidebar-scrim" aria-label="Close sidebar" onClick={onCloseMobile} />}
-    <aside className={`sidebar ${collapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'is-mobile-open' : ''}`} aria-label="Threads">
+    <aside className={`sidebar ${collapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'is-mobile-open' : ''}`} aria-label="Threads"
+      onClick={(event) => { if (mobileOpen && (event.target as Element).closest('a[href]')) onCloseMobile(); }}>
       <div className="sidebar-header">
         {!collapsed && <span className="brand">herdr</span>}
         <button className="icon-button sidebar-collapse" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={onCollapse}>{collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}</button>

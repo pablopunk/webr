@@ -6,10 +6,12 @@
 .workspace-composer label { display: grid; gap: 6px; font-size: 12px; color: var(--ink-soft); }
 .workspace-composer input { width: 100%; padding: 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: transparent; color: var(--ink); }
 .workspace-composer button { justify-self: end; padding: 8px 12px; }
+.workspace-cancel { align-self: center; padding: 8px 12px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-soft); }
+.workspace-cancel:hover { background: var(--surface-hover); color: var(--ink); }
 .thread-composer textarea { display: block; width: 100%; min-height: 94px; max-height: 45vh; padding: 17px 18px 0; border: 0; outline: 0; resize: vertical; background: transparent; color: var(--ink); font-size: 14px; line-height: 1.5; }
 .thread-composer textarea::placeholder { color: var(--ink-muted); }
 .composer-toolbar { display: flex; align-items: center; gap: 10px; padding: 9px 12px 12px; }
-.composer-selectors { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); flex: 1; min-width: 0; max-width: 400px; gap: 3px; }
+.composer-selectors { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; gap: 3px; }
 .composer-actions { display: inline-flex; flex: none; align-items: center; gap: 5px; margin-left: auto; }
 .composer-preview-note { margin: 12px 0 0; color: var(--ink-soft); font-size: 11px; text-align: center; }
 .worktree-option { position: relative; display: inline-grid; place-items: center; width: 30px; height: 32px; border-radius: 6px; color: var(--ink-soft); cursor: pointer; }
@@ -24,4 +26,3 @@
 .new-thread-page .form-error { margin: 12px 4px; }
 @media (max-width: 760px) { .new-thread-page { padding: 60px 16px; } .new-thread-page .mobile-menu { position: absolute; top: 16px; left: 16px; margin: 0; } }
 @media (max-width: 480px) { .composer-toolbar { gap: 6px; padding: 8px; } }
-@media (max-width: 380px) { .composer-selectors { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

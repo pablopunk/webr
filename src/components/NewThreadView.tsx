@@ -7,6 +7,8 @@ import { useMachineCatalog } from '../client/catalog';
 import { navigate } from 'astro:transitions/client';
 import { CreateWorkspace } from './CreateWorkspace';
 
+const harnessPreference = (machineId: string, projectId: string) => `herdr-last-harness:${machineId}:${projectId}`;
+
 export function NewThreadView({ projects, machines, selectedProjectId, onOpenSidebar }: {
   projects: Project[]; machines: Machine[]; selectedProjectId?: string; onOpenSidebar: () => void;
 }) {
@@ -30,6 +32,13 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   const canSubmit = !!(prompt.trim() && model.trim() && machine.connected && machineProjects.some((project) => project.id === projectId) && selectedHarness?.launchEnabled) && !busy;
   useEffect(() => { setWorktree(localStorage.getItem('herdr-new-worktree') !== 'false'); }, []);
   useEffect(() => {
+    if (!projectId || !catalog.data) return;
+    const choices = catalog.data.harnesses;
+    const previous = localStorage.getItem(harnessPreference(machineId, projectId));
+    setHarness(choices.find((choice) => choice.id === previous)?.id ?? choices.find((choice) => choice.launchEnabled)?.id ?? choices[0]?.id ?? '');
+    setModel('Default');
+  }, [machineId, projectId, catalog.data]);
+  useEffect(() => {
     if (!machineId && machines.length) setMachineId(machines.find((machine) => machine.id === 'local')?.id ?? machines[0].id);
     if (!projectId && machineProjects.length) setProjectId(machineProjects[0].id);
   }, [machines, machineId, machineProjects, projectId]);
@@ -42,6 +51,11 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     setHarness('');
     setModel('Default');
     setError('');
+  };
+  const changeProject = (id: string) => { setProjectId(id); setHarness(''); setModel('Default'); setError(''); };
+  const changeHarness = (id: string) => {
+    setHarness(id); setModel('Default');
+    if (projectId) localStorage.setItem(harnessPreference(machineId, projectId), id);
   };
 
   const submit = async (event: React.SubmitEvent<HTMLFormElement>) => {
@@ -70,6 +84,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     {machine.connected && machine.id === 'local' && (!machineProjects.length || creatingWorkspace) ? <>
       <p>{!machineProjects.length ? 'This Herdr session has no projects yet.' : 'Add a project to this Herdr session.'}</p>
       <CreateWorkspace machineId={machine.id} onCreated={() => setCreatingWorkspace(false)} />
+      {!!machineProjects.length && <button className="workspace-cancel" onClick={() => setCreatingWorkspace(false)}>Cancel</button>}
     </> : <>
     <form className="thread-composer" onSubmit={submit} aria-busy={busy}>
       <textarea autoFocus required maxLength={8000} value={prompt} onChange={(event) => setPrompt(event.target.value)}
@@ -77,15 +92,15 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
         aria-label="Thread prompt" placeholder="Write a prompt…" />
       <div className="composer-toolbar">
         <LaunchSelectors machine={machine} machines={machines} projects={machineProjects} projectId={projectId} harness={harness} model={model}
-          onMachineChange={changeMachine} onProjectChange={setProjectId} onHarnessChange={(id) => { setHarness(id); setModel('Default'); }} onModelChange={setModel} />
+          onMachineChange={changeMachine} onProjectChange={changeProject} onHarnessChange={changeHarness} onModelChange={setModel}
+          onAddProject={machine.connected && machine.id === 'local' ? () => setCreatingWorkspace(true) : undefined} />
         <div className="composer-actions">
           <label className="worktree-option" title={worktree ? 'Start in a new worktree' : 'Use the current workspace'}><input type="checkbox" checked={worktree} onChange={(event) => setWorktree(event.target.checked)} aria-label="Create a new worktree" /><GitBranch size={15} aria-hidden="true" /></label>
           <button className="composer-send" type="submit" disabled={!canSubmit} aria-label="Create thread" title="Create thread">{busy ? '…' : <ArrowUp size={18} strokeWidth={2.2} />}</button>
         </div>
       </div>
     </form>
-    {machine.connected && machine.id === 'local' && <button onClick={() => setCreatingWorkspace(true)}>Add project</button>}
-    <p className="composer-preview-note">{selectedHarness?.reason ?? (!machines.length ? 'No target is configured.' : machine.error ? `Machine is not connected: ${machine.error.replaceAll('_', ' ')}.` : catalog.isError ? 'The machine catalog is not available.' : 'Select a verified launch adapter.')}</p>
+    {(selectedHarness?.reason || !machines.length || machine.error || catalog.isError) && <p className="composer-preview-note">{selectedHarness?.reason ?? (!machines.length ? 'No target is configured.' : machine.error ? `Machine is not connected: ${machine.error.replaceAll('_', ' ')}.` : 'The machine catalog is not available.')}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     </>}
   </main>;
