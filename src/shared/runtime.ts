@@ -27,7 +27,7 @@ export const terminalAction = z.discriminatedUnion('type', [
   z.object({ type: z.literal('release'), ...streamRef }).strict(),
   z.object({ type: z.literal('input'), ...streamRef, text: z.string().min(1).max(8192), paste: z.boolean() }).strict(),
   z.object({ type: z.literal('resize'), ...streamRef, cols: z.number().int().min(2).max(500), rows: z.number().int().min(1).max(300) }).strict(),
-  z.object({ type: z.literal('scroll'), ...streamRef, direction: z.enum(['up', 'down']), lines: z.number().int().min(1).max(100) }).strict(),
+  z.object({ type: z.literal('scroll'), ...streamRef, direction: z.enum(['up', 'down']), lines: z.number().int().min(1).max(100), column: z.number().int().min(1).max(500).optional(), row: z.number().int().min(1).max(300).optional() }).strict(),
   z.object({ type: z.literal('mouse'), ...streamRef, action: z.enum(['down', 'up', 'drag', 'move']), button: z.enum(['left', 'right', 'middle']), column: z.number().int().min(0).max(499), row: z.number().int().min(0).max(299), modifiers: z.number().int().min(0).max(7) }).strict(),
 ]);
 export type TerminalAction = z.infer<typeof terminalAction>;

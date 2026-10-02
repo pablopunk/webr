@@ -27,6 +27,7 @@ export type TargetAdapter = {
   create(input: LaunchInput, threadId: string): Promise<{ tabId: string; paneId: string; terminalId: string; workspaceId: string }>;
   start(input: LaunchInput, paneId: string, threadId: string): Promise<void>;
   prompt(paneId: string, prompt: string, terminalId: string, threadId: string, input: LaunchInput): Promise<void>;
+  scrollMode?(terminalId: string): Promise<'scrollback' | 'app'>;
   focusPane?(paneId: string): Promise<void>;
   discardTab?(tabId: string, removeWorktree: boolean): Promise<void>;
   renameTab?(tabId: string, label: string, renameWorkspace: boolean): Promise<void>;
