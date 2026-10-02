@@ -65,6 +65,26 @@ it('falls back to npx when webr is not on PATH', async () => {
   expect((await box.recordsAfterStart())[0]).toBe(`npx -y ${plan.PACKAGE_NAME} start --port ${box.port}`);
 });
 
+it('uses the launcher saved at install time when webr is not on PATH', async () => {
+  const box = await sandbox();
+  const node = join(box.root, 'saved', 'node'); const entry = join(box.root, 'saved', 'webr.mjs');
+  fakeProgram(node, box.record, 'saved'); writeFileSync(entry, '');
+  writeFileSync(join(box.config, 'config.json'), JSON.stringify({ port: box.port, launcher: { node, entry } }));
+  expect(box.launch().stdout).toContain('Started Webr (saved)');
+  expect((await box.recordsAfterStart())[0]).toBe(`saved ${entry} start --port ${box.port}`);
+});
+
+it('prefers webr on PATH over the saved launcher, and ignores a saved launcher that is gone', async () => {
+  const onPath = await sandbox();
+  fakeProgram(join(onPath.bin, 'webr'), onPath.record, 'global');
+  writeFileSync(join(onPath.config, 'config.json'), JSON.stringify({ port: onPath.port, launcher: { node: '/x/node', entry: '/x/webr.mjs' } }));
+  expect(onPath.launch().stdout).toContain('Started Webr (global)');
+  const gone = await sandbox();
+  fakeProgram(join(gone.bin, 'npx'), gone.record, 'npx');
+  writeFileSync(join(gone.config, 'config.json'), JSON.stringify({ port: gone.port, launcher: { node: '/x/node', entry: '/x/webr.mjs' } }));
+  expect(gone.launch().stdout).toContain('Started Webr (npx)');
+});
+
 it('exits quietly without a second copy while the recorded process is alive', async () => {
   const box = await sandbox();
   fakeProgram(join(box.bin, 'webr'), box.record, 'global');
@@ -115,7 +135,7 @@ it('ignores a stale dev record whose checkout is gone', async () => {
 });
 
 it('plans nothing when Webr is running, whatever the mode', () => {
-  expect(plan.launchPlan({ config: {}, devCheckout: '/dev', webrPath: '/bin/webr', running: true })).toEqual({ action: 'skip' });
+  expect(plan.launchPlan({ config: {}, devCheckout: '/dev', webrPath: '/bin/webr', savedLauncher: undefined, running: true })).toEqual({ action: 'skip' });
 });
 
 it('agrees with the CLI on file names and the probed address', () => {

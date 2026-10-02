@@ -2,7 +2,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CONFIG_FILE } from './files';
 
-export type PluginConfig = { port?: number; host?: string; origin?: string };
+export type SavedLauncher = { node: string; entry: string };
+export type PluginConfig = { port?: number; host?: string; origin?: string; launcher?: SavedLauncher };
 
 export function writePluginConfig(configDir: string, config: PluginConfig) {
   mkdirSync(configDir, { recursive: true });

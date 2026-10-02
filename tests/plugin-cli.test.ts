@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { realRun } from '../server/command';
 import { enterPluginDevMode, stopProductionWebr } from '../server/plugin/dev';
-import { fixPlugin, installPlugin, pluginStatus, restartPluginWebr, uninstallWebrPlugin, type PluginDeps } from '../server/plugin';
+import { installPlugin, pluginStatus, uninstallWebrPlugin, updatePlugin, type PluginDeps } from '../server/plugin';
 import { isPortOpen } from '../server/plugin/probe';
 import { modeLines, pluginMode } from '../server/plugin/mode';
 import { PLUGIN_ID, PLUGIN_SOURCE } from '../server/plugin/herdr';
@@ -36,9 +36,12 @@ esac
 `;
   mkdirSync(join(root, 'bin'));
   writeFileSync(join(root, 'bin', 'herdr'), script); chmodSync(join(root, 'bin', 'herdr'), 0o755);
-  const run: PluginDeps['run'] = (command, args, env) => realRun(command === 'herdr' ? join(root, 'bin', 'herdr') : command, args, env);
+  const webrCalls = join(root, 'webr-calls');
+  writeFileSync(join(root, 'bin', 'webr'), `#!/bin/sh\necho "$@" >> "${webrCalls}"\necho refreshed\n`); chmodSync(join(root, 'bin', 'webr'), 0o755);
+  const fakeBinary = (command: string) => command === 'herdr' || command === 'webr' ? join(root, 'bin', command) : command;
+  const run: PluginDeps['run'] = (command, args, env) => realRun(fakeBinary(command), args, env);
   const deps = (overrides: Partial<PluginDeps> = {}): PluginDeps => ({ run, stateDir: join(root, 'state'), ...overrides });
-  return { root, deps, run, config: join(root, 'config'), state: join(root, 'state'), calls: () => readFileSync(calls, 'utf8').trim().split('\n'), registry };
+  return { root, deps, run, config: join(root, 'config'), state: join(root, 'state'), calls: () => readFileSync(calls, 'utf8').trim().split('\n'), registry, webrCalls: () => existsSync(webrCalls) ? readFileSync(webrCalls, 'utf8').trim().split('\n') : [] };
 }
 
 it('installs from GitHub, writes the settings and starts Webr now', async () => {
@@ -94,10 +97,11 @@ it('stops the running Webr when the plugin is uninstalled', async () => {
   expect(existsSync(join(herdr.state, 'webr.pid'))).toBe(false);
 });
 
-it('restarts the plugin by stopping the running Webr and launching again', async () => {
+it('updates the plugin by stopping the running Webr and letting the new webr reinstall it', async () => {
   const herdr = fakeHerdr('github');
   const webr = await startFakeWebr(herdr);
-  expect((await restartPluginWebr(herdr.deps()))?.join('\n')).toContain(`launched with ${herdr.config}`);
+  expect(await updatePlugin(herdr.deps())).toEqual(['refreshed']);
+  expect(herdr.webrCalls()).toEqual(['plugin install']);
   await webr.exited;
 });
 
@@ -105,14 +109,14 @@ it('leaves a Webr the plugin did not start alone and says how to proceed', async
   const herdr = fakeHerdr('github');
   const webr = await startFakeWebr(herdr);
   rmSync(join(herdr.state, 'webr.pid'));
-  expect((await restartPluginWebr(herdr.deps()))?.join('\n')).toContain('the plugin did not start it');
+  expect((await updatePlugin(herdr.deps()))?.join('\n')).toContain('the plugin did not start it');
   expect(webr.child.exitCode).toBeNull();
   webr.child.kill();
 });
 
 it('has nothing to restart without herdr or the plugin', async () => {
-  expect(await restartPluginWebr(fakeHerdr().deps())).toBeUndefined();
-  expect(await restartPluginWebr(fakeHerdr('github').deps({ run: () => ({ ok: false, output: '' }) }))).toBeUndefined();
+  expect(await updatePlugin(fakeHerdr().deps())).toBeUndefined();
+  expect(await updatePlugin(fakeHerdr('github').deps({ run: () => ({ ok: false, output: '' }) }))).toBeUndefined();
 });
 
 it('reports status', async () => {
@@ -179,33 +183,37 @@ it('shows the mode in status and says how to recover', async () => {
   const live = fakeHerdr('local'); recordDev(live, process.pid);
   expect((await pluginStatus(live.deps())).join('\n')).toContain('Mode: dev, running from /checkout');
   const crashed = fakeHerdr('local'); recordDev(crashed, deadPid());
-  expect(modeLines(pluginMode(crashed.run, crashed.state)).join('')).toContain('webr fix');
+  expect(modeLines(pluginMode(crashed.run, crashed.state)).join('')).toContain('webr plugin install');
   expect((await pluginStatus(fakeHerdr('github').deps())).join('\n')).toContain('Mode: production');
 });
 
-it('webr fix puts production back after a crashed dev run', async () => {
+it('plugin install puts production back after a crashed dev run, keeping saved settings', async () => {
   const herdr = fakeHerdr('local'); recordDev(herdr, deadPid());
-  writeFileSync(join(herdr.config, 'config.json'), JSON.stringify({ port: await freePort() }));
-  const lines = await fixPlugin(herdr.deps());
-  expect(lines[0]).toBe('Restored the production plugin.');
+  const port = await freePort();
+  writeFileSync(join(herdr.config, 'config.json'), JSON.stringify({ port, origin: 'https://mac.example.ts.net' }));
+  const lines = await installPlugin({}, herdr.deps());
+  expect(lines[0]).toContain('Installed the Webr plugin');
   expect(readFileSync(herdr.registry, 'utf8').trim()).toBe('github');
   expect(existsSync(join(herdr.state, 'dev.json'))).toBe(false);
+  expect(JSON.parse(readFileSync(join(herdr.config, 'config.json'), 'utf8'))).toEqual({ port, origin: 'https://mac.example.ts.net' });
   expect(readFileSync(join(herdr.state, 'launches'), 'utf8')).toBe('x');
 });
 
-it('webr fix also repairs a link that has no dev record', async () => {
+it('plugin install also repairs a link that has no dev record', async () => {
   const herdr = fakeHerdr('local');
-  expect((await fixPlugin(herdr.deps()))[0]).toBe('Restored the production plugin.');
+  await installPlugin({}, herdr.deps());
   expect(readFileSync(herdr.registry, 'utf8').trim()).toBe('github');
 });
 
-it('webr fix leaves a running dev alone and a healthy production alone', async () => {
+it('plugin install refuses while pnpm dev is running', async () => {
   const live = fakeHerdr('local'); recordDev(live, process.pid);
-  expect((await fixPlugin(live.deps()))[0]).toContain('"pnpm dev" is running');
+  await expect(installPlugin({}, live.deps())).rejects.toThrow('"pnpm dev" is running');
   expect(readFileSync(live.registry, 'utf8').trim()).toBe('local');
-  const healthy = fakeHerdr('github');
-  const webr = await startFakeWebr(healthy);
-  expect((await fixPlugin(healthy.deps()))[0]).toContain('Nothing to fix');
-  webr.child.kill();
-  expect((await fixPlugin(fakeHerdr().deps())).at(0)).toContain('not installed');
+});
+
+it('saves the launching webr so Herdr can start it without your shell PATH', async () => {
+  const herdr = fakeHerdr();
+  const launcher = { node: '/opt/node', entry: '/opt/webr/bin/webr.mjs' };
+  await installPlugin({ port: 4400 }, herdr.deps({ launcher }));
+  expect(JSON.parse(readFileSync(join(herdr.config, 'config.json'), 'utf8'))).toEqual({ port: 4400, launcher });
 });

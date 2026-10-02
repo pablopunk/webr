@@ -32,11 +32,14 @@ const checkoutPlan = (checkout, config) => ({
   action: 'start', source: 'checkout', command: devTsx(checkout), args: ['server/start.ts'], cwd: checkout, env: serverEnv(config),
 });
 
-const installedPlan = (webrPath, config) => webrPath
-  ? { action: 'start', source: 'global', command: webrPath, args: ['start', ...serverFlags(config)], env: {} }
-  : { action: 'start', source: 'npx', command: 'npx', args: ['-y', PACKAGE_NAME, 'start', ...serverFlags(config)], env: {} };
+const installedPlan = (webrPath, savedLauncher, config) => {
+  const flags = serverFlags(config);
+  if (webrPath) return { action: 'start', source: 'global', command: webrPath, args: ['start', ...flags], env: {} };
+  if (savedLauncher) return { action: 'start', source: 'saved', command: savedLauncher.node, args: [savedLauncher.entry, 'start', ...flags], env: {} };
+  return { action: 'start', source: 'npx', command: 'npx', args: ['-y', PACKAGE_NAME, 'start', ...flags], env: {} };
+};
 
-export function launchPlan({ config, devCheckout, webrPath, running }) {
+export function launchPlan({ config, devCheckout, webrPath, savedLauncher, running }) {
   if (running) return { action: 'skip' };
-  return devCheckout ? checkoutPlan(devCheckout, config) : installedPlan(webrPath, config);
+  return devCheckout ? checkoutPlan(devCheckout, config) : installedPlan(webrPath, savedLauncher, config);
 }

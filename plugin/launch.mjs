@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CONFIG_FILE, DEV_FILE, LOG_FILE, PID_FILE, launchPlan, probeAddress } from './plan.mjs';
-import { closeLog, findOnPath, isPidAlive, isPortOpen, openAppendLog, readJson, readPid, rememberedPort, usableCheckout } from './system.mjs';
+import { closeLog, findOnPath, isPidAlive, isPortOpen, openAppendLog, readJson, readPid, rememberedPort, usableCheckout, usableLauncher } from './system.mjs';
 
 const requiredDir = (name) => {
   if (!process.env[name]) throw new Error(`${name} is not set. This launcher must run as a Herdr plugin.`);
@@ -15,7 +15,7 @@ mkdirSync(stateDir, { recursive: true });
 
 const config = readJson(join(configDir, CONFIG_FILE)) ?? {};
 const running = isPidAlive(readPid(join(stateDir, PID_FILE))) || await isPortOpen(probeAddress(config, rememberedPort()));
-const plan = launchPlan({ config, devCheckout: usableCheckout(readJson(join(stateDir, DEV_FILE))), webrPath: findOnPath('webr'), running });
+const plan = launchPlan({ config, devCheckout: usableCheckout(readJson(join(stateDir, DEV_FILE))), webrPath: findOnPath('webr'), savedLauncher: usableLauncher(config.launcher), running });
 
 if (plan.action === 'skip') {
   console.log('Webr is already running.');

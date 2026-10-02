@@ -39,6 +39,6 @@ export function enterPluginDevMode(checkout: string, run: RunCommand = realRun, 
   return () => {
     rmSync(join(stateDir, DEV_FILE), { force: true });
     restorePrevious(previous, run);
-    if (restartProduction) try { startProduction(run, stateDir); } catch { console.error('Could not start production Webr. Run "webr fix".'); }
+    if (restartProduction) try { startProduction(run, stateDir); } catch { console.error('Could not start production Webr. Run "webr plugin install".'); }
   };
 }

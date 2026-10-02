@@ -1,20 +1,28 @@
-import { rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { realpathSync, rmSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { realRun, type RunCommand } from '../command';
-import { readPluginConfig, writePluginConfig, type PluginConfig } from './config';
+import { readPluginConfig, writePluginConfig, type PluginConfig, type SavedLauncher } from './config';
 import { pluginStateDir } from './files';
 import { isPortOpen, probeAddress } from './probe';
 import { stopPluginWebr } from './stop';
 import { modeLines, pluginMode } from './mode';
 import { DEV_FILE } from './files';
-import { installFromGithub, installedPlugin, replaceWithGithub, pluginConfigDir, requireGit, requireHerdr, uninstallPlugin, unlinkLocalPlugin } from './herdr';
+import { installedPlugin, replaceWithGithub, pluginConfigDir, requireGit, requireHerdr, uninstallPlugin, unlinkLocalPlugin } from './herdr';
 
 export type PluginDeps = {
   run: RunCommand;
   stateDir: string;
+  launcher?: SavedLauncher;
 };
 
-export const defaultDeps = (): PluginDeps => ({ run: realRun, stateDir: pluginStateDir() });
+function runningLauncher(): SavedLauncher | undefined {
+  try {
+    const entry = realpathSync(process.argv[1]!);
+    return basename(entry) === 'webr.mjs' ? { node: process.execPath, entry } : undefined;
+  } catch { return undefined; }
+}
+
+export const defaultDeps = (): PluginDeps => ({ run: realRun, stateDir: pluginStateDir(), launcher: runningLauncher() });
 
 export const startNow = (root: string, configDir: string, deps: PluginDeps) =>
   deps.run(process.execPath, [join(root, 'launch.mjs')], { HERDR_PLUGIN_CONFIG_DIR: configDir, HERDR_PLUGIN_STATE_DIR: deps.stateDir }).output.trim();
@@ -22,9 +30,11 @@ export const startNow = (root: string, configDir: string, deps: PluginDeps) =>
 export async function installPlugin(config: PluginConfig, deps: PluginDeps) {
   requireHerdr(deps.run);
   requireGit(deps.run);
+  if (pluginMode(deps.run, deps.stateDir).kind === 'dev') throw new Error('"pnpm dev" is running. Stop it with Ctrl+C first; production comes back by itself.');
   const configDir = pluginConfigDir(deps.run);
-  writePluginConfig(configDir, config);
-  installFromGithub(deps.run);
+  writePluginConfig(configDir, { ...readPluginConfig(configDir), ...config, ...(deps.launcher ? { launcher: deps.launcher } : {}) });
+  rmSync(join(deps.stateDir, DEV_FILE), { force: true });
+  replaceWithGithub(deps.run);
   const plugin = installedPlugin(deps.run);
   if (!plugin) throw new Error('Herdr did not register the Webr plugin.');
   return [
@@ -45,14 +55,15 @@ export async function uninstallWebrPlugin(deps: PluginDeps) {
   return ['Removed the Webr plugin.', ...(stopped ? ['Stopped the running Webr.'] : [])];
 }
 
-export async function restartPluginWebr(deps: PluginDeps) {
+const quiet = (output: string) => output.split('\n').filter((line) => line.trim() && !/ExperimentalWarning|trace-warnings/.test(line));
+
+export async function updatePlugin(deps: PluginDeps) {
   if (!deps.run('herdr', ['--version']).ok) return undefined;
-  const plugin = installedPlugin(deps.run);
-  if (!plugin) return undefined;
-  const configDir = pluginConfigDir(deps.run);
-  const address = probeAddress(readPluginConfig(configDir));
+  if (!installedPlugin(deps.run)) return undefined;
+  const address = probeAddress(readPluginConfig(pluginConfigDir(deps.run)));
   if ((await isPortOpen(address)) && !(await stopPluginWebr(deps.stateDir, address))) return [`Webr is running on port ${address.port} but the plugin did not start it. Stop it and run "webr plugin install" to use the new version.`];
-  return [startNow(plugin.root, configDir, deps)];
+  const refreshed = deps.run('webr', ['plugin', 'install']);
+  return refreshed.ok ? quiet(refreshed.output) : [`The new Webr could not refresh the plugin. Run "webr plugin install". ${quiet(refreshed.output).join(' ')}`];
 }
 
 export async function pluginStatus(deps: PluginDeps) {
@@ -68,18 +79,4 @@ export async function pluginStatus(deps: PluginDeps) {
     `Settings: ${JSON.stringify(config)}`,
     `Logs and state: ${deps.stateDir}`,
   ];
-}
-
-export async function fixPlugin(deps: PluginDeps) {
-  requireHerdr(deps.run);
-  const mode = pluginMode(deps.run, deps.stateDir);
-  if (mode.kind === 'absent') return ['The Webr plugin is not installed, so there is nothing to fix. Install it with "webr plugin install".'];
-  if (mode.kind === 'dev') return ['"pnpm dev" is running. Stop it with Ctrl+C and production comes back by itself.'];
-  const plugin = installedPlugin(deps.run)!;
-  const configDir = pluginConfigDir(deps.run);
-  if (mode.kind === 'production') return [await isPortOpen(probeAddress(readPluginConfig(configDir))) ? 'Production is active and Webr is running. Nothing to fix.' : startNow(plugin.root, configDir, deps)];
-  rmSync(join(deps.stateDir, DEV_FILE), { force: true });
-  requireGit(deps.run);
-  replaceWithGithub(deps.run);
-  return ['Restored the production plugin.', ...((await restartPluginWebr(deps)) ?? [])];
 }
