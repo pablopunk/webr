@@ -114,7 +114,7 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
       </div>
       <div className="sidebar-actions">
         <Tooltip label="New thread"><a className="sidebar-new-thread" href={`/new${currentProjectId ? `?project=${encodeURIComponent(currentProjectId)}` : ''}`} aria-label="New thread">
-          <Plus size={16} aria-hidden="true" />{!collapsed && <span>New thread</span>}
+          <SquarePen size={16} aria-hidden="true" />{!collapsed && <span>New thread</span>}
         </a></Tooltip>
         <OpenWorktree projects={projects} />
         {!collapsed && <div className="sidebar-view-switch" role="group" aria-label="Sidebar layout">
@@ -129,7 +129,7 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
               <button className="group-title" onClick={() => setClosedProjects((value) => value.includes(id) ? value.filter((item) => item !== id) : [...value, id])} aria-expanded={!closedProjects.includes(id)}>
                 <span className="group-chevron" aria-hidden="true">{closedProjects.includes(id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</span><ProjectIcon project={project} /><span className="group-name">{project.name}</span>
               </button>
-              <Tooltip label={`New thread in ${project.name}`}><a className="group-new-thread" href={`/new?project=${encodeURIComponent(project.id)}`} aria-label={`New thread in ${project.name}`}><Plus size={15} aria-hidden="true" /></a></Tooltip>
+              <Tooltip label={`New thread in ${project.name}`}><a className="group-new-thread" href={`/new?project=${encodeURIComponent(project.id)}`} aria-label={`New thread in ${project.name}`}><SquarePen size={15} aria-hidden="true" /></a></Tooltip>
             </div>
             {!closedProjects.includes(id) && threads.filter((thread) => locations.includes(thread.projectId)).map((thread) => threadLink(thread, false))}
           </section>) : threads.map((thread) => threadLink(thread, true))}

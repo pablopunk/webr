@@ -46,7 +46,7 @@ export function CommandPalette({ open, onClose, projects, threads, thread, focus
   };
 
   const commands = useMemo<Command[]>(() => [
-    { label: 'New thread', icon: <Plus size={16} />, shortcut: 'newThread', run: () => { void navigate(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`); } },
+    { label: 'New thread', icon: <SquarePen size={16} />, shortcut: 'newThread', run: () => { void navigate(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`); } },
     { label: 'Settings', icon: <Settings2 size={16} />, run: () => { void navigate('/settings'); } },
     ...(perfAvailable ? [{ label: 'Toggle performance overlay', icon: <Gauge size={16} />, detail: 'Dev only', run: () => setPerfVisible(!perfVisible()) }] : []),
     { label: 'Toggle sidebar', icon: <PanelLeft size={16} />, shortcut: 'toggleSidebar', run: onToggleSidebar },
