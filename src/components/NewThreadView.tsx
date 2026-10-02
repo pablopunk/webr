@@ -99,7 +99,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   return <main className="new-thread-page" aria-label="New thread">
     <button className="mobile-menu" onClick={onOpenSidebar}>Threads</button>
     <h1>What do you want to build today?</h1>
-    {machine.connected && machine.id === 'local' && (!machineProjects.length || creatingWorkspace) ? <>
+    {machine.connected && machine.writable && (!machineProjects.length || creatingWorkspace) ? <>
       <p>{!machineProjects.length ? 'This Herdr session has no projects yet.' : 'Add a project to this Herdr session.'}</p>
       <CreateWorkspace machineId={machine.id} onCreated={() => setCreatingWorkspace(false)} />
       {!!machineProjects.length && <button className="workspace-cancel" onClick={() => setCreatingWorkspace(false)}>Cancel</button>}
@@ -115,7 +115,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
       <div className="composer-toolbar">
         <LaunchSelectors machine={machine} machines={machines} projects={machineProjects} projectId={projectId} harness={harness} model={model}
           onMachineChange={changeMachine} onProjectChange={changeProject} onHarnessChange={changeHarness} onModelChange={setModel}
-          onAddProject={machine.connected && machine.id === 'local' ? () => setCreatingWorkspace(true) : undefined} />
+          onAddProject={machine.connected && machine.writable ? () => setCreatingWorkspace(true) : undefined} />
         <Tooltip label={worktree ? 'new worktree' : 'current checkout'}><label className="worktree-option"><input type="checkbox" checked={worktree} onChange={(event) => setWorktree(event.target.checked)} aria-label="Create a new worktree" /><GitBranch size={15} aria-hidden="true" /></label></Tooltip>
         <div className="composer-actions">
           <Tooltip label="Create thread"><button className="composer-send" type="submit" disabled={!canSubmit} aria-label="Create thread">{busy ? '…' : <ArrowUp size={18} strokeWidth={2.2} />}</button></Tooltip>

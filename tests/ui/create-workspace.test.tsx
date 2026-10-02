@@ -10,7 +10,7 @@ vi.mock('../../src/client/catalog', () => ({ useMachineCatalog: () => ({ data: {
 const workspaceRequests = (fetch: { mock: { calls: unknown[] } }) => (fetch.mock.calls as unknown as [string, RequestInit][]).filter(([url]) => url === '/api/workspaces');
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 it('shows a connected empty Herdr session as a workspace creation form, not a setup failure', () => {
-  render(<NewThreadView projects={[]} machines={[{ id: 'local', name: 'Local', connected: true, session: 'default', projectPaths: {}, harnesses: [] }]} onOpenSidebar={() => {}} />);
+  render(<NewThreadView projects={[]} machines={[{ id: 'local', name: 'Local', connected: true, writable: true, session: 'default', projectPaths: {}, harnesses: [] }]} onOpenSidebar={() => {}} />);
   expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('What do you want to build today?');
   expect(screen.getByRole('form', { name: 'Create workspace' })).toBeDefined();
   expect(screen.getByText('This Herdr session has no projects yet.')).toBeDefined();

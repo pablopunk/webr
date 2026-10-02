@@ -18,7 +18,7 @@ const projects = [
   { id: 'local:first', name: 'First', path: '/first', color: '#555', initial: 'F' },
   { id: 'local:second', name: 'Second', path: '/second', color: '#555', initial: 'S' },
 ];
-const machines = [{ id: 'local', name: 'Local', connected: true, session: 'default', projectPaths: { 'local:first': '/first', 'local:second': '/second' }, harnesses: [] }];
+const machines = [{ id: 'local', name: 'Local', connected: true, writable: true, session: 'default', projectPaths: { 'local:first': '/first', 'local:second': '/second' }, harnesses: [] }];
 const show = () => render(<NewThreadView projects={projects} machines={machines} onOpenSidebar={() => {}} />);
 
 afterEach(() => { cleanup(); localStorage.clear(); });
