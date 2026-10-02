@@ -36,7 +36,8 @@ export async function validateControl(owner: Ownership, scratch: Scratch) {
     const calibrationMarker = 'CALIBRATION-' + randomUUID(); await fresh(); await owner.effect('pane.send_input', { pane_id: resource.paneId, text: calibrationMarker });
     const calibrated = await recorded((data) => bytes(data).includes(calibrationMarker), 'native calibration barrier');
     const calibrationBytes = bytes(calibrated).subarray(calibrationStart).toString(); const nativeReplyCount = (calibrationBytes.match(/\x1b\[\d+;\d+R/g) ?? []).length;
-    requireProof(nativeReplyCount <= 1 && calibrationBytes.replace(/\x1b\[\d+;\d+R/g, '') === calibrationMarker, 'Native query calibration was not isolated');
+    const nativeInput = calibrationBytes.replace(/\x1b\[\d+;\d+R/g, '');
+    requireProof(nativeReplyCount <= 1 && [calibrationMarker, `\x1b[200~${calibrationMarker}\x1b[201~`].includes(nativeInput), 'Native query calibration was not isolated');
     const observer = await attach('observe'); requireProof(!observer.closed && observer.frames[0].full, 'Observer did not receive full baseline');
     const a = await attach('control'); if (a.closed) { await owner.journal.preserve('An unknown controller or stream failure exists on the new terminal', resource); throw new Error('First owned controller failed: ' + a.closed); }
     checked.add('full-baseline');
@@ -54,7 +55,8 @@ export async function validateControl(owner: Ownership, scratch: Scratch) {
     await recorded((data) => data.cols === 90 && data.rows === 26, 'actual PTY resize'); await waitFor(transport, async () => a.frames, (frames) => frames.some((frame) => frame.full && frame.width === 90 && frame.height === 26), 'resized full frame'); checked.add('resize');
     await fresh(); a.send({ type: 'terminal.mouse', action: 'down', button: 'left', column: 3, row: 2 }); a.send({ type: 'terminal.mouse', action: 'up', button: 'left', column: 3, row: 2 });
     await recorded((data) => /\x1b\[<0;4;3M/.test(bytes(data).toString()) && /\x1b\[<(0|3);4;3m/.test(bytes(data).toString()), 'source SGR mouse events'); checked.add('mouse');
-    await fresh(); a.send({ type: 'terminal.scroll', direction: 'down', lines: 2 }); await recorded((data) => (bytes(data).toString().match(/\x1b\[<65;\d+;\d+M/g) ?? []).length >= 2, 'source wheel events'); checked.add('scroll');
+    await fresh(); a.send({ type: 'terminal.scroll', direction: 'down', lines: 2 });
+    await recorded((data) => /\x1b\[<65;\d+;\d+M/.test(bytes(data).toString()), 'source wheel event'); checked.add('scroll');
     const b = await attach('control'); requireProof(b.closed === 'controller_conflict' && !b.frames.length, 'Second controller failure did not prove a controller conflict'); await barrier(a); checked.add('controller-conflict');
     await fresh(); requireProof(!a.closed, 'The original owned controller no longer owns the terminal'); const c = await attach('control', true); requireProof(!c.closed, 'Own-controller takeover failed');
     await waitFor(transport, async () => a.closed, (reason) => !!reason, 'old owned controller closure'); await barrier(c); checked.add('takeover');

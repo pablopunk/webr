@@ -10,7 +10,7 @@ const key = 'k'.repeat(64);
 const fingerprint = 'local-fixture';
 const receipt = JSON.stringify(signEvidence({ issuer: 'herdr-web-live-v1', targetFingerprint: fingerprint, version: '0.9.3', protocol: 22, issuedAt: Date.now(), expiresAt: Date.now() + 60_000, grants: [{ kind: 'control', inputAdapter: 'literal-pilot-v1', scope: 'literal-transport', checks: [...controlChecks] }] }, key));
 
-function fixture(approved = false, changed = false) {
+function fixture(approved = false, changed = false, exitCode = 0) {
   let setting = approved ? receipt : undefined;
   const database = { getSetting: () => setting } as unknown as MetadataDatabase;
   const calls: { method: string; params: Record<string, unknown> }[] = [];
@@ -25,7 +25,7 @@ function fixture(approved = false, changed = false) {
     if (method === 'session.snapshot') return { snapshot: snapshot() };
     if (method === 'workspace.create') { workspace.label = String(params.label); created = true; return { workspace, tab, root_pane: pane }; }
     if (method === 'pane.send_input') { command = String(params.text); return {}; }
-    if (method === 'pane.read') { setting = receipt; if (changed) workspace.label = 'changed'; const marker = command.match(/HERDR_WEB_CONTROL_CHECK_[a-f0-9]+/)?.[0]; return { read: { text: `${marker}:0` } }; }
+    if (method === 'pane.read') { setting = receipt; if (changed) workspace.label = 'changed'; const marker = command.match(/HERDR_WEB_CONTROL_CHECK_[a-f0-9]+/)?.[0]; return { read: { text: `${command}\n${marker}:${exitCode}\n` } }; }
     if (method === 'pane.process_info') return { process_info: { shell_pid: 4, foreground_processes: [{ pid: 4 }] } };
     if (method === 'workspace.close') { created = false; return {}; }
     throw new Error('Unexpected method');
@@ -38,6 +38,7 @@ it('validates in a new no-focus managed workspace and closes only that verified 
   expect(await validateLocalControl(profile, database, key, fingerprint, api)).toBe(true);
   expect(calls.find((call) => call.method === 'workspace.create')?.params).toMatchObject({ focus: false });
   expect(calls.find((call) => call.method === 'pane.send_input')?.params).toMatchObject({ pane_id: 'wCHECK:p1', keys: ['enter'] });
+  expect(calls.find((call) => call.method === 'pane.read')?.params).toMatchObject({ source: 'recent_unwrapped' });
   expect(String(calls.find((call) => call.method === 'pane.send_input')?.params.text)).not.toContain('\n');
   expect(calls.find((call) => call.method === 'workspace.close')?.params).toEqual({ workspace_id: 'wCHECK', close_group: false });
   expect(api.close).toHaveBeenCalledOnce();
@@ -47,6 +48,12 @@ it('does not create a second workspace after approval', async () => {
   const { api, database, calls } = fixture(true);
   expect(await validateLocalControl(profile, database, key, fingerprint, api)).toBe(true);
   expect(calls).toHaveLength(0);
+});
+
+it('does not mistake echoed command text for success when the validator fails', async () => {
+  const { api, database, calls } = fixture(false, false, 1);
+  expect(await validateLocalControl(profile, database, key, fingerprint, api)).toBe(false);
+  expect(calls.some((call) => call.method === 'workspace.close')).toBe(true);
 });
 
 it('preserves a workspace if ownership changes before cleanup', async () => {

@@ -31,7 +31,7 @@ export async function validateLaunch(owner: Ownership, scratch: Scratch, selecte
   await owner.effect('agent.prompt', { target: checkout.agentName, text: prompt });
   await waitFor(transport, async () => {
     await owner.fresh(checkout); const fresh = agentSchema.parse((await transport.request('agent.get', { target: checkout.agentName })).agent);
-    const read = await transport.request('pane.read', { pane_id: checkout.paneId, source: 'recent-unwrapped', format: 'text', strip_ansi: true, lines: 120 });
+    const read = await transport.request('pane.read', { pane_id: checkout.paneId, source: 'recent_unwrapped', format: 'text', strip_ansi: true, lines: 120 });
     if (fresh.agent_status === 'blocked') throw new Error('The owned validation agent requested approval; no approval was sent');
     return { agent: fresh, text: z.object({ text: z.string() }).parse(read.read).text };
   }, (result) => ['idle', 'done'].includes(result.agent.agent_status) && result.text.includes(token), 'settled decoded-token response', 90_000);

@@ -37,15 +37,15 @@ export async function validateLocalControl(profile: TargetProfile, database: Met
     }
     if (!shellReady) throw new Error('Automatic validation shell did not become ready; preserve its workspace');
     await api.request('pane.send_input', { pane_id: pane.pane_id, text: command, keys: ['enter'] }, { timeoutMs: 5000 });
-    let finished = false;
+    let exitCode: number | undefined;
     for (let i = 0; i < 600; i++) {
-      const result = await api.request('pane.read', { pane_id: pane.pane_id, source: 'recent-unwrapped', format: 'text', strip_ansi: true });
+      const result = await api.request('pane.read', { pane_id: pane.pane_id, source: 'recent_unwrapped', format: 'text', strip_ansi: true });
       const output = (result.read as { text?: string } | undefined)?.text ?? '';
-      if (output.includes(marker + ':0')) { finished = true; break; }
-      if (output.includes(marker + ':')) { finished = true; break; }
+      const completion = output.match(new RegExp(`(?:^|\\n)${marker}:(\\d+)(?:\\n|$)`));
+      if (completion) { exitCode = Number(completion[1]); break; }
       await pause(500);
     }
-    if (!finished) throw new Error('Automatic control validation did not finish; preserve its workspace');
+    if (exitCode === undefined) throw new Error('Automatic control validation did not finish; preserve its workspace');
     const fresh = nativeSnapshot.parse((await api.request('session.snapshot')).snapshot);
     const members = fresh.panes.filter((item) => item.workspace_id === workspace.workspace_id);
     const tabs = fresh.tabs.filter((item) => item.workspace_id === workspace.workspace_id);
@@ -53,6 +53,6 @@ export async function validateLocalControl(profile: TargetProfile, database: Met
     const processInfo = (await api.request('pane.process_info', { pane_id: pane.pane_id })).process_info as { shell_pid: number; foreground_processes: { pid: number }[] };
     if (!processInfo?.shell_pid || !processInfo.foreground_processes?.length || !processInfo.foreground_processes.every((process) => process.pid === processInfo.shell_pid)) throw new Error('Automatic validation process is still active; preserve its workspace');
     await api.request('workspace.close', { workspace_id: workspace.workspace_id, close_group: false });
-    return controlGranted(verifyEvidence(database.getSetting('validation:' + profile.id), key, fingerprint));
+    return exitCode === 0 && controlGranted(verifyEvidence(database.getSetting('validation:' + profile.id), key, fingerprint));
   } finally { api.close(); }
 }

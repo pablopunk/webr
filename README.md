@@ -188,4 +188,4 @@ mise exec -- pnpm run build
 mise exec -- pnpm start
 ```
 
-The gateway itself does not require a managed pane. Local/SSH actual live validation has **not** been performed in this coding session; the automatic bootstrap has injected tests, not fabricated Herdr live proof. Remote icons still use fallbacks, and general source-mode-aware keyboard/graphics support remains outside the literal pilot. Check direct session loading, terminal input after approval, empty-session workspace creation, persisted navigation, themes and responsive layout on the running app.
+The gateway itself does not require a managed pane. Automatic Local control validation was exercised against Herdr 0.9.3 in an owned workspace, followed by browser input in a separate owned shell; SSH and launch validation remain unverified. The approved receipt is local to the gateway database and must not be copied to another target. Remote icons still use fallbacks, and general source-mode-aware keyboard/graphics support remains outside the literal pilot.
