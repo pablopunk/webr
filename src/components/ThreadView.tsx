@@ -29,7 +29,8 @@ export function ThreadView({ thread, layouts, tabs, connected, canControl, onFoc
     {connected && thread.bindingState === 'detached' && <AdoptTab key={thread.id} thread={thread} tabs={tabs} />}
     {connected && thread.bindingState === 'attached' && visibleLayouts.map((layout) => {
       const hidden = hiddenTerminalLayout(thread, layout);
-      return <div className="native-pane-layout" key={`${layout.workspaceId}:${layout.tabId}`}>
+      const split = !hidden && layout.panes.filter((rect) => thread.panes.some((item) => item.id === rect.paneId)).length > 1;
+      return <div className={`native-pane-layout ${split ? 'is-split' : ''}`} key={`${layout.workspaceId}:${layout.tabId}`}>
         {hidden ? [pane(hidden.agent, besidePeek(hidden.side)), <TerminalPeek key="terminal-peek" side={hidden.side} onOpen={onToggleTerminal} />] : thread.panes.map((item) => {
           const rect = layout.panes.find((rect) => rect.paneId === item.id)?.rect;
           if (!rect || !layout.area.width || !layout.area.height) return null;

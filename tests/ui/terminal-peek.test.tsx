@@ -25,3 +25,9 @@ it('keeps a hidden lower terminal peeking at the bottom', () => {
   show(true, { x: 0, y: 26, width: 100, height: 14 });
   expect(screen.getByRole('button', { name: 'Show terminal' }).className).toContain('is-bottom');
 });
+it('marks the layout as split only while more than one pane is visible', () => {
+  const view = render(<ThreadView thread={thread(false)} layouts={[layout({ x: 65, y: 0, width: 35, height: 40 })]} tabs={[]} connected canControl focusedPane="w1:p1" onFocusPane={() => {}} onToggleTerminal={() => {}} />);
+  expect(view.container.querySelector('.native-pane-layout.is-split')).not.toBeNull();
+  view.rerender(<ThreadView thread={thread(true)} layouts={[layout({ x: 65, y: 0, width: 35, height: 40 })]} tabs={[]} connected canControl focusedPane="w1:p1" onFocusPane={() => {}} onToggleTerminal={() => {}} />);
+  expect(view.container.querySelector('.native-pane-layout.is-split')).toBeNull();
+});
