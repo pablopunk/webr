@@ -2,7 +2,7 @@ import { alertDialog, confirmDialog } from './dialogs';
 import { Tooltip } from './Tooltip';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThreadAvatar } from './ThreadAvatar';
-import { Archive, ArchiveRestore, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, FolderTree, Gauge, LayoutList, Monitor, Moon, PanelBottom, PanelLeft, PanelRight, Plus, Settings2, SquareTerminal, Sun, TerminalSquare, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, FolderTree, Gauge, LayoutList, Monitor, Moon, PanelBottom, PanelLeft, PanelRight, Settings2, SquarePen, SquareTerminal, Sun, TerminalSquare, X } from 'lucide-react';
 import type { Project, Thread } from '../lib/models';
 import { defaultShortcuts, formatShortcut, getShortcuts, type ShortcutAction } from './shortcuts';
 import type { SidebarMode } from './Sidebar';
