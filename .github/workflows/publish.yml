@@ -23,11 +23,5 @@ jobs:
       - run: pnpm test
       - run: pnpm build
       - run: pnpm smoke:install
-      - run: echo '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}' > "$NPM_CONFIG_USERCONFIG"
-        env:
-          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/npmrc
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: npm install --global npm@11
       - run: npm publish --provenance --access public
-        env:
-          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/npmrc
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
