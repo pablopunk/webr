@@ -34,12 +34,19 @@ export class HerdrActions {
     this.requireCapability(input);
     await this.untilShellReady(paneId);
     const params = { name: agentName(threadId), kind: input.agent, pane_id: paneId, args: modelArguments(input.agent, input.model), timeout_ms: AGENT_READY_TIMEOUT_MS };
-    const result = await this.api.request('agent.start', params, { timeoutMs: requestDeadline('agent.start', params) });
+    const result = await this.startWhenPromptReady(params);
     if (result.type !== 'agent_started') throw new Error('agent_not_ready');
     const isReady = (agent: z.infer<typeof detectingAgent>) => agent.name === params.name && agent.pane_id === paneId && agent.agent === input.agent && ['idle', 'done'].includes(agent.agent_status);
     const started = detectingAgent.parse(result.agent);
     if (started.name !== params.name || started.pane_id !== paneId) throw new Error('agent_not_ready');
     if (!isReady(started)) await this.untilReady(params.name, isReady);
+  }
+  private async startWhenPromptReady(params: Record<string, unknown>) {
+    const end = Date.now() + SHELL_READY_TIMEOUT_MS;
+    for (;;) {
+      try { return await this.api.request('agent.start', params, { timeoutMs: requestDeadline('agent.start', params) }); }
+      catch (error) { if (!(error instanceof Error) || error.message !== 'agent_pane_busy' || Date.now() >= end) throw error; await pause(500); }
+    }
   }
   private async untilShellReady(paneId: string) {
     const end = Date.now() + SHELL_READY_TIMEOUT_MS;

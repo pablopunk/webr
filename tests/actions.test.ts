@@ -40,3 +40,11 @@ it('does not start the agent while the new pane still runs something other than 
   const actions = new HerdrActions({ request: async (method) => { calls.push(method); return method === 'pane.process_info' ? { process_info: { pane_id: 'w1:p1', shell_pid: 10, foreground_processes: busy.shift() } } : { type: 'agent_started', agent: base }; } }, new FakeTarget().locations, () => {});
   await actions.start(launch, 'w1:p1', id); expect(calls).toEqual(['pane.process_info', 'pane.process_info', 'agent.start']);
 });
+it('retries agent.start only while Herdr says the shell has not reached its prompt', async () => {
+  const id = randomUUID(); const base = { name: agentName(id), terminal_id: 'term_1', pane_id: 'w1:p1', agent: 'claude', agent_status: 'idle' }; let busy = 2; const calls: string[] = [];
+  const shell = { process_info: { pane_id: 'w1:p1', shell_pid: 10, foreground_processes: [{ pid: 10, name: 'zsh' }] } };
+  const actions = new HerdrActions({ request: async (method) => { calls.push(method); if (method === 'pane.process_info') return shell; if (busy-- > 0) throw new Error('agent_pane_busy'); return { type: 'agent_started', agent: base }; } }, new FakeTarget().locations, () => {});
+  await actions.start(launch, 'w1:p1', id); expect(calls.filter((call) => call === 'agent.start')).toHaveLength(3);
+  const refused = new HerdrActions({ request: async (method) => { if (method === 'pane.process_info') return shell; throw new Error('agent_not_supported'); } }, new FakeTarget().locations, () => {});
+  await expect(refused.start(launch, 'w1:p1', id)).rejects.toThrow('agent_not_supported');
+});
