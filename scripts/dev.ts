@@ -29,6 +29,6 @@ async function stopPreviousServer() {
 }
 
 await stopPreviousServer();
-const server = spawn('pnpm', ['start'], { stdio: 'inherit', env: { ...process.env, PORT: String(port), WEBR_DEV: '1' } });
+const server = spawn('pnpm', ['start'], { stdio: 'inherit', env: { ...process.env, HOST: process.env.HOST ?? '0.0.0.0', PORT: String(port), WEBR_DEV: '1' } });
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => server.kill(signal));
 server.on('exit', (code) => process.exit(code ?? 0));

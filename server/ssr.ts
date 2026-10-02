@@ -12,9 +12,9 @@ export async function builtSsr(): Promise<Ssr> {
   return { handler, stop: async () => {} };
 }
 
-export async function devSsr(port: number): Promise<Ssr> {
+export async function devSsr(port: number, host = '127.0.0.1'): Promise<Ssr> {
   const { dev } = await import('astro');
-  const astro = await dev({ server: { port: port + 2, host: '127.0.0.1' }, vite: { server: { hmr: { port: port + 1 } } } });
+  const astro = await dev({ server: { port: port + 2, host }, vite: { server: { allowedHosts: true, hmr: { port: port + 1 } } } });
   const handler: Ssr['handler'] = (request, response, _next, locals) => {
     Reflect.set(request, astroLocalsSymbol, locals);
     astro.handle(request as never, response as never);

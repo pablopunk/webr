@@ -22,7 +22,7 @@ export async function runServer() {
   const database = new MetadataDatabase(process.env.WEBR_DATABASE ?? '.data/gateway.sqlite');
   const profiles = await loadRegistry(process.env.WEBR_TARGETS);
   const manager = new RuntimeManager(database, profiles.map((profile) => new HerdrTarget(profile)));
-  const ssr = process.env.WEBR_DEV === '1' ? await devSsr(port) : await builtSsr();
+  const ssr = process.env.WEBR_DEV === '1' ? await devSsr(port, host) : await builtSsr();
   const tls = tlsEnabled ? { cert: await readFile(process.env.WEBR_TLS_CERT!), key: await readFile(process.env.WEBR_TLS_KEY!) } : undefined;
   const urls = publicUrls(origin, host, port);
   const app = await createHost(manager, origin, ssr.handler, tls, undefined, { publicUrls: urls });
