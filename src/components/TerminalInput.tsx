@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
 const specialKeys: Record<string, string> = { Enter: '\r', Backspace: '\x7f', Tab: '\t', Escape: '\x1b', ArrowUp: '\x1b[A', ArrowDown: '\x1b[B', ArrowRight: '\x1b[C', ArrowLeft: '\x1b[D' };
-export function terminalKeyBytes(event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'altKey'>): string | undefined {
+export function terminalKeyBytes(event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'altKey'> & { shiftKey?: boolean }): string | undefined {
   const bytes = event.ctrlKey && /^[a-z]$/i.test(event.key) ? String.fromCharCode(event.key.toUpperCase().charCodeAt(0) - 64) : specialKeys[event.key];
-  return bytes && (event.altKey ? '\x1b' + bytes : bytes);
+  const newlineInsteadOfSubmit = event.key === 'Enter' && event.shiftKey;
+  return bytes && (event.altKey || newlineInsteadOfSubmit ? '\x1b' + bytes : bytes);
 }
 export function TerminalInput({ onInput, onFocusChange }: { onInput: (text: string, paste?: boolean) => void; onFocusChange?: (focused: boolean) => void }) {
   const [draft, setDraft] = useState('');
