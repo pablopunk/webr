@@ -154,6 +154,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
       if (!full.startsWith(resolve(clientRoot, '_astro') + '/')) return reply.code(404).send();
       return reply.sendFile(path, resolve(clientRoot, '_astro'));
     });
+    app.get('/:file(^[a-z0-9-]+\\.(?:png|ico|webmanifest)$)', async (request, reply) => reply.sendFile((request.params as { file: string }).file, clientRoot));
     app.get('/*', async (request, reply) => {
       reply.hijack();
       if (perfLogEnabled) reply.raw.setHeader('Document-Policy', 'js-profiling');
