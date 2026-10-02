@@ -6,8 +6,6 @@ import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { HerdrTarget } from '../src/server/transport/herdr-target';
 import { profileSchema, type TargetProfile } from '../src/server/transport/registry';
-import { signEvidence, verifyEvidence, controlChecks, launchChecks, type Evidence } from '../src/server/validation/evidence';
-import { targetFingerprint } from '../src/server/transport/identity';
 import { snapshot, launch } from './fixtures/target';
 import { schemaFixture } from './fixtures/schema';
 import { NdjsonParser } from '../src/server/protocol/ndjson';
@@ -15,7 +13,6 @@ import { openCliStream } from '../src/server/terminal/cli';
 
 const cleanup: (() => void | Promise<unknown>)[] = [];
 afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn(); vi.unstubAllEnvs(); });
-const key = 'fixture-only-evidence-signing-key-never-used-live';
 async function setup(automatic = false, empty = false) {
   vi.stubEnv('HERDR_ENV', undefined); vi.stubEnv('HERDR_WEB_CONNECT', '1');
   const directory = await mkdtemp(join(tmpdir(), 'hc-')); cleanup.push(() => rm(directory, { recursive: true, force: true }));
@@ -47,43 +44,38 @@ async function setup(automatic = false, empty = false) {
   const profile: TargetProfile = { id: '0123-fixture', name: 'Owned fake', enabled: true, transport: 'local', session: 'fixture', socket: path, executable: '/fixture/herdr', automatic, locations: automatic ? [] : [{ projectId: 'project', path: '/fixture', workspaceId: 'w1' }] };
   const process = vi.fn(async (_command: string, args: string[]) => args[0] === '--version' ? 'herdr 0.9.3\n' : args[0] === 'api' ? JSON.stringify(schemaFixture()) : '');
   const cli = vi.fn((..._args: Parameters<typeof openCliStream>) => ({ send: vi.fn(), close: vi.fn() }));
-  let serialized: string | undefined;
-  const target = new HerdrTarget(profile, { key, read: () => serialized }, { process, cli }); cleanup.push(() => target.close());
-  const evidence = (grants: Evidence['grants']) => ({ issuer: 'herdr-web-live-v1' as const, targetFingerprint: targetFingerprint(profile), version: '0.9.3' as const, protocol: 22 as const, issuedAt: Date.now() - 100, expiresAt: Date.now() + 60_000, grants });
-  return { target, profile, process, cli, calls, evidence, approve: (proof: Evidence) => { serialized = JSON.stringify(signEvidence(proof, key)); }, revoke: () => { serialized = undefined; } };
+  const target = new HerdrTarget(profile, { process, cli }); cleanup.push(() => target.close());
+  return { target, profile, process, cli, calls };
 }
 it('connects a standalone approved application without HERDR_ENV using only owned fake sockets and process adapters', async () => {
   const { target, process } = await setup(); const unsubscribe = await target.subscribe(() => {}, () => {}); expect((await target.snapshot()).panes[0].terminal_id).toBe('term_fixture');
-  expect(process.mock.calls[0][0]).toBe('/fixture/herdr'); expect(globalThis.process.env.HERDR_ENV).toBeUndefined(); expect(target.writable).toBe(false); unsubscribe();
+  expect(process.mock.calls[0][0]).toBe('/fixture/herdr'); expect(globalThis.process.env.HERDR_ENV).toBeUndefined(); expect(target.writable).toBe(true); unsubscribe();
 });
-it('fails closed on missing approval, incomplete or tampered evidence, wrong target and expired evidence', async () => {
-  const { target, evidence, approve, profile } = await setup(); await target.snapshot();
-  approve(evidence([{ kind: 'control', inputAdapter: 'literal-pilot-v1', scope: 'literal-transport', checks: ['full-baseline'] }])); expect(target.writable).toBe(false);
-  const proof = evidence([{ kind: 'control', inputAdapter: 'literal-pilot-v1', scope: 'literal-transport', checks: [...controlChecks] }]); const signed = signEvidence(proof, key);
-  expect(verifyEvidence(JSON.stringify({ ...signed, evidence: { ...proof, expiresAt: proof.expiresAt + 1 } }), key, target.fingerprint)).toBeUndefined();
-  expect(verifyEvidence(JSON.stringify(signed), key, targetFingerprint({ ...profile, executable: '/another/herdr' }))).toBeUndefined(); expect(verifyEvidence(JSON.stringify(signed), key, target.fingerprint, proof.expiresAt)).toBeUndefined();
-  vi.stubEnv('HERDR_WEB_CONNECT', '0'); const disabled = new HerdrTarget(profile); cleanup.push(() => disabled.close()); await expect(disabled.snapshot()).rejects.toThrow('connection_not_approved');
+it('refuses to connect unless the target is approved', async () => {
+  const { profile } = await setup(); vi.stubEnv('HERDR_WEB_CONNECT', '0');
+  const disabled = new HerdrTarget(profile); cleanup.push(() => disabled.close()); await expect(disabled.snapshot()).rejects.toThrow('connection_not_approved');
 });
-it('wires scoped approved control and native launch paths without granting other harnesses or models', async () => {
-  const { target, evidence, approve, revoke, cli, calls } = await setup(); await target.snapshot();
-  approve(evidence([{ kind: 'control', inputAdapter: 'literal-pilot-v1', scope: 'literal-transport', checks: [...controlChecks] }, { kind: 'launch', harness: 'claude', adapter: 'model-argv-v1', projectId: '0123-fixture:project', locationPath: '/fixture', model: 'Default', checks: [...launchChecks] }]));
-  expect(target.writable).toBe(true); target.openTerminal('term_fixture', 'control', 80, 24, true, () => {}, () => {}); expect(cli.mock.calls[0][0]).toBe('/fixture/herdr'); expect(cli.mock.calls[0][1]).toContain('control'); expect(cli.mock.calls[0][1]).toContain('--takeover'); expect(cli.mock.calls[0][2].env?.HERDR_ENV).toBeUndefined();
+it('offers control and launch for every Herdr-supported harness once the target is compatible', async () => {
+  const { target, cli, calls } = await setup(); expect(target.writable).toBe(false); await target.snapshot();
+  expect(target.writable).toBe(true); target.openTerminal('term_fixture', 'control', 80, 24, true, () => {}, () => {}); expect(cli.mock.calls[0][0]).toBe('/fixture/herdr'); expect(cli.mock.calls[0][1]).toContain('control'); expect(cli.mock.calls[0][1]).toContain('--takeover');
   const input = { ...launch, machineId: target.id, projectId: '0123-fixture:project' }; const id = randomUUID(); const created = await target.create(input, id); await target.start(input, created.paneId, id); await target.prompt(created.paneId, input.prompt, created.terminalId, id, input);
   expect(calls.filter((call) => call.method === 'agent.prompt')).toHaveLength(1); expect(calls.filter((call) => call.method === 'tab.create')).toHaveLength(0);
-  expect(target.canLaunch({ ...input, agent: 'codex' })).toBe(false); expect(target.canLaunch({ ...input, model: 'custom' })).toBe(false); expect((await target.catalog(input.projectId)).harnesses.find((choice) => choice.id === 'claude')?.launchEnabled).toBe(true);
-  revoke(); expect(target.writable).toBe(false); await expect(target.create(input, randomUUID())).rejects.toThrow('launch_capability_not_validated');
+  expect(target.canLaunch({ ...input, agent: 'codex' })).toBe(true); expect(target.canLaunch({ ...input, model: 'custom' })).toBe(true); expect(target.canLaunch({ ...input, agent: 'pi' as 'claude' })).toBe(false);
+  const harnesses = (await target.catalog(input.projectId)).harnesses; expect(harnesses.find((choice) => choice.id === 'claude')).toMatchObject({ launchEnabled: true, customModels: true }); expect(harnesses.find((choice) => choice.id === 'pi')?.launchEnabled).toBe(false);
+  await expect(target.start({ ...input, model: 'bad;model' }, created.paneId, id)).rejects.toThrow('unsupported_launch_adapter');
+  target.close(); expect(target.writable).toBe(false); await expect(target.create(input, randomUUID())).rejects.toThrow('launch_unavailable');
 });
 it('accepts native opaque profile IDs and rejects unsupported bundled fields before becoming compatible', async () => {
   const { profile } = await setup(); expect(profileSchema.parse(profile).id).toBe('0123-fixture');
-  const invalid = new HerdrTarget(profile, undefined, { process: async (_command, args) => args[0] === '--version' ? 'herdr 0.9.3' : '{}', cli: () => { throw new Error('must not reach CLI'); } }); cleanup.push(() => invalid.close());
+  const invalid = new HerdrTarget(profile, { process: async (_command, args) => args[0] === '--version' ? 'herdr 0.9.3' : '{}', cli: () => { throw new Error('must not reach CLI'); } }); cleanup.push(() => invalid.close());
   await expect(invalid.snapshot()).rejects.toThrow('unsupported_herdr_schema'); expect(invalid.writable).toBe(false);
 });
 it('connects automatic Local without a registry opt-in and discovers native projects without changing agents', async () => {
   const { target, calls } = await setup(true); vi.stubEnv('HERDR_WEB_CONNECT', undefined);
   const state = await target.snapshot();
   expect(state.panes[0].terminal_id).toBe('term_fixture'); expect(target.locations).toHaveLength(1);
-  expect(target.writable).toBe(false);
-  expect(target.canLaunch({ ...launch, machineId: target.id, projectId: target.locations[0].projectId })).toBe(false);
+  expect(target.writable).toBe(true);
+  expect(target.canLaunch({ ...launch, machineId: target.id, projectId: target.locations[0].projectId })).toBe(true);
   expect((await target.catalog()).projectPaths).toEqual({ [target.locations[0].projectId]: target.locations[0].path });
   expect(calls.every((call) => ['ping', 'session.snapshot'].includes(call.method))).toBe(true);
 });

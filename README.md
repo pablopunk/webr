@@ -2,7 +2,7 @@
 
 This implementation replaces the design prototype's mock data with a local Herdr gateway and a persistent web client; no login or account setup is required.
 
-**Release status: reviewed code fixes are implemented and tested offline; the whole integration is not live-validated.** Approved targets can connect read-only from a standalone supervised gateway. Control and launch paths consume target-specific, signed and locally approved validation evidence; no boolean environment flag enables those capabilities. No valid live evidence was produced in this execution. Do not use the current user's agent for validation.
+**Status: Herdr Web connects to a running Herdr 0.9.3 session and offers whatever Herdr supports, with no validation or approval step.** The gateway only checks the Herdr version and API schema before it enables terminal control and launch.
 
 ## Requirements
 
@@ -24,7 +24,7 @@ mise exec -- pnpm start
 
 Open `http://127.0.0.1:4321/`. There is no authentication by default and no password feature yet; do not expose this terminal-access app publicly. The bind address defaults to localhost.
 
-The database defaults to `.data/gateway.sqlite`. Use `HERDR_WEB_DATABASE` to select another private path. SQLite uses WAL and versioned Drizzle metadata migrations in `drizzle/`. It holds thread UUIDs, avatars, runtime terminal anchors, target configuration versions, project locations, internal evidence signing keys, and operation journals, not terminal output. Existing databases are preserved. Prompts remain private launch metadata and are not included in browser snapshots.
+The database defaults to `.data/gateway.sqlite`. Use `HERDR_WEB_DATABASE` to select another private path. SQLite uses WAL and versioned Drizzle metadata migrations in `drizzle/`. It holds thread UUIDs, avatars, runtime terminal anchors, target configuration versions, project locations, and operation journals, not terminal output. Existing databases are preserved. Prompts remain private launch metadata and are not included in browser snapshots.
 
 ## Build and run
 
@@ -90,7 +90,6 @@ SSH profiles use `"transport": "ssh"` and require `host` plus the verified absol
 
 Explicit registry profiles require `HERDR_WEB_CONNECT=1`; automatic Local does not. **The production gateway does not require `HERDR_ENV`; it can run outside a pane.** Disabled profiles remain visible but are not probed. A configured profile is not proof of a healthy connection. Failed target and browser connections use bounded exponential retry with jitter.
 
-The separate agent/live-validation safety rule still requires a genuinely inherited `HERDR_ENV=1` before any live validation command. Do not set that variable to bypass the validator.
 
 ## Runtime and browser behavior
 
@@ -107,34 +106,19 @@ The separate agent/live-validation safety rule still requires a genuinely inheri
 - Activity time changes on meaningful agent, membership or title changes, not output-frame revisions. Unchanged projections keep their revision between bounded freshness publications.
 - Local approved-project icons use a fixed bounded candidate list and reject escaping symlinks. Remote and unconfigured project icons use letter fallbacks; no arbitrary filesystem endpoint exists.
 
-## Input and launch limits
+## Terminal input and launch
 
-Real targets are **read-only unless matching complete live evidence is approved locally**. On startup, automatic Local creates a no-focus, uniquely labelled validation workspace, runs the control validator from its own managed shell and approves only a successful measured receipt; it never sends validation input to an existing agent. The workspace closes only after its identity and idle shell are checked; uncertain outcomes leave it intact for inspection. When approved, the active terminal pane requests control without takeover and gains a focused input capture after its full baseline. An existing controller conflict leaves it read-only until the user explicitly requests takeover. The fixture path exercises control conflicts, explicit takeover, resize, Unicode, paste validation, release, sequence recovery, and disconnect teardown. The gateway controller lock protects its own leases and Herdr's direct controller path; it is not a global input lock over unrelated native or JSON API clients.
+Herdr Web enables whatever Herdr itself supports. It checks only that the connected Herdr is the supported version and exports the expected API schema (protocol 22, 0.9.3); there is no separate approval, evidence or paid validation step.
 
-Control, takeover and release actions are in the command palette and a compact terminal context menu, not permanent terminal header bars. The pilot captures deliberate keyboard, Unicode, IME and plain-text paste events through a small input capture field. Application shortcuts still work there and are dispatched only once; composer and search editing keys are not intercepted. It never forwards arbitrary xterm `onData`, device replies, terminal clipboard requests, or terminal-supplied links. Input is limited to 8 KiB of UTF-8 bytes. Paste rejects control characters and embedded bracketed-paste delimiters.
-
-Input requires both an accepted control open and a rendered full baseline. Awaiting the initial, replacement or resize baseline disables input; a resize requires a matching new full baseline. Once that baseline is verified, ordinary output parsing does not pause established input, even when incremental frames are queued. Output ACK credits and byte limits remain independent of input eligibility. Release, revoked authorization and connection loss disable input. Old events and ACK callbacks cannot authorize another generation. Input is not queued for later replay. Observer viewports reopen when their size changes; observers do not resize or independently scroll the source. Source dimensions determine xterm dimensions, with cropping/padding permitted.
-
-Herdr's CLI does not export source keyboard modes. Fixed pilot key encodings are not proof of complete native input compatibility. A future Herdr semantic key/paste CLI extension could resolve this; no such feature is assumed here. Graphics are not supported by the CLI mirror. Plain pointer gestures and Shift gestures are reserved for selection/copy. While writable, hold Alt for source mouse gestures or source wheel scrolling; routing Alt is consumed and Ctrl is forwarded as a mouse modifier. Read-only viewers do not send these gestures. Shift-right-click retains the browser menu; the terminal menu also has an explicit Copy selection action. Do not enable writes based only on the offline fixtures.
-
-The catalog probes only the known `claude`, `codex`, `opencode` and `pi` executables on the selected host. It does not read credentials, import another host's catalog, or fabricate a model inventory. Installed executables remain viewable with a reason when launch is not verified. Model choices come from exact, actually tested launch grants for that project and harness. A grant for one custom model never authorizes other custom IDs, and a custom-model grant does not implicitly authorize Default. The native argv adapter supports Claude, Codex and OpenCode; other adapters are not launch-enabled.
+- **Input just works.** The active pane requests control by itself and keeps keyboard focus. Keys and pastes anywhere on the page go to the terminal unless a search box or dialog is being edited, and applications that ask for focus reports receive them. There is no control menu; right-click is the browser's own menu.
+- **Many tabs, one terminal.** All browser tabs share one Herdr control stream for each pane, and every tab can type. Each tab keeps its own acknowledgements and byte budget, so a slow tab cannot stall another. The tab that last gained focus sets the terminal size, as in tmux.
+- **Other Herdr clients.** Herdr allows one `terminal session control` stream per pane. If another Herdr client already holds it, the pane shows a banner with an explicit **Take over** button, which asks before replacing that client. Herdr's own terminal windows are unaffected.
+- **Input safety.** Input is accepted only after the tab's full baseline frame was rendered and acknowledged; a resize requires a matching new full baseline. Herdr's CLI does not export source keyboard modes, so fixed key encodings are not a proof of complete native input compatibility. Graphics are not supported by the CLI mirror. While writable, hold Alt for source mouse gestures; plain pointer gestures stay reserved for selection and copy.
+- **Launch.** New thread creates a worktree (or a plain tab), starts the harness with Herdr's `agent.start`, waits for the shell prompt and for the agent to be detected, then sends your prompt once. The thread appears in the sidebar immediately with live step labels, and a stopped launch says which step failed. Claude Code, Codex and OpenCode can be launched with `Default` or a custom model name; other installed harnesses are listed with a reason. The catalog probes only the known `claude`, `codex`, `opencode` and `pi` executables on the selected host and never reads credentials.
 
 `POST /api/threads` requires a single-user-scoped UUID `Idempotency-Key`. Repeated payloads return the same operation/thread IDs; different payloads with the same key conflict. Each launch step persists intent before its effect. Worktree creation uses the returned initial tab rather than creating another tab. Returned native IDs are persisted before agent start; readiness belongs to Herdr's start operation; a fresh named-agent identity is checked before the initial prompt. An ambiguous effect or interrupted journal stays `unknown` for manual recovery. The gateway never retries a mutation or prompt blindly, deletes a partial checkout, or stops a target server. Launch requires separate proof for the exact target, project location, harness and native model adapter; a control grant is not a launch grant. Default-only evidence cannot authorize custom models.
 
 Read and health RPC deadlines remain five seconds. Agent start uses Herdr's thirty-second readiness budget plus a five-second transport margin. Worktree creation has a bounded two-minute deadline; plain tab creation has thirty seconds. Longer configured readiness waits cannot exceed Herdr's five-minute limit plus the same transport margin. No request has an infinite deadline. An action that exceeds its deadline remains uncertain in the launch journal and is not repeated automatically.
-
-## Capability evidence and local approval
-
-`src/server/validation/evidence.ts` defines the signed evidence contract. Evidence binds protocol 22, version 0.9.3, target fingerprint, issue/expiry times and complete required check sets. Control uses `literal-pilot-v1` with explicit `literal-transport` scope; it does not claim source-mode-aware correctness in every harness. Launch uses a separate `model-argv-v1` grant for an exact harness, scoped project/path and exact tested model. Partial, expired, modified, legacy blanket-custom or wrong-target evidence fails closed. Controls are revoked when approved evidence expires or is removed. Native control CLI and create/start/prompt paths are wired behind these checks.
-
-The gateway and validation tools share an automatically generated signing key in the private SQLite store; no secret entry is required. `HERDR_WEB_EVIDENCE_KEY` remains an optional explicit override for existing receipts. The key must not appear in source control, logs or browser data, and its presence alone grants nothing. The guarded validator signs a private receipt only after every selected check passes. Use `--approve` to approve that measured receipt, or approve/revoke it separately:
-
-```sh
-mise exec -- pnpm run validation:approve <approved-target-id> /absolute/path/to/signed-live-evidence.json
-mise exec -- pnpm run validation:revoke <approved-target-id>
-```
-
-Approval checks the signature, identity, expiry and required grant checks, then persists the receipt in the private metadata database. There is no browser approval endpoint or bypass flag, and the validator never accepts a supplied successful checklist or ownership manifest. Fixture/injected transports cannot issue live receipts, even when their measured tests pass. Old receipts with blanket `modelMode` grants no longer pass the schema. The launch safety check `durable-intent-once` measures one journaled client request per effect; it is not a claim of server-side exactly-once delivery after a lost response.
 
 ## Verify offline
 
@@ -156,36 +140,4 @@ The offline validator runs only `herdr api schema --json`, or reads an exported 
 mise exec -- pnpm run validate:offline /absolute/path/to/herdr-web-api.schema.json
 ```
 
-A different CLI/server version requires validation again. The installed JSON schema does not export CLI terminal frames or keyboard modes; the validator reports that missing proof explicitly.
-
-## Run automated live validation in the existing session
-
-Automatic Local needs no registry or manually entered key: the app runs this validation in an owned managed shell when it starts, without requiring your shell to be inside Herdr. If automatic validation fails, inspect the retained `herdr-web-control-check-*` workspace and `.data/validation` journal; to rerun it manually, use a genuine Herdr terminal in the selected existing session, not an unmanaged shell, and do not set `HERDR_ENV` yourself:
-
-```sh
-mise exec -- pnpm run validate:live --target local --consent --approve
-```
-
-One existing session is enough. This command creates a uniquely labelled, no-focus disposable workspace and private target-side Python recorder, not a second session. The selected Local socket must match the actual managed caller session. SSH uses exactly one approved target/session and strict noninteractive host-key checks. Python 3 must already be installed on the target on Linux/macOS; missing Python, incompatible schema or unsupported platform fails without installation. No server is started, stopped or restarted.
-
-The recorder observes actual PTY input bytes and dimensions. Tests cover full baseline and sequence, raw ordered keys, UTF-8, whole multiline bracketed paste, queue limits, physical resize, SGR mouse/wheel reports, two owned controller conflicts/takeover, release/disconnect and duplicate output-derived cursor replies. Takeover is permitted only between controllers this run opened on its new terminal. Every test checks fresh owned terminal identity. Source keyboard modes remain unavailable from the rendered CLI stream, so the resulting control grant is explicitly literal transport only.
-
-The command does **not** launch a paid or tool-bearing agent by default. To request one selected harness/model test in its own linked checkout, use explicit additional flags:
-
-```sh
-mise exec -- pnpm run validate:live --target local --consent --launch --harness claude --model Default --project my-project --approve
-```
-
-Use `--launch-only` instead of `--launch` if you want only the independent launch grant. `--harness`, `--model` and `--project` are mandatory for a launch test. Only that exact model is granted, and no other installed harness is launched. The validator uses worktree.create's initial tab/root pane, Herdr's own start readiness, a fresh named occupant and one benign encoded-token prompt. A settled decoded reply is required; the token is not supplied as plain prompt text, so echo of the submitted prompt cannot pass the output check. Approval questions are never answered. Unknown create/start/prompt outcomes are never repeated.
-
-Successful actual runs write a signed 0600 receipt and a durable 0600 ownership journal under `.data/validation` (or an explicitly selected private `--out` directory). Injected/fake runs are labelled fixture and never write a live receipt. Any incomplete selected proof produces no receipt and reports the missing checks. Cleanup uses only returned, verified, runner-created identities in reverse order, never group close, force worktree removal, branch deletion or broad file deletion. Changed/ambiguous ownership or a dirty linked checkout is preserved with recovery IDs and the journal path. Preexisting/caller panes and agents are never selected for control, prompts, process reads or cleanup.
-
-After successful approval, start the standalone gateway with the same registry and keys:
-
-```sh
-export HERDR_WEB_CONNECT=1
-mise exec -- pnpm run build
-mise exec -- pnpm start
-```
-
-The gateway itself does not require a managed pane. Automatic Local control validation was exercised against Herdr 0.9.3 in an owned workspace, followed by browser input in a separate owned shell; SSH and launch validation remain unverified. The approved receipt is local to the gateway database and must not be copied to another target. Remote icons still use fallbacks, and general source-mode-aware keyboard/graphics support remains outside the literal pilot.
+A different CLI/server version is refused until it is checked against this schema. The installed JSON schema does not export CLI terminal frames or keyboard modes; the validator reports that missing information explicitly.

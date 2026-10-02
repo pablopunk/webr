@@ -5,8 +5,6 @@ import { SocketApi } from '../src/server/protocol/socket';
 import { requestDeadline } from '../src/server/protocol/deadlines';
 import { MetadataDatabase } from '../src/server/storage/database';
 import { LaunchJournal } from '../src/server/runtime/launch';
-import { signEvidence, launchChecks } from '../src/server/validation/evidence';
-import { targetFingerprint } from '../src/server/transport/identity';
 import { schemaFixture } from './fixtures/schema';
 import { snapshot, launch } from './fixtures/target';
 
@@ -38,9 +36,7 @@ afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await c
 async function setup(delay: number | null) {
   vi.useFakeTimers(); fixture.delay = delay; fixture.calls = []; vi.stubEnv('HERDR_WEB_CONNECT', '1'); vi.stubEnv('HERDR_ENV', undefined);
   const profile = { id: 'fixture', name: 'Fake only', transport: 'local' as const, session: 'fixture', socket: '/fixture/api.sock', enabled: true, locations: [{ projectId: 'project', path: '/fixture', workspaceId: 'w1' }] };
-  const key = 'fixture-only-deadline-evidence-signing-key';
-  const serialized = JSON.stringify(signEvidence({ issuer: 'herdr-web-live-v1', targetFingerprint: targetFingerprint(profile), version: '0.9.3', protocol: 22, issuedAt: Date.now() - 1, expiresAt: Date.now() + 3600_000, grants: [{ kind: 'launch', harness: 'claude', adapter: 'model-argv-v1', projectId: 'fixture:project', locationPath: '/fixture', model: 'Default', checks: [...launchChecks] }] }, key));
-  const target = new HerdrTarget(profile, { read: () => serialized, key }, { process: async (_command, args) => args[0] === '--version' ? 'herdr 0.9.3' : args[0] === 'api' ? JSON.stringify(schemaFixture()) : '', cli: () => { throw new Error('No terminal CLI is needed for this fixture'); } });
+  const target = new HerdrTarget(profile, { process: async (_command, args) => args[0] === '--version' ? 'herdr 0.9.3' : args[0] === 'api' ? JSON.stringify(schemaFixture()) : '', cli: () => { throw new Error('No terminal CLI is needed for this fixture'); } });
   cleanup.push(() => target.close()); await target.catalog(launch.projectId); return target;
 }
 it('waits for a six-second startup within the thirty-second server readiness budget through the real target adapter', async () => {

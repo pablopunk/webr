@@ -34,7 +34,6 @@ it('starts without an account or secret with coherent SSR, static assets, HTTP a
       await new Promise<void>((resolve, reject) => { socket.once('open', resolve); socket.once('error', reject); });
     }
     expect(sockets.every((socket) => socket.readyState === 1)).toBe(true);
-    expect(output).not.toContain('evidence_key');
   } finally {
     for (const socket of sockets) socket.close();
     child.kill('SIGTERM'); await new Promise<void>((resolve) => { if (child.exitCode !== null) resolve(); else child.once('exit', () => resolve()); });

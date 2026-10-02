@@ -27,6 +27,6 @@ it('parses exact CLI frame envelopes from an owned fake process and tears down o
 it('rejects unsupported schemas and keeps real control and launch effects disabled', async () => {
   expect(validateInstalledSchema({ protocol: 99 })).toContain('Unsupported protocol: expected 22');
   const target = new HerdrTarget({ id: 'test', name: 'Test', session: 'default', enabled: true, transport: 'local', locations: [] });
-  expect(target.writable).toBe(false); expect(() => target.openTerminal('term_unknown', 'control', 80, 24, false, () => {}, () => {})).toThrow('write_capability_not_validated');
-  await expect(target.create({ machineId: 'test', projectId: 'none', agent: 'claude', model: 'Default', prompt: 'must not send', worktree: true }, '00000000-0000-4000-8000-000000000001')).rejects.toThrow('launch_capability_not_validated');
+  expect(target.writable).toBe(false); expect(() => target.openTerminal('term_unknown', 'control', 80, 24, false, () => {}, () => {})).toThrow('terminal_control_unavailable');
+  await expect(target.create({ machineId: 'test', projectId: 'none', agent: 'claude', model: 'Default', prompt: 'must not send', worktree: true }, '00000000-0000-4000-8000-000000000001')).rejects.toThrow('launch_unavailable');
 });

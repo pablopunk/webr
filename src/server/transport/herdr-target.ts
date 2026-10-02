@@ -13,31 +13,29 @@ import { HerdrActions } from '../runtime/herdr-actions';
 import { readApprovedIcon, type Icon } from './icons';
 import { targetFingerprint } from './identity';
 import { scopedProjectId } from '../../shared/projects';
-import { verifyEvidence, controlGranted, launchGranted, approvedModels } from '../validation/evidence';
 import { validateInstalledSchema } from '../protocol/validate';
 import { ensureLocalSession } from './local-session';
 import { nativeLocations } from './native-locations';
 
 const knownKinds = ['claude', 'codex', 'opencode', 'pi'];
+const launchableKinds = ['claude', 'codex', 'opencode'];
 type Dependencies = { process: typeof boundedProcess; cli: typeof openCliStream };
-type ValidationSource = { read: () => string | undefined; key?: string };
 export class HerdrTarget implements TargetAdapter {
   readonly id; readonly name; readonly session; readonly locations: LaunchLocation[];
   readonly fingerprint; configVersion = 1;
   get enabled() { return this.profile.enabled; }
-  get writable() { return this.compatible && controlGranted(this.evidence()); }
+  get writable() { return this.compatible; }
   private api?: SocketApi;
   private forwarding?: SshForward;
   private compatible = false;
   private connecting?: Promise<SocketApi>;
   private streams = new Set<ReturnType<typeof openCliStream>>();
   private icons = new Map<string, { expires: number; value: Promise<Icon | undefined> }>();
-  constructor(private profile: TargetProfile, private validation?: ValidationSource, private dependencies: Dependencies = { process: boundedProcess, cli: openCliStream }) {
+  constructor(private profile: TargetProfile, private dependencies: Dependencies = { process: boundedProcess, cli: openCliStream }) {
     this.id = profile.id; this.name = profile.name; this.session = profile.session;
     this.fingerprint = targetFingerprint(profile);
     this.locations = profile.locations.map((location) => ({ ...location, localId: location.projectId, logicalId: location.logicalId ?? location.projectId, projectId: scopedProjectId(profile.id, location.projectId) }));
   }
-  private evidence() { return verifyEvidence(this.validation?.read(), this.validation?.key, this.fingerprint); }
   private command(args: string[]) {
     const env: NodeJS.ProcessEnv = { ...process.env, HERDR_SOCKET_PATH: this.profile.socket ?? localSocket(this.profile) };
     delete env.HERDR_SESSION;
@@ -97,10 +95,9 @@ export class HerdrTarget implements TargetAdapter {
       } catch {}
     }
     const location = this.locations.find((location) => location.projectId === projectId);
-    return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id) => {
-      const models = location ? approvedModels(this.evidence(), id, location.projectId, location.path) : [];
-      return { id, name: harnessName(id), models, customModels: false, launchEnabled: !!models.length, reason: models.length ? undefined : 'No complete approved live launch proof exists for this target, project and harness.' };
-    }) };
+    return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id) => launchableKinds.includes(id)
+      ? { id, name: harnessName(id), models: ['Default'], customModels: true, launchEnabled: true }
+      : { id, name: harnessName(id), models: [], customModels: false, launchEnabled: false, reason: harnessName(id) + ' cannot be launched from Herdr Web yet.' }) };
   }
   async icon(projectId: string) {
     const location = this.locations.find((location) => location.projectId === projectId);
@@ -111,13 +108,13 @@ export class HerdrTarget implements TargetAdapter {
     this.icons.set(projectId, { expires: Date.now() + 60_000, value }); return value;
   }
   openTerminal: TargetAdapter['openTerminal'] = (terminalId, mode, cols, rows, takeover, onFrame, onClose) => {
-    if (!this.compatible || mode === 'control' && !this.writable || mode === 'observe' && takeover) throw new Error('write_capability_not_validated');
+    if (!this.compatible || mode === 'control' && !this.writable || mode === 'observe' && takeover) throw new Error('terminal_control_unavailable');
     const command = this.command(['terminal', 'session', mode, terminalId, '--cols', String(cols), '--rows', String(rows), ...(takeover ? ['--takeover'] : [])]);
     const stream = this.dependencies.cli(command.command, command.args, { env: command.env }, onFrame, (reason) => { this.streams.delete(stream); onClose(reason); });
     this.streams.add(stream); return stream;
   };
   async create(input: LaunchInput, threadId: string) { return this.actions().create(input, threadId); }
-  canLaunch(input: LaunchInput) { const location = this.locations.find((location) => location.projectId === input.projectId); return this.compatible && !!location && launchGranted(this.evidence(), input, location.path); }
+  canLaunch(input: LaunchInput) { return this.compatible && launchableKinds.includes(input.agent) && this.locations.some((location) => location.projectId === input.projectId); }
   async start(input: LaunchInput, paneId: string, threadId: string) { return this.actions().start(input, paneId, threadId); }
   async prompt(paneId: string, prompt: string, terminalId: string, threadId: string, input: LaunchInput) { return this.actions().prompt(paneId, prompt, terminalId, threadId, input.agent, input); }
   private actions() {
@@ -125,10 +122,7 @@ export class HerdrTarget implements TargetAdapter {
       const api = await this.connect(); const ping = await api.request('ping');
       if (ping.version !== '0.9.3' || ping.protocol !== 22) { this.compatible = false; throw new Error('unsupported_herdr_version'); }
       return api.request(method, params, options);
-    } }, this.locations, (input) => {
-      const location = this.locations.find((location) => location.projectId === input?.projectId);
-      if (!this.compatible || !input || !location || !launchGranted(this.evidence(), input, location.path)) throw new Error('launch_capability_not_validated');
-    });
+    } }, this.locations, (input) => { if (!input || !this.canLaunch(input)) throw new Error('launch_unavailable'); });
   }
   close() { this.compatible = false; this.api?.close(); this.api = undefined; for (const stream of this.streams) stream.close(); void this.forwarding?.close(); }
   private async disconnect() { this.compatible = false; this.api?.close(); this.api = undefined; await this.forwarding?.close(); this.forwarding = undefined; }

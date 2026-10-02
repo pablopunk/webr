@@ -8,10 +8,7 @@
     "start": "tsx server/start.ts",
     "check": "astro check && tsc --noEmit",
     "test": "vitest run",
-    "validate:offline": "tsx scripts/validate-protocol.ts",
-    "validate:live": "tsx scripts/validate-live.ts",
-    "validation:approve": "tsx scripts/approve-evidence.ts",
-    "validation:revoke": "tsx scripts/revoke-evidence.ts"
+    "validate:offline": "tsx scripts/validate-protocol.ts"
   },
   "dependencies": {
     "@astrojs/node": "11.1.6",

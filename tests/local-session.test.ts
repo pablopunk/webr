@@ -2,7 +2,6 @@ import { expect, it, vi } from 'vitest';
 import { discoverLocalSession, localSessionBootstrap, type LocalSessionDependencies } from '../src/server/transport/local-session';
 import { profileSchema } from '../src/server/transport/registry';
 import { MetadataDatabase } from '../src/server/storage/database';
-import { evidenceKey } from '../src/server/validation/key';
 import { SocketApi } from '../src/server/protocol/socket';
 
 const session = (name: string, running = true) => ({ name, default: name === 'default', running, socket_path: `/test/${name}/herdr.sock` });
@@ -58,13 +57,4 @@ it('does not repeat an uncertain server start', async () => {
   const bootstrap = localSessionBootstrap(deps);
   await expect(bootstrap(profile)).rejects.toThrow('herdr_session_start_unknown');
   await expect(bootstrap(profile)).rejects.toThrow('herdr_session_start_unknown'); expect(deps.start).toHaveBeenCalledTimes(1);
-});
-it('creates a persistent private evidence key without account or secret setup', () => {
-  const database = new MetadataDatabase(':memory:');
-  try {
-    const key = evidenceKey(database, ''); expect(key).toMatch(/^[a-f0-9]{64}$/);
-    expect(evidenceKey(database, '')).toBe(key); expect(database.getSetting('allowed_account')).toBeUndefined();
-    expect(evidenceKey(database, 'explicit-key-that-is-at-least-32-characters')).not.toBe(key);
-    expect(() => evidenceKey(database, 'short')).toThrow('evidence_key_too_short');
-  } finally { database.close(); }
 });
