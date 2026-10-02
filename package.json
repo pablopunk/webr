@@ -10,6 +10,7 @@
     "remote",
     "cli"
   ],
+  "license": "AGPL-3.0-or-later",
   "homepage": "https://github.com/pablopunk/webr#readme",
   "bugs": {
     "url": "https://github.com/pablopunk/webr/issues"

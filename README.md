@@ -13,3 +13,5 @@
 webr plugin install   # start Webr with the Herdr server
 pnpm dev              # also points an installed plugin at this checkout
 ```
+
+AGPL-3.0-or-later
