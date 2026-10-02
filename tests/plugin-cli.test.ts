@@ -61,6 +61,7 @@ it('uninstalls a GitHub plugin and unlinks a linked one', async () => {
   const github = fakeHerdr('github');
   await uninstallWebrPlugin(github.deps());
   expect(existsSync(github.config)).toBe(false);
+  expect(existsSync(github.state)).toBe(false);
   expect(github.calls()).toContain(`plugin uninstall ${PLUGIN_ID}`);
   const local = fakeHerdr('local');
   await uninstallWebrPlugin(local.deps());

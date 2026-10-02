@@ -39,6 +39,7 @@ export async function uninstallWebrPlugin(deps: PluginDeps) {
   const stopped = await stopPluginWebr(deps.stateDir, probeAddress(readPluginConfig(configDir)));
   if (plugin.kind === 'github') uninstallPlugin(deps.run); else unlinkLocalPlugin(deps.run);
   rmSync(configDir, { recursive: true, force: true });
+  rmSync(deps.stateDir, { recursive: true, force: true });
   return ['Removed the Webr plugin.', ...(stopped ? ['Stopped the running Webr.'] : [])];
 }
 
