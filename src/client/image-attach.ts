@@ -21,6 +21,25 @@ export async function uploadImage(machineId: string, file: File): Promise<string
   return result.path;
 }
 
+const THUMBNAIL_SIZE = 160;
+
+const readAsDataUrl = (file: File) => new Promise<string>((done, fail) => {
+  const reader = new FileReader();
+  reader.onload = () => done(String(reader.result)); reader.onerror = () => fail(reader.error);
+  reader.readAsDataURL(file);
+});
+
+export async function thumbnailDataUrl(file: File): Promise<string> {
+  if (typeof createImageBitmap !== 'function') return readAsDataUrl(file);
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, THUMBNAIL_SIZE / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  return canvas.toDataURL('image/jpeg', 0.8);
+}
+
 export async function uploadImagesAsTerminalText(machineId: string, files: File[]) {
   const paths: string[] = [];
   for (const file of files) paths.push(await uploadImage(machineId, file));
