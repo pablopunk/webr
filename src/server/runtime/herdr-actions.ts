@@ -5,7 +5,10 @@ import { nativePane, nativeTab } from '../protocol/native';
 import { AGENT_READY_TIMEOUT_MS, requestDeadline, type RpcOptions } from '../protocol/deadlines';
 
 type Api = { request(method: string, params?: Record<string, unknown>, options?: RpcOptions): Promise<Record<string, unknown>> };
-const startedAgent = z.object({ name: z.string(), terminal_id: z.string(), pane_id: z.string(), agent: z.string(), agent_status: z.enum(['idle', 'done', 'working', 'blocked', 'unknown']) });
+const agentShape = { name: z.string(), terminal_id: z.string(), pane_id: z.string(), agent_status: z.enum(['idle', 'done', 'working', 'blocked', 'unknown']) };
+const startedAgent = z.object({ ...agentShape, agent: z.string() });
+const detectingAgent = z.object({ ...agentShape, agent: z.string().nullable().optional() });
+const pause = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
 export function modelArguments(kind: string, model: string): string[] {
   if (!['claude', 'codex', 'opencode'].includes(kind) || !/^[A-Za-z0-9_/.:+-]{1,120}$/.test(model)) throw new Error('unsupported_launch_adapter');
   return model === 'Default' ? [] : ['--model', model];
@@ -30,8 +33,20 @@ export class HerdrActions {
     this.requireCapability(input);
     const params = { name: agentName(threadId), kind: input.agent, pane_id: paneId, args: modelArguments(input.agent, input.model), timeout_ms: AGENT_READY_TIMEOUT_MS };
     const result = await this.api.request('agent.start', params, { timeoutMs: requestDeadline('agent.start', params) });
-    const agent = startedAgent.parse(result.agent);
-    if (result.type !== 'agent_started' || agent.name !== agentName(threadId) || agent.pane_id !== paneId || agent.agent !== input.agent || !['idle', 'done'].includes(agent.agent_status)) throw new Error('agent_not_ready');
+    if (result.type !== 'agent_started') throw new Error('agent_not_ready');
+    const isReady = (agent: z.infer<typeof detectingAgent>) => agent.name === params.name && agent.pane_id === paneId && agent.agent === input.agent && ['idle', 'done'].includes(agent.agent_status);
+    const started = detectingAgent.parse(result.agent);
+    if (started.name !== params.name || started.pane_id !== paneId) throw new Error('agent_not_ready');
+    if (!isReady(started)) await this.untilReady(params.name, isReady);
+  }
+  private async untilReady(name: string, isReady: (agent: z.infer<typeof detectingAgent>) => boolean) {
+    const end = Date.now() + AGENT_READY_TIMEOUT_MS;
+    do {
+      const current = detectingAgent.safeParse((await this.api.request('agent.get', { target: name })).agent);
+      if (current.success && isReady(current.data)) return;
+      await pause(250);
+    } while (Date.now() < end);
+    throw new Error('agent_not_ready');
   }
   async prompt(paneId: string, prompt: string, terminalId: string, threadId: string, kind: string, input?: LaunchInput) {
     this.requireCapability(input);

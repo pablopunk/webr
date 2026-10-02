@@ -26,3 +26,11 @@ it('checks the capability before any effect', async () => {
   const actions = new HerdrActions({ request: async () => { throw new Error('must not reach API'); } }, new FakeTarget().locations, () => { throw new Error('not_validated'); });
   await expect(actions.create(launch, randomUUID())).rejects.toThrow('not_validated');
 });
+it('waits for agent detection after agent.start answers before the agent is known, and refuses another occupant', async () => {
+  const id = randomUUID(); const base = { name: agentName(id), terminal_id: 'term_1', pane_id: 'w1:p1' }; const calls: string[] = [];
+  const detected = [{ ...base, agent: null, agent_status: 'unknown' }, { ...base, agent: 'claude', agent_status: 'idle' }];
+  const actions = new HerdrActions({ request: async (method) => { calls.push(method); return method === 'agent.start' ? { type: 'agent_started', agent: { ...base, agent: null, agent_status: 'unknown' } } : { type: 'agent_info', agent: detected.shift() }; } }, new FakeTarget().locations, () => {});
+  await actions.start(launch, 'w1:p1', id); expect(calls).toEqual(['agent.start', 'agent.get', 'agent.get']);
+  const other = new HerdrActions({ request: async (method) => method === 'agent.start' ? { type: 'agent_started', agent: { ...base, name: 'other', agent: null, agent_status: 'unknown' } } : { type: 'agent_info', agent: {} } }, new FakeTarget().locations, () => {});
+  await expect(other.start(launch, 'w1:p1', id)).rejects.toThrow('agent_not_ready');
+});
