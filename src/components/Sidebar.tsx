@@ -1,4 +1,4 @@
-import { memo, useState, type ReactNode } from 'react';
+import { memo, useRef, useState, type ReactNode } from 'react';
 import { ContextMenu } from '@base-ui/react/context-menu';
 import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, LayoutList, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Plus, Settings2, Trash2, X } from 'lucide-react';
 import { type Project, type Thread, harnessName, relativeTime } from '../lib/models';
@@ -9,6 +9,7 @@ import { OpenWorktree } from './OpenWorktree';
 import { ThreadTitleEditor } from './ThreadTitleEditor';
 import { ThreadAvatar } from './ThreadAvatar';
 import { Tooltip } from './Tooltip';
+import { useFlipList } from './useFlipList';
 import { groupProjectLocations } from '../client/project-groups';
 import { alertDialog, confirmDialog } from './dialogs';
 import { deleteArchivedThreads, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
@@ -46,7 +47,7 @@ const ThreadRow = memo(function ThreadRow({ thread, project, machineName, curren
   const [renaming, setRenaming] = useState(false);
   const editor = renaming ? <ThreadTitleEditor thread={thread} onDone={() => setRenaming(false)} onError={reportFailure} /> : undefined;
   return <ContextMenu.Root>
-    <ContextMenu.Trigger className="thread-item" onDoubleClick={(event) => { event.preventDefault(); setRenaming(true); }}>
+    <ContextMenu.Trigger className="thread-item" data-flip-id={thread.id} onDoubleClick={(event) => { event.preventDefault(); setRenaming(true); }}>
       <ThreadLink thread={thread} project={project} machineName={machineName} current={current} showProject={showProject} editor={editor} />
       <Tooltip label={archived ? 'Unarchive' : 'Archive'}><button type="button" className="thread-archive" aria-label={archiveLabel} onClick={() => void setThreadArchived(thread, !archived).catch(reportFailure)}><ArchiveIcon size={15} strokeWidth={1.8} aria-hidden="true" /></button></Tooltip>
     </ContextMenu.Trigger>
@@ -94,6 +95,8 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
   const [closedProjects, setClosedProjects] = useState<string[]>([]);
   const currentProjectId = threads.find((thread) => thread.id === currentId)?.projectId;
   const projectGroups = groupProjectLocations(projects, currentProjectId);
+  const navigation = useRef<HTMLElement>(null);
+  useFlipList(navigation);
   const threadLink = (thread: Thread, showProject: boolean) => {
     const project = projects.find((item) => item.id === thread.projectId);
     return <ThreadRow key={thread.id} thread={thread} project={project} machineName={machines.find((machine) => machine.id === thread.machineId)?.name ?? thread.machineId} current={currentId === thread.id} showProject={showProject} />;
@@ -119,7 +122,7 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
         </div>}
       </div>
       {!collapsed && <>
-        <nav className="thread-navigation" aria-label="Agent threads">
+        <nav ref={navigation} className="thread-navigation" aria-label="Agent threads">
           {mode === 'projects' ? projectGroups.filter((group) => threads.some((thread) => group.locations.includes(thread.projectId))).sort((a, b) => (threads.find((thread) => b.locations.includes(thread.projectId))?.updatedAt ?? '').localeCompare(threads.find((thread) => a.locations.includes(thread.projectId))?.updatedAt ?? '')).map(({ id, project, locations }) => <section key={id} className="thread-group">
             <div className="group-header">
               <button className="group-title" onClick={() => setClosedProjects((value) => value.includes(id) ? value.filter((item) => item !== id) : [...value, id])} aria-expanded={!closedProjects.includes(id)}>
