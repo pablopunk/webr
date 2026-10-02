@@ -4,11 +4,11 @@ export function terminalKeyBytes(event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 
   const bytes = event.ctrlKey && /^[a-z]$/i.test(event.key) ? String.fromCharCode(event.key.toUpperCase().charCodeAt(0) - 64) : specialKeys[event.key];
   return bytes && (event.altKey ? '\x1b' + bytes : bytes);
 }
-export function TerminalInput({ onInput }: { onInput: (text: string, paste?: boolean) => void }) {
+export function TerminalInput({ onInput, onFocusChange }: { onInput: (text: string, paste?: boolean) => void; onFocusChange?: (focused: boolean) => void }) {
   const [draft, setDraft] = useState('');
   const composing = useRef(false);
   const committed = useRef<string | null>(null);
-  return <textarea className="terminal-input-capture" value={draft} aria-label="Terminal input" rows={1}
+  return <textarea className="terminal-input-capture" value={draft} aria-label="Terminal input" rows={1} onFocus={() => onFocusChange?.(true)} onBlur={() => onFocusChange?.(false)}
     onCompositionStart={() => { composing.current = true; committed.current = null; }}
     onCompositionEnd={(event) => { composing.current = false; const text = event.data; committed.current = text; if (text) onInput(text); setDraft(''); event.currentTarget.value = ''; }}
     onChange={(event) => {

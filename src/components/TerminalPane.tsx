@@ -46,6 +46,8 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     });
     terminal.open(host.current);
     term.current = terminal;
+    const redirectFocus = () => { if (writableRef.current) host.current?.parentElement?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus(); };
+    terminal.textarea?.addEventListener('focus', redirectFocus);
     const clipboard = terminal.parser.registerOscHandler(52, () => true);
     const links = terminal.parser.registerOscHandler(8, () => true);
     if (!pane.terminalId) { terminal.dispose(); return; }
@@ -69,6 +71,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
       clearTimeout(timer); control.current?.close(); control.current = null;
       writableRef.current = false; gestures();
       window.removeEventListener('focus', claimSize); document.removeEventListener('visibilitychange', claimSize);
+      terminal.textarea?.removeEventListener('focus', redirectFocus);
       clipboard.dispose(); links.dispose(); resize.disconnect(); colorObserver.disconnect();
       terminal.dispose(); term.current = null;
     };
@@ -86,15 +89,15 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.metaKey || event.isComposing || !unfocused(event) || (event.target as HTMLElement).classList?.contains('terminal-input-capture')) return;
       const bytes = terminalKeyBytes(event);
-      if (bytes) { event.preventDefault(); control.current?.input(bytes); } else if (event.key.length === 1 && !event.ctrlKey) focusInput();
+      if (bytes) { event.preventDefault(); event.stopPropagation(); control.current?.input(bytes); } else if (event.key.length === 1 && !event.ctrlKey) focusInput();
     };
     const onPaste = (event: ClipboardEvent) => {
       const text = event.clipboardData?.getData('text/plain');
       if (!text || !unfocused(event) || (event.target as HTMLElement).classList?.contains('terminal-input-capture')) return;
-      event.preventDefault(); control.current?.input(text, true);
+      event.preventDefault(); event.stopPropagation(); control.current?.input(text, true);
     };
-    window.addEventListener('keydown', onKeyDown); window.addEventListener('paste', onPaste);
-    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('paste', onPaste); };
+    window.addEventListener('keydown', onKeyDown, true); window.addEventListener('paste', onPaste, true);
+    return () => { window.removeEventListener('keydown', onKeyDown, true); window.removeEventListener('paste', onPaste, true); };
   }, [active, writable]);
   useEffect(() => { const refocus = () => { if (active) focusInput(); }; window.addEventListener('focus', refocus); return () => window.removeEventListener('focus', refocus); }, [active, writable]);
 
@@ -102,6 +105,6 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     <span className="terminal-status" role="status">{message}</span>
     {message === conflictMessage && <div className="terminal-control-conflict">Another Herdr client controls this terminal.<button type="button" onClick={(event) => { event.stopPropagation(); if (confirm('Replace the other Herdr client that controls this terminal? Its input stops working.')) control.current?.control(true); }}>Take over</button></div>}
     <div ref={host} className="terminal-host" />
-    {writable && <TerminalInput onInput={(text, paste) => control.current?.input(text, paste)} />}
+    {writable && <TerminalInput onInput={(text, paste) => control.current?.input(text, paste)} onFocusChange={(focused) => term.current?.element?.classList.toggle('focus', focused)} />}
   </section>;
 }
