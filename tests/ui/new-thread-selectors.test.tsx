@@ -52,3 +52,16 @@ it('restores the last harness independently for each project', async () => {
   await waitFor(() => expect(screen.getByRole('combobox', { name: 'Harness: Codex' })).toBeDefined());
   expect(localStorage.getItem('herdr-last-harness:local:local:second')).toBe('claude');
 });
+
+it('updates the worktree tooltip when the checkout mode changes', async () => {
+  show();
+  const user = userEvent.setup();
+  const checkbox = screen.getByRole('checkbox', { name: 'Create a new worktree' });
+  const tooltip = screen.getByRole('tooltip');
+  expect(tooltip.textContent).toBe('new worktree');
+  expect(checkbox.getAttribute('aria-describedby')).toBe(tooltip.id);
+  await user.click(checkbox);
+  expect(tooltip.textContent).toBe('current checkout');
+  await user.click(checkbox);
+  expect(tooltip.textContent).toBe('new worktree');
+});

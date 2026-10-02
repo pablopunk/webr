@@ -95,7 +95,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
           onMachineChange={changeMachine} onProjectChange={changeProject} onHarnessChange={changeHarness} onModelChange={setModel}
           onAddProject={machine.connected && machine.id === 'local' ? () => setCreatingWorkspace(true) : undefined} />
         <div className="composer-actions">
-          <label className="worktree-option" title={worktree ? 'Start in a new worktree' : 'Use the current workspace'}><input type="checkbox" checked={worktree} onChange={(event) => setWorktree(event.target.checked)} aria-label="Create a new worktree" /><GitBranch size={15} aria-hidden="true" /></label>
+          <label className="worktree-option"><input type="checkbox" checked={worktree} onChange={(event) => setWorktree(event.target.checked)} aria-label="Create a new worktree" aria-describedby="worktree-mode-tooltip" /><GitBranch size={15} aria-hidden="true" /><span className="worktree-tooltip" id="worktree-mode-tooltip" role="tooltip">{worktree ? 'new worktree' : 'current checkout'}</span></label>
           <button className="composer-send" type="submit" disabled={!canSubmit} aria-label="Create thread" title="Create thread">{busy ? '…' : <ArrowUp size={18} strokeWidth={2.2} />}</button>
         </div>
       </div>
