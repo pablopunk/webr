@@ -1,4 +1,9 @@
 import { useRef, useState } from 'react';
+const specialKeys: Record<string, string> = { Enter: '\r', Backspace: '\x7f', Tab: '\t', Escape: '\x1b', ArrowUp: '\x1b[A', ArrowDown: '\x1b[B', ArrowRight: '\x1b[C', ArrowLeft: '\x1b[D' };
+export function terminalKeyBytes(event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'altKey'>): string | undefined {
+  const bytes = event.ctrlKey && /^[a-z]$/i.test(event.key) ? String.fromCharCode(event.key.toUpperCase().charCodeAt(0) - 64) : specialKeys[event.key];
+  return bytes && (event.altKey ? '\x1b' + bytes : bytes);
+}
 export function TerminalInput({ onInput }: { onInput: (text: string, paste?: boolean) => void }) {
   const [draft, setDraft] = useState('');
   const composing = useRef(false);
@@ -16,8 +21,7 @@ export function TerminalInput({ onInput }: { onInput: (text: string, paste?: boo
     onKeyDown={(event) => {
       if (event.defaultPrevented || event.nativeEvent.isComposing || composing.current || event.metaKey) return;
       committed.current = null;
-      const keys: Record<string, string> = { Enter: '\r', Backspace: '\x7f', Tab: '\t', Escape: '\x1b', ArrowUp: '\x1b[A', ArrowDown: '\x1b[B', ArrowRight: '\x1b[C', ArrowLeft: '\x1b[D' };
-      const bytes = event.ctrlKey && /^[a-z]$/i.test(event.key) ? String.fromCharCode(event.key.toUpperCase().charCodeAt(0) - 64) : keys[event.key];
-      if (bytes) { event.preventDefault(); onInput(event.altKey ? '\x1b' + bytes : bytes); }
+      const bytes = terminalKeyBytes(event);
+      if (bytes) { event.preventDefault(); onInput(bytes); }
     }} />;
 }

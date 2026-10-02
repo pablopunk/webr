@@ -45,3 +45,15 @@ it('requests control by itself when a read-only pane is clicked, with no menu', 
   await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1)); fixture.control.mockClear();
   fireEvent.click(screen.getByLabelText('Agent terminal')); expect(fixture.control).toHaveBeenCalledTimes(1);
 });
+it('sends keys and pastes with no focus anywhere, and leaves other inputs alone', async () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
+  render(<><input aria-label="Search" /><TerminalPane pane={{ id: 'w1:p1', terminalId: 'term_fixture', title: 'Agent', kind: 'agent' }} machineId="fixture" threadId="fixture-thread" active canControl onFocus={() => {}} /></>);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
+  await act(async () => fixture.mount.mock.calls[0][0].onState('Input control is active.', true));
+  (document.activeElement as HTMLElement | null)?.blur();
+  fireEvent.keyDown(document.body, { key: 'Enter' }); expect(fixture.input).toHaveBeenLastCalledWith('\r');
+  fireEvent.keyDown(document.body, { key: 'c', ctrlKey: true }); expect(fixture.input).toHaveBeenLastCalledWith('\x03');
+  const paste = new Event('paste', { bubbles: true, cancelable: true }); Object.assign(paste, { clipboardData: { getData: () => 'pasted text' } }); document.body.dispatchEvent(paste); expect(fixture.input).toHaveBeenLastCalledWith('pasted text', true);
+  fixture.input.mockClear(); fireEvent.keyDown(screen.getByLabelText('Search'), { key: 'Enter' }); expect(fixture.input).not.toHaveBeenCalled();
+});
