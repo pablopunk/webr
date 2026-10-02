@@ -97,4 +97,6 @@ it('lists the addresses other devices can use', () => {
   expect(publicUrls('http://localhost:4321', '0.0.0.0', 4321, interfaces)).toEqual(['http://192.168.1.5:4321']);
   expect(publicUrls('https://mac.ts.net', '127.0.0.1', 4321, interfaces)).toEqual(['https://mac.ts.net']);
   expect(publicUrls('https://mac.ts.net', '0.0.0.0', 4321, interfaces)).toEqual(['https://mac.ts.net', 'https://192.168.1.5:4321']);
+  expect(publicUrls('http://localhost:4321', '0.0.0.0', 4321, interfaces, 'mac.tail1.ts.net')).toEqual(['http://mac.tail1.ts.net:4321', 'http://192.168.1.5:4321']);
+  expect(publicUrls('http://localhost:4321', '127.0.0.1', 4321, interfaces, 'mac.tail1.ts.net')).toEqual([]);
 });
