@@ -8,7 +8,7 @@ vi.mock('@xterm/xterm', () => ({ Terminal: class {
   options = {}; cols = 80; rows = 24; element?: HTMLElement; onData = fixture.onData;
   parser = { registerOscHandler: () => ({ dispose() {} }) };
   loadAddon() {}
-  textarea = document.createElement('textarea');
+  textarea = document.createElement('textarea'); modes = { sendFocusMode: true };
   open(host: HTMLElement) { this.element = document.createElement('div'); this.element.className = 'xterm-screen'; host.append(this.element); }
   hasSelection() { return false; } getSelection() { return 'selected text'; } dispose() {}
 } }));
@@ -67,4 +67,13 @@ it('moves focus from the terminal emulator to the input', async () => {
   await act(async () => fixture.mount.mock.calls[0][0].onState('Input control is active.', true));
   document.body.append(helper!); helper!.focus();
   expect(document.activeElement).toBe(screen.getByLabelText('Terminal input'));
+});
+it('reports focus to applications that ask for it, so they draw a solid cursor while typing works', async () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
+  render(<TerminalPane pane={{ id: 'w1:p1', terminalId: 'term_fixture', title: 'Agent', kind: 'agent' }} machineId="fixture" threadId="fixture-thread" active canControl onFocus={() => {}} />);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
+  await act(async () => fixture.mount.mock.calls[0][0].onState('Input control is active.', true));
+  const input = screen.getByLabelText('Terminal input'); fixture.input.mockClear();
+  input.blur(); expect(fixture.input).toHaveBeenLastCalledWith('\x1b[O'); input.focus(); expect(fixture.input).toHaveBeenLastCalledWith('\x1b[I');
 });

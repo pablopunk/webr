@@ -22,6 +22,8 @@ function themeColors() {
   };
 }
 
+const FOCUS_IN = '\x1b[I';
+const FOCUS_OUT = '\x1b[O';
 export function TerminalPane({ pane, machineId, threadId, active, canControl, onFocus }: { pane: Pane; machineId: string; threadId: string; active: boolean; canControl: boolean; onFocus: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const section = useRef<HTMLElement>(null);
@@ -105,6 +107,6 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     <span className="terminal-status" role="status">{message}</span>
     {message === conflictMessage && <div className="terminal-control-conflict">Another Herdr client controls this terminal.<button type="button" onClick={(event) => { event.stopPropagation(); if (confirm('Replace the other Herdr client that controls this terminal? Its input stops working.')) control.current?.control(true); }}>Take over</button></div>}
     <div ref={host} className="terminal-host" />
-    {writable && <TerminalInput onInput={(text, paste) => control.current?.input(text, paste)} />}
+    {writable && <TerminalInput onInput={(text, paste) => control.current?.input(text, paste)} onFocusChange={(focused) => { if (term.current?.modes.sendFocusMode) control.current?.input(focused ? FOCUS_IN : FOCUS_OUT); }} />}
   </section>;
 }
