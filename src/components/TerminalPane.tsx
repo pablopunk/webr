@@ -44,6 +44,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
   const [message, setMessage] = useState('Connecting…');
   const [writable, setWritable] = useState(false);
   const writableRef = useRef(false);
+  const activeRef = useRef(active); activeRef.current = active;
   const { notice, show } = useTerminalNotice();
   const images = useImageAttachments({ machineId, active, writable: writableRef, show, send: (text) => { control.current?.input(text, true); } });
   const showCopyResult = useRef((copied: boolean) => {}); showCopyResult.current = (copied) => copied ? show('Copied to clipboard', 'info', 1200) : show('The browser blocked clipboard access.', 'error', 4000);
@@ -71,7 +72,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     const estimatedViewport = () => ({ cols: Math.floor((host.current?.clientWidth ?? 640) / 8), rows: Math.floor((host.current?.clientHeight ?? 400) / 20) });
     const measuredViewport = () => { try { return fit.proposeDimensions(); } catch { return undefined; } };
     const viewport = () => { const { cols, rows } = measuredViewport() ?? estimatedViewport(); return { cols: Math.max(2, Math.min(500, cols)), rows: Math.max(1, Math.min(300, rows)) }; };
-    control.current = terminals.mount({ machineId, threadId, terminalId: pane.terminalId, terminal, mode: canControl && active ? 'control' : 'observe', ...viewport(), onState: (message, writable) => { setMessage(message); setWritable(writable); writableRef.current = writable; } });
+    control.current = terminals.mount({ machineId, threadId, terminalId: pane.terminalId, terminal, mode: canControl && activeRef.current ? 'control' : 'observe', ...viewport(), onState: (message, writable) => { setMessage(message); setWritable(writable); writableRef.current = writable; } });
     const gestures = bindTerminalGestures(host.current, () => ({ element: terminal.element?.querySelector<HTMLElement>('.xterm-screen') ?? undefined, cols: terminal.cols, rows: terminal.rows }), () => control.current, () => writableRef.current);
     let timer: ReturnType<typeof setTimeout>;
     const resize = new ResizeObserver(() => {

@@ -1,4 +1,4 @@
-import type { TargetAdapter, LaunchLocation } from '../runtime/target';
+import type { TargetAdapter, LaunchLocation, TerminalDirection } from '../runtime/target';
 import type { TargetProfile } from './registry';
 import { localSocket } from './registry';
 import { SocketApi } from '../protocol/socket';
@@ -119,6 +119,8 @@ export class HerdrTarget implements TargetAdapter {
   async prompt(paneId: string, prompt: string, terminalId: string, threadId: string, input: LaunchInput) { return this.actions().prompt(paneId, prompt, terminalId, threadId, input.agent, input); }
   async focusPane(paneId: string) { return this.actions().focus(paneId); }
   async renameTab(tabId: string, label: string) { return this.actions().renameTab(await this.snapshot(), tabId, label); }
+  async splitTerminal(paneId: string, direction: TerminalDirection) { return this.actions().splitTerminal(await this.snapshot(), paneId, direction); }
+  async closePane(paneId: string) { return this.actions().closePane(paneId); }
   async discardTab(tabId: string) { return this.actions().discardTab(await this.snapshot(), tabId); }
   private actions() {
     return new HerdrActions({ request: async (method, params, options) => {

@@ -135,3 +135,12 @@ it('ignores OSC 52 clipboard writes on a read-only pane', async () => {
   await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
   fixture.osc.get(52)!('c;' + btoa('secret')); await Promise.resolve(); expect(writeText).not.toHaveBeenCalled();
 });
+it('opens with control when the pane becomes active while the terminal is still loading', async () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
+  const props = { pane: { id: 'w1:p2', terminalId: 'term_shell', title: 'Shell', kind: 'shell' as const }, machineId: 'fixture', threadId: 'fixture-thread', canControl: true, onFocus: () => {} };
+  const view = render(<TerminalPane {...props} active={false} />);
+  view.rerender(<TerminalPane {...props} active />);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
+  expect(fixture.mount.mock.calls[0][0].mode).toBe('control');
+});

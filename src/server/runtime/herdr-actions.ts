@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { LaunchInput } from '../../shared/runtime';
-import type { LaunchLocation } from './target';
+import type { LaunchLocation, TerminalDirection } from './target';
 import { nativePane, nativeTab, type NativeSnapshot } from '../protocol/native';
 import { AGENT_READY_TIMEOUT_MS, SCREEN_SETTLE_TIMEOUT_MS, SHELL_READY_TIMEOUT_MS, requestDeadline, type RpcOptions } from '../protocol/deadlines';
 
@@ -10,6 +10,7 @@ const startedAgent = z.object({ ...agentShape, agent: z.string() });
 const detectingAgent = z.object({ ...agentShape, agent: z.string().nullable().optional() });
 const processInfo = z.object({ shell_pid: z.number().int().positive(), foreground_processes: z.array(z.object({ pid: z.number().int().positive() })) });
 const SETTLE_INTERVAL_MS = 350;
+const AGENT_SHARE_OF_TERMINAL_SPLIT = 0.5;
 const SETTLED_READS = 3;
 const pause = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
 export function modelArguments(kind: string, model: string): string[] {
@@ -69,6 +70,13 @@ export class HerdrActions {
     throw new Error('agent_not_ready');
   }
   async focus(paneId: string) { await this.api.request('pane.focus', { pane_id: paneId }); }
+  async splitTerminal(snapshot: NativeSnapshot, paneId: string, direction: TerminalDirection) {
+    const pane = snapshot.panes.find((pane) => pane.pane_id === paneId);
+    if (!pane) throw new Error('thread_not_found');
+    const result = await this.api.request('pane.split', { target_pane_id: paneId, direction, ratio: AGENT_SHARE_OF_TERMINAL_SPLIT, cwd: pane.cwd ?? null, focus: false });
+    return nativePane.parse(result.pane).pane_id;
+  }
+  async closePane(paneId: string) { await this.api.request('pane.close', { pane_id: paneId }); }
   async renameTab(snapshot: NativeSnapshot, tabId: string, label: string) {
     const tab = snapshot.tabs.find((tab) => tab.tab_id === tabId);
     if (!tab) throw new Error('thread_not_found');

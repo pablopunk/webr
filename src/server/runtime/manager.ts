@@ -1,5 +1,7 @@
 import { EventEmitter } from 'node:events';
-import type { TargetAdapter } from './target';
+import type { TargetAdapter, TerminalDirection } from './target';
+import type { Thread } from '../../lib/models';
+import { threadAgent, threadShell } from '../../lib/terminal-split';
 import { TargetSupervisor } from './supervisor';
 import { reconcile } from './reconcile';
 import type { MetadataDatabase } from '../storage/database';
@@ -90,6 +92,35 @@ export class RuntimeManager extends EventEmitter {
     if (row) this.database.saveThread({ ...row.metadata, title }, row.anchors, row.alias);
     if (thread.bindingState === 'attached') await supervisor.readFresh();
     this.publish(supervisor);
+  }
+  async toggleTerminal(machineId: string, threadId: string, direction: TerminalDirection) {
+    const { supervisor, thread } = this.attachedThread(machineId, threadId);
+    const shell = threadShell(thread);
+    const agent = threadAgent(thread);
+    if (shell) { this.saveThreadMetadata(machineId, threadId, { terminalHidden: !thread.terminalHidden }); this.publish(supervisor); return { paneId: shell.id, hidden: !thread.terminalHidden }; }
+    if (!agent || !supervisor.target.splitTerminal) throw new Error('thread_not_found');
+    const paneId = await supervisor.target.splitTerminal(agent.id, direction);
+    this.saveThreadMetadata(machineId, threadId, { terminalHidden: false });
+    await supervisor.readFresh(); this.publish(supervisor);
+    return { paneId, hidden: false };
+  }
+  async closeTerminal(machineId: string, threadId: string) {
+    const { supervisor, thread } = this.attachedThread(machineId, threadId);
+    const shell = threadShell(thread);
+    if (shell) await supervisor.target.closePane?.(shell.id);
+    this.saveThreadMetadata(machineId, threadId, { terminalHidden: false });
+    await supervisor.readFresh(); this.publish(supervisor);
+  }
+  private attachedThread(machineId: string, threadId: string) {
+    const supervisor = this.supervisors.get(machineId);
+    const thread = this.projections.get(machineId)?.threads.find((thread) => thread.id === threadId);
+    if (!supervisor || !thread) throw new Error('thread_not_found');
+    if (!supervisor.connected || thread.bindingState !== 'attached') throw new Error('machine_disconnected');
+    return { supervisor, thread };
+  }
+  private saveThreadMetadata(machineId: string, threadId: string, change: Partial<Thread>) {
+    const row = this.database.threadRows(machineId).find((row) => row.id === threadId);
+    if (row) this.database.saveThread({ ...row.metadata, ...change }, row.anchors, row.alias);
   }
   async deleteThread(machineId: string, threadId: string) {
     const supervisor = this.supervisors.get(machineId);

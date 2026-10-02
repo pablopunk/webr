@@ -71,3 +71,9 @@ it('renames the Herdr tab and also its workspace when the thread owns it', async
   const shared = snapshot(); shared.tabs.push({ tab_id: 'w1:t2', workspace_id: 'w1', label: 'Other' });
   expect(await rename(shared)).toEqual([['tab.rename', { tab_id: 'w1:t1', label: 'New name' }]]);
 });
+it('splits a terminal from the agent pane in its directory and leaves the agent most of the space', async () => {
+  const calls: [string, unknown][] = []; const state = snapshot();
+  const actions = new HerdrActions({ request: async (method, params) => { calls.push([method, params]); return { type: 'pane_info', pane: { ...state.panes[0], pane_id: 'w1:p2', terminal_id: 'term_shell' } }; } }, new FakeTarget().locations, () => {});
+  expect(await actions.splitTerminal(state, 'w1:p1', 'down')).toBe('w1:p2');
+  expect(calls).toEqual([['pane.split', { target_pane_id: 'w1:p1', direction: 'down', ratio: 0.5, cwd: '/fixture', focus: false }]]);
+});

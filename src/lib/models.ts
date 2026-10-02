@@ -49,6 +49,7 @@ export type Thread = {
   bindingConfigVersion?: number;
   semanticSignature?: string;
   archivedAt?: string;
+  terminalHidden?: boolean;
 };
 
 export const projects: Project[] = [

@@ -1,21 +1,24 @@
 import { confirmDialog } from './dialogs';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { BotAvatar } from 'bot-avatars';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, FolderTree, LayoutList, Monitor, Moon, PanelLeft, Plus, Settings2, Sun, TerminalSquare } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, FolderTree, LayoutList, Monitor, Moon, PanelBottom, PanelLeft, PanelRight, Plus, Settings2, SquareTerminal, Sun, TerminalSquare, X } from 'lucide-react';
 import { avatarForThread } from '../lib/avatars';
 import type { Project, Thread } from '../lib/models';
 import { defaultShortcuts, formatShortcut, getShortcuts, type ShortcutAction } from './shortcuts';
 import type { SidebarMode } from './Sidebar';
 import { applyTheme } from './ThemeControl';
 import { navigate } from 'astro:transitions/client';
+import type { TerminalDirection } from '../client/thread-actions';
+import { threadShell } from '../lib/terminal-split';
 
 type Command = { label: string; icon: ReactNode; detail?: string; shortcut?: ShortcutAction; run: () => void };
 
-export function CommandPalette({ open, onClose, projects, threads, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction }: {
+export function CommandPalette({ open, onClose, projects, threads, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onToggleTerminal, onCloseTerminal }: {
   open: boolean; onClose: () => void; projects: Project[]; threads: Thread[]; thread?: Thread;
   focusedPane: string; mode: SidebarMode; onModeChange: (mode: SidebarMode) => void;
   onToggleSidebar: () => void; onFocusPane: (paneId: string) => void;
   onTerminalAction: (action: 'control' | 'takeover' | 'release') => void;
+  onToggleTerminal: (direction?: TerminalDirection) => void; onCloseTerminal: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
@@ -56,6 +59,13 @@ export function CommandPalette({ open, onClose, projects, threads, thread, focus
     })),
     ...(thread ? [
       { label: 'Copy thread link', icon: <Copy size={16} />, run: () => { void navigator.clipboard.writeText(location.href); } },
+      ...(thread.bindingState === 'attached' ? threadShell(thread) ? [
+        { label: 'Toggle terminal', icon: <SquareTerminal size={16} />, shortcut: 'toggleTerminal' as const, run: () => onToggleTerminal() },
+        { label: 'Close terminal', icon: <X size={16} />, detail: 'Stops its shell', run: onCloseTerminal },
+      ] : [
+        { label: 'Toggle terminal (side)', icon: <PanelRight size={16} />, shortcut: 'toggleTerminal' as const, run: () => onToggleTerminal('right') },
+        { label: 'Toggle terminal (below)', icon: <PanelBottom size={16} />, run: () => onToggleTerminal('down') },
+      ] : []),
       ...(thread.bindingState === 'attached' ? [
         { label: 'Request terminal control', icon: <TerminalSquare size={16} />, run: () => onTerminalAction('control') },
         { label: 'Release terminal control', icon: <TerminalSquare size={16} />, run: () => onTerminalAction('release') },
@@ -67,7 +77,7 @@ export function CommandPalette({ open, onClose, projects, threads, thread, focus
     ] : []),
     ...threads.map((item) => ({ label: item.title, icon: <BotAvatar {...avatarForThread(item)} size={22} state={item.status === 'working' ? 'working' : 'default'} paused={item.status !== 'working'} />, detail: projects.find((project) => project.id === item.projectId)?.name,
       run: () => { void navigate(`/threads/${encodeURIComponent(item.id)}`); } })),
-  ], [projects, threads, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction]);
+  ], [projects, threads, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onToggleTerminal, onCloseTerminal]);
 
   const matching = commands.filter((command) => `${command.label} ${command.detail ?? ''}`.toLowerCase().includes(query.toLowerCase().trim()));
   if (!open) return null;

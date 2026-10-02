@@ -4,6 +4,7 @@ import type { TerminalFrame, TerminalStream } from '../terminal/cli';
 import type { LaunchInput } from '../../shared/runtime';
 import type { Icon } from '../transport/icons';
 
+export type TerminalDirection = 'right' | 'down';
 export type LaunchLocation = { projectId: string; localId?: string; logicalId?: string; path: string; workspaceId: string };
 export type TargetAdapter = {
   id: string; session: string; name: string;
@@ -26,5 +27,7 @@ export type TargetAdapter = {
   focusPane?(paneId: string): Promise<void>;
   discardTab?(tabId: string): Promise<void>;
   renameTab?(tabId: string, label: string): Promise<void>;
+  splitTerminal?(paneId: string, direction: TerminalDirection): Promise<string>;
+  closePane?(paneId: string): Promise<void>;
   close(): void;
 };

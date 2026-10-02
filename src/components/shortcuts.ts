@@ -1,15 +1,15 @@
-export type ShortcutAction = 'nextThread' | 'previousThread' | 'nextPane' | 'previousPane' | 'toggleSidebar' | 'newThread';
+export type ShortcutAction = 'nextThread' | 'previousThread' | 'nextPane' | 'previousPane' | 'toggleSidebar' | 'newThread' | 'toggleTerminal';
 
 export const shortcutLabels: Record<ShortcutAction, string> = {
   nextThread: 'Next thread', previousThread: 'Previous thread',
   nextPane: 'Next pane', previousPane: 'Previous pane',
-  toggleSidebar: 'Toggle sidebar', newThread: 'New thread',
+  toggleSidebar: 'Toggle sidebar', newThread: 'New thread', toggleTerminal: 'Toggle terminal',
 };
 
 export const defaultShortcuts: Record<ShortcutAction, string> = {
   nextThread: 'ctrl+j', previousThread: 'ctrl+k',
   nextPane: 'ctrl+l', previousPane: 'ctrl+h',
-  toggleSidebar: 'ctrl+b', newThread: 'ctrl+x',
+  toggleSidebar: 'ctrl+b', newThread: 'ctrl+x', toggleTerminal: 'ctrl+q',
 };
 
 export function getShortcuts(): Record<ShortcutAction, string> {

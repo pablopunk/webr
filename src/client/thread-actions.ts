@@ -15,6 +15,9 @@ async function post(path: string, body: Record<string, unknown> = {}) {
 
 export const setThreadArchived = (thread: Thread, archived: boolean) => post(`/api/threads/${encodeURIComponent(thread.id)}/archive`, { machineId: thread.machineId, archived });
 export const renameThread = (thread: Thread, title: string) => post(`/api/threads/${encodeURIComponent(thread.id)}/rename`, { machineId: thread.machineId, title });
+export type TerminalDirection = 'right' | 'down';
+export const toggleThreadTerminal = (thread: Thread, direction: TerminalDirection) => post(`/api/threads/${encodeURIComponent(thread.id)}/terminal`, { machineId: thread.machineId, direction }) as Promise<{ paneId: string; hidden: boolean }>;
+export const closeThreadTerminal = (thread: Thread) => post(`/api/threads/${encodeURIComponent(thread.id)}/terminal/close`, { machineId: thread.machineId });
 export const deleteThreadPermanently = (thread: Thread) => post(`/api/threads/${encodeURIComponent(thread.id)}/delete`, { machineId: thread.machineId });
 export const deleteArchivedThreads = () => post('/api/archive/delete') as Promise<{ deleted: number; failed: string[] }>;
 export const deleteWarning = (count: number) => `${count === 1 ? 'Delete this thread' : `Delete ${count} threads`} permanently? This closes ${count === 1 ? 'its terminal' : 'their terminals'} and removes ${count === 1 ? 'its worktree' : 'their worktrees'}, including uncommitted changes.`;

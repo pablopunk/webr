@@ -102,3 +102,15 @@ it('archives a thread out of the list and deletes archived threads together with
   expect(target.effects).toEqual(['discard:w1:t1']); expect(manager.database.threadRows('fixture')).toEqual([]);
   await expect(manager.deleteThread('fixture', thread.id)).rejects.toThrow('thread_not_found');
 });
+it('opens a terminal split once, then only hides and shows it, and closes it through Herdr', async () => {
+  const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0];
+  expect(await manager.toggleTerminal('fixture', thread.id, 'right')).toEqual({ paneId: 'w1:p1s', hidden: false });
+  expect(manager.bootstrap().threads[0].panes.map((pane) => pane.kind)).toEqual(['agent', 'shell']);
+  expect(await manager.toggleTerminal('fixture', thread.id, 'right')).toEqual({ paneId: 'w1:p1s', hidden: true });
+  expect(manager.bootstrap().threads[0].terminalHidden).toBe(true);
+  expect(await manager.toggleTerminal('fixture', thread.id, 'down')).toEqual({ paneId: 'w1:p1s', hidden: false });
+  await manager.closeTerminal('fixture', thread.id);
+  expect(target.effects).toEqual(['split:right', 'close:w1:p1s']); expect(manager.bootstrap().threads[0].panes.map((pane) => pane.kind)).toEqual(['agent']);
+});

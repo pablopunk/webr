@@ -48,6 +48,13 @@ export class FakeTarget implements TargetAdapter {
   async prompt(paneId: string, _prompt: string, terminalId: string) { if (!this.state.panes.some((pane) => pane.pane_id === paneId && pane.terminal_id === terminalId && pane.agent === 'claude')) throw new Error('occupant_changed'); this.effect('prompt'); }
   focused: string[] = [];
   async focusPane(paneId: string) { this.focused.push(paneId); }
+  async splitTerminal(paneId: string, direction: 'right' | 'down') {
+    this.effect('split:' + direction); const source = this.state.panes.find((pane) => pane.pane_id === paneId)!;
+    const pane = { ...source, pane_id: source.pane_id + 's', terminal_id: source.terminal_id + '_shell', agent: null, focused: false }; this.state.panes.push(pane);
+    const layout = this.state.layouts.find((layout) => layout.tab_id === source.tab_id)!; layout.panes.push({ pane_id: pane.pane_id, rect: direction === 'right' ? { x: 52, y: 0, width: 28, height: 24 } : { x: 0, y: 16, width: 80, height: 8 } });
+    return pane.pane_id;
+  }
+  async closePane(paneId: string) { this.effect('close:' + paneId); this.state.panes = this.state.panes.filter((pane) => pane.pane_id !== paneId); }
   async discardTab(tabId: string) { this.effect('discard:' + tabId); this.state.panes = this.state.panes.filter((pane) => pane.tab_id !== tabId); this.state.tabs = this.state.tabs.filter((tab) => tab.tab_id !== tabId); }
   close() { ++this.closed; }
 }
