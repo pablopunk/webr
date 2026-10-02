@@ -8,6 +8,7 @@ export const projectNameKey = (machineId: string, logicalId: string) => `project
 export const projectIdentity = (machineId: string, repository: string) => createHash('sha256').update(machineId + '\0' + repository).digest('hex').slice(0, 32);
 const sameBinding = (thread: Thread, target: TargetAdapter) => thread.session === target.session && thread.bindingFingerprint === target.fingerprint && thread.bindingConfigVersion === target.configVersion;
 const paneStatus = (panes: NativeSnapshot['panes']) => { const agents = panes.filter((pane) => pane.agent); return ['blocked', 'working', 'done', 'idle', 'unknown'].find((status) => (agents.length ? agents : panes).some((pane) => pane.agent_status === status)) as Thread['status'] | undefined; };
+const readingAwareStatus = (status: string) => status === 'done' ? 'idle' : status;
 const threadTitle = (label: string | null | undefined, panes: NativeSnapshot['panes'], fallback = 'Terminal') => {
   const namedTab = label?.trim();
   if (namedTab && !/^\d+$/.test(namedTab)) return namedTab;
@@ -42,7 +43,7 @@ export function reconcile(database: MetadataDatabase, target: TargetAdapter, sna
     const members = tab ? snapshot.panes.filter((pane) => pane.tab_id === tab.tab_id && pane.workspace_id === tab.workspace_id) : [];
     const attached = sameBinding(row.metadata, target) && members.length > 0;
     const panes = attached ? members : [];
-    const signature = JSON.stringify([tab?.label, panes.map((pane) => [pane.terminal_id, pane.pane_id, pane.agent, pane.agent_status, pane.title, pane.terminal_title_stripped, pane.focused, snapshot.agents.find((agent) => agent.terminal_id === pane.terminal_id)?.state_change_seq])]);
+    const signature = JSON.stringify([tab?.label, panes.map((pane) => [pane.terminal_id, pane.pane_id, pane.agent, readingAwareStatus(pane.agent_status), pane.title, pane.terminal_title_stripped])]);
     const meaningfulChange = attached && row.metadata.semanticSignature !== signature;
     const operation = operations.find((operation) => operation.threadId === row.id);
     const thread: Thread = { ...row.metadata, title: attached ? threadTitle(tab?.label, panes, row.metadata.title) : row.metadata.title, projectId: attached ? tabProjects.get(tab!.tab_id) ?? row.metadata.projectId : row.metadata.projectId, bindingState: attached ? 'attached' : operation && !row.anchors.length ? 'pending' : 'detached', status: attached ? paneStatus(panes) ?? 'unknown' : 'unknown', agent: attached ? panes.find((pane) => pane.agent)?.agent ?? '' : row.metadata.agent, semanticSignature: attached ? signature : row.metadata.semanticSignature, updatedAt: meaningfulChange ? new Date().toISOString() : row.metadata.updatedAt, panes: panes.map((pane) => ({ id: pane.pane_id, terminalId: pane.terminal_id, title: pane.title ?? pane.terminal_title_stripped ?? pane.agent ?? 'Shell', kind: pane.agent ? 'agent' : 'shell' })), operation: operation ? { id: operation.id, state: operation.state, step: operation.step } : undefined };
