@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, GitBranch } from 'lucide-react';
 import type { Project } from '../lib/models';
+import { usePromptImages } from './usePromptImages';
 import type { Machine } from '../lib/machines';
 import { LaunchSelectors } from './LaunchSelectors';
 import { useMachineCatalog } from '../client/catalog';
@@ -22,6 +23,13 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   const [error, setError] = useState('');
   const [creatingWorkspace, setCreatingWorkspace] = useState(false);
   const operation = useRef<{ payload: string; key: string } | null>(null);
+  const promptInput = useRef<HTMLTextAreaElement>(null);
+  const insertIntoPrompt = (text: string) => {
+    const field = promptInput.current; const start = field?.selectionStart ?? prompt.length; const end = field?.selectionEnd ?? prompt.length;
+    setPrompt((current) => current.slice(0, start) + text + current.slice(end));
+    requestAnimationFrame(() => { field?.focus(); field?.setSelectionRange(start + text.length, start + text.length); });
+  };
+  const images = usePromptImages({ machineId, insert: insertIntoPrompt });
   const baseMachine = machines.find((machine) => machine.id === machineId) ?? { id: '', name: 'No target', connected: false, session: '', projectPaths: {}, harnesses: [] };
   const catalog = useMachineCatalog(machineId, baseMachine.connected, baseMachine.configVersion, baseMachine.session, projectId);
   const machine = { ...baseMachine, harnesses: baseMachine.connected ? catalog.data?.harnesses ?? [] : [] };
@@ -86,10 +94,10 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
       <CreateWorkspace machineId={machine.id} onCreated={() => setCreatingWorkspace(false)} />
       {!!machineProjects.length && <button className="workspace-cancel" onClick={() => setCreatingWorkspace(false)}>Cancel</button>}
     </> : <>
-    <form className="thread-composer" onSubmit={submit} aria-busy={busy}>
-      <textarea autoFocus required maxLength={8000} value={prompt} onChange={(event) => setPrompt(event.target.value)}
+    <form className={`thread-composer ${images.dragging ? 'is-dropping' : ''}`} onSubmit={submit} aria-busy={busy} {...images.handlers}>
+      <textarea ref={promptInput} autoFocus required maxLength={8000} value={prompt} onChange={(event) => setPrompt(event.target.value)}
         onKeyDown={(event) => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
-        aria-label="Thread prompt" placeholder="Write a prompt…" />
+        aria-label="Thread prompt" placeholder="Write a prompt, or drop an image…" />
       <div className="composer-toolbar">
         <LaunchSelectors machine={machine} machines={machines} projects={machineProjects} projectId={projectId} harness={harness} model={model}
           onMachineChange={changeMachine} onProjectChange={changeProject} onHarnessChange={changeHarness} onModelChange={setModel}
@@ -101,6 +109,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
       </div>
     </form>
     {(selectedHarness?.reason || !machines.length || machine.error || catalog.isError) && <p className="composer-preview-note">{selectedHarness?.reason ?? (!machines.length ? 'No target is configured.' : machine.error ? `Machine is not connected: ${machine.error.replaceAll('_', ' ')}.` : 'The machine catalog is not available.')}</p>}
+    {images.status && <p className={images.status.tone === 'error' ? 'form-error' : 'composer-preview-note'} role={images.status.tone === 'error' ? 'alert' : 'status'}>{images.status.text}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     </>}
   </main>;

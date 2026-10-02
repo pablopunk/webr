@@ -48,3 +48,10 @@ it('retries agent.start only while Herdr says the shell has not reached its prom
   const refused = new HerdrActions({ request: async (method) => { if (method === 'pane.process_info') return shell; throw new Error('agent_not_supported'); } }, new FakeTarget().locations, () => {});
   await expect(refused.start(launch, 'w1:p1', id)).rejects.toThrow('agent_not_supported');
 });
+it('sends the first prompt only after the agent screen stops changing', async () => {
+  const id = randomUUID(); const agent = { name: agentName(id), terminal_id: 'term_1', pane_id: 'w1:p1', agent: 'opencode', agent_status: 'idle' }; const calls: string[] = [];
+  const screens = ['booting', 'loading', 'ready', 'ready', 'ready', 'ready'];
+  const actions = new HerdrActions({ request: async (method) => { calls.push(method); return method === 'pane.read' ? { read: { text: screens.shift() ?? 'ready' } } : { type: 'agent_info', agent }; } }, new FakeTarget().locations, () => {});
+  await actions.prompt('w1:p1', 'hello', 'term_1', id, 'opencode');
+  expect(calls.filter((call) => call === 'pane.read').length).toBeGreaterThanOrEqual(5); expect(calls.at(-1)).toBe('agent.prompt');
+});

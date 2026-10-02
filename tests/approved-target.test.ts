@@ -32,6 +32,7 @@ async function setup(automatic = false, empty = false) {
         result = { type: 'workspace_created', workspace: state.workspaces[0], tab: state.tabs[0], root_pane: state.panes[0] };
       }
       if (record.method === 'worktree.create' || record.method === 'tab.create') result = { type: record.method === 'worktree.create' ? 'worktree_created' : 'tab_created', root_pane: state.panes[0], tab: state.tabs[0] };
+      if (record.method === 'pane.read') result = { type: 'pane_read', read: { text: 'agent ready' } };
       if (record.method === 'pane.process_info') result = { type: 'process_info', process_info: { pane_id: 'w1:p1', shell_pid: 10, foreground_processes: [{ pid: 10, name: 'zsh' }] } };
       if (record.method === 'agent.start') { agent = { name: record.params.name, terminal_id: state.panes[0].terminal_id, pane_id: state.panes[0].pane_id, agent: record.params.kind, agent_status: 'idle' }; result = { type: 'agent_started', agent }; }
       if (record.method === 'agent.get') result = { type: 'agent_info', agent };

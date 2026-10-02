@@ -28,3 +28,4 @@
 .new-thread-page .form-error { margin: 12px 4px; }
 @media (max-width: 760px) { .new-thread-page { padding: 60px 16px; } .new-thread-page .mobile-menu { position: absolute; top: 16px; left: 16px; margin: 0; } }
 @media (max-width: 480px) { .composer-toolbar { gap: 6px; padding: 8px; } }
+.thread-composer.is-dropping { border-style: dashed; border-color: var(--focus-ring); box-shadow: var(--card-shadow-hover); }

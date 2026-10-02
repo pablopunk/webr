@@ -2,13 +2,15 @@ import { z } from 'zod';
 import type { LaunchInput } from '../../shared/runtime';
 import type { LaunchLocation } from './target';
 import { nativePane, nativeTab } from '../protocol/native';
-import { AGENT_READY_TIMEOUT_MS, SHELL_READY_TIMEOUT_MS, requestDeadline, type RpcOptions } from '../protocol/deadlines';
+import { AGENT_READY_TIMEOUT_MS, SCREEN_SETTLE_TIMEOUT_MS, SHELL_READY_TIMEOUT_MS, requestDeadline, type RpcOptions } from '../protocol/deadlines';
 
 type Api = { request(method: string, params?: Record<string, unknown>, options?: RpcOptions): Promise<Record<string, unknown>> };
 const agentShape = { name: z.string(), terminal_id: z.string(), pane_id: z.string(), agent_status: z.enum(['idle', 'done', 'working', 'blocked', 'unknown']) };
 const startedAgent = z.object({ ...agentShape, agent: z.string() });
 const detectingAgent = z.object({ ...agentShape, agent: z.string().nullable().optional() });
 const processInfo = z.object({ shell_pid: z.number().int().positive(), foreground_processes: z.array(z.object({ pid: z.number().int().positive() })) });
+const SETTLE_INTERVAL_MS = 350;
+const SETTLED_READS = 3;
 const pause = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
 export function modelArguments(kind: string, model: string): string[] {
   if (!['claude', 'codex', 'opencode'].includes(kind) || !/^[A-Za-z0-9_/.:+-]{1,120}$/.test(model)) throw new Error('unsupported_launch_adapter');
@@ -72,6 +74,17 @@ export class HerdrActions {
     const result = await this.api.request('agent.get', { target: name });
     const agent = startedAgent.parse(result.agent);
     if (agent.name !== name || agent.terminal_id !== terminalId || agent.pane_id !== paneId || agent.agent !== kind || !['idle', 'done'].includes(agent.agent_status)) throw new Error('agent_occupant_changed');
+    await this.untilScreenSettles(paneId);
     await this.api.request('agent.prompt', { target: name, text: prompt });
+  }
+  private async untilScreenSettles(paneId: string) {
+    const read = async () => z.object({ text: z.string() }).safeParse((await this.api.request('pane.read', { pane_id: paneId, source: 'recent_unwrapped', format: 'text', strip_ansi: true, lines: 120 })).read).data?.text;
+    const end = Date.now() + SCREEN_SETTLE_TIMEOUT_MS;
+    let previous = await read(); let unchanged = 0;
+    while (Date.now() < end && unchanged < SETTLED_READS) {
+      await pause(SETTLE_INTERVAL_MS);
+      const current = await read();
+      unchanged = current !== undefined && current === previous ? unchanged + 1 : 0; previous = current;
+    }
   }
 }

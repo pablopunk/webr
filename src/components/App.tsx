@@ -14,6 +14,7 @@ import { RuntimeProvider, useRuntime, useRuntimeSelector } from '../client/provi
 import type { Bootstrap } from '../shared/runtime';
 import { appShortcutAction } from '../client/keyboard';
 import { isListedThread } from '../lib/launch';
+import { carriesFiles } from '../client/image-attach';
 
 type Props = {
   page: 'thread' | 'new' | 'settings' | 'missing';
@@ -42,6 +43,12 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
   const storedFocus = useStore(ui, (state) => state.focusedPanes[scope]);
   const focusedPane = thread?.panes.some((pane) => pane.id === storedFocus) ? storedFocus! : thread?.panes[0]?.id ?? '';
   const setFocusedPane = useCallback((paneId: string) => ui.getState().focus(scope, paneId), [ui, scope]);
+
+  useEffect(() => {
+    const keepFileDropsInsideTheApp = (event: DragEvent) => { if (carriesFiles(event.dataTransfer)) event.preventDefault(); };
+    window.addEventListener('dragover', keepFileDropsInsideTheApp); window.addEventListener('drop', keepFileDropsInsideTheApp);
+    return () => { window.removeEventListener('dragover', keepFileDropsInsideTheApp); window.removeEventListener('drop', keepFileDropsInsideTheApp); };
+  }, []);
 
   useEffect(() => {
     setCollapsed(localStorage.getItem('herdr-sidebar-collapsed') === 'true');
