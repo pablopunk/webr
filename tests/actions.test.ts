@@ -65,3 +65,9 @@ it('discards a thread with the smallest Herdr effect that removes its tab', asyn
   const gone = snapshot(); gone.tabs = [];
   expect(await discard(gone)).toEqual([]);
 });
+it('renames the Herdr tab and also its workspace when the thread owns it', async () => {
+  const rename = async (state: ReturnType<typeof snapshot>) => { const calls: [string, unknown][] = []; await new HerdrActions({ request: async (method, params) => { calls.push([method, params]); return {}; } }, new FakeTarget().locations, () => {}).renameTab(state, 'w1:t1', 'New name'); return calls; };
+  expect(await rename(snapshot())).toEqual([['tab.rename', { tab_id: 'w1:t1', label: 'New name' }], ['workspace.rename', { workspace_id: 'w1', label: 'New name' }]]);
+  const shared = snapshot(); shared.tabs.push({ tab_id: 'w1:t2', workspace_id: 'w1', label: 'Other' });
+  expect(await rename(shared)).toEqual([['tab.rename', { tab_id: 'w1:t1', label: 'New name' }]]);
+});

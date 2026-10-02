@@ -14,11 +14,11 @@ import { UploadStore } from '../src/server/uploads';
 const cleanups: (() => Promise<unknown> | void)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 const origin = 'http://localhost:4321';
-async function setup(serverOrigin = origin) {
+async function setup(serverOrigin = origin, ssr?: Parameters<typeof createHost>[2]) {
   const database = new MetadataDatabase(':memory:'); cleanups.push(() => database.close());
   const target = new FakeTarget(); const manager = new RuntimeManager(database, [target]);
   const uploadDirectory = await mkdtemp(join(tmpdir(), 'hw-uploads-')); cleanups.push(() => rm(uploadDirectory, { recursive: true, force: true }));
-  const app = await createHost(manager, serverOrigin, undefined, undefined, new UploadStore(join(uploadDirectory, 'images'))); cleanups.push(() => app.close());
+  const app = await createHost(manager, serverOrigin, ssr, undefined, new UploadStore(join(uploadDirectory, 'images'))); cleanups.push(() => app.close());
   manager.start(); await expect.poll(() => manager.bootstrap().machines[0].connected).toBe(true);
   const headers = { host: new URL(serverOrigin).host, origin: serverOrigin };
   return { database, target, manager, app, headers, uploadDirectory: join(uploadDirectory, 'images') };
@@ -144,4 +144,9 @@ it('removes uploaded images after a week but keeps other files', async () => {
   const store = new UploadStore(directory); const old = await store.save('image/png', png); const fresh = await store.save('image/png', png);
   await writeFile(join(directory, 'notes.txt'), 'keep'); const week = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000); await utimes(old, week, week);
   await store.removeExpired(); expect((await readdir(directory)).sort()).toEqual([fresh.split('/').at(-1), 'notes.txt'].sort());
+});
+it('answers invalid requests with 400 also when the production page renderer is mounted', async () => {
+  const { app, headers } = await setup(origin, (_request, response) => { response.end(); });
+  const response = await app.inject({ method: 'POST', url: '/api/threads/not-a-uuid/rename', headers, payload: { machineId: 'fixture', title: 'x' } });
+  expect(response.statusCode).toBe(400); expect(response.json()).toEqual({ error: 'invalid_request' });
 });

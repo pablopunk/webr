@@ -41,6 +41,7 @@
 .thread-copy { display: flex; grid-column: 2; grid-row: 1 / 3; flex-direction: column; justify-content: center; gap: 4px; min-width: 0; }
 .thread-context { display: flex; align-items: center; gap: 5px; color: var(--ink-soft); font-size: 10px; }
 .thread-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); }
+.thread-name-input { width: 100%; min-width: 0; margin: -2px -4px; padding: 1px 4px; border: 1px solid var(--focus-ring); border-radius: 4px; outline: 0; background: var(--surface); color: var(--ink); font: inherit; }
 .thread-time { grid-column: 3; grid-row: 1; justify-self: end; font: 10px var(--font-mono); color: var(--ink-soft); }
 .thread-status { grid-column: 3; grid-row: 2; align-self: end; justify-self: end; color: var(--ink-soft); }
 .thread-status.status-working { color: var(--working); animation: thread-status-spin 1.5s linear infinite; }
