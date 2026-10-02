@@ -8,6 +8,8 @@ import { LaunchSelectors } from './LaunchSelectors';
 import { useMachineCatalog } from '../client/catalog';
 import { navigate } from 'astro:transitions/client';
 import { CreateWorkspace } from './CreateWorkspace';
+import { initialWorktreeChoice, recordWorktreeChoice } from '../client/new-session-behavior';
+import { clearNewThreadDraft, readNewThreadDraft, writeNewThreadDraft } from '../client/new-thread-draft';
 
 const harnessPreference = (machineId: string, projectId: string) => `webr-last-harness:${machineId}:${projectId}`;
 
@@ -33,7 +35,16 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   }));
   const selectedHarness = machine.harnesses.find((choice) => choice.id === harness);
   const canSubmit = !!(prompt.trim() && !images.uploading && model.trim() && machine.connected && machineProjects.some((project) => project.id === projectId) && selectedHarness?.launchEnabled) && !busy;
-  useEffect(() => { setWorktree(localStorage.getItem('webr-new-worktree') !== 'false'); }, []);
+  const draftRestored = useRef(false);
+  useEffect(() => {
+    const draft = readNewThreadDraft();
+    setPrompt(draft.prompt); images.setAttachments(draft.images);
+    draftRestored.current = true;
+  }, []);
+  useEffect(() => {
+    if (draftRestored.current) writeNewThreadDraft({ prompt, images: images.attachments });
+  }, [prompt, images.attachments]);
+  useEffect(() => { setWorktree(initialWorktreeChoice(machineId, projectId)); }, [machineId, projectId]);
   useEffect(() => {
     if (!projectId || !catalog.data) return;
     const choices = catalog.data.harnesses;
@@ -74,6 +85,8 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
       });
       const response = await result.json();
       if (!result.ok) throw new Error(response.error || 'Could not create thread');
+      recordWorktreeChoice(machineId, projectId, worktree);
+      clearNewThreadDraft();
       await navigate(`/threads/${encodeURIComponent(response.id)}`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not create thread');
@@ -101,8 +114,8 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
         <LaunchSelectors machine={machine} machines={machines} projects={machineProjects} projectId={projectId} harness={harness} model={model}
           onMachineChange={changeMachine} onProjectChange={changeProject} onHarnessChange={changeHarness} onModelChange={setModel}
           onAddProject={machine.connected && machine.id === 'local' ? () => setCreatingWorkspace(true) : undefined} />
+        <label className="worktree-option"><input type="checkbox" checked={worktree} onChange={(event) => setWorktree(event.target.checked)} aria-label="Create a new worktree" aria-describedby="worktree-mode-tooltip" /><GitBranch size={15} aria-hidden="true" /><span className="worktree-tooltip" id="worktree-mode-tooltip" role="tooltip">{worktree ? 'new worktree' : 'current checkout'}</span></label>
         <div className="composer-actions">
-          <label className="worktree-option"><input type="checkbox" checked={worktree} onChange={(event) => setWorktree(event.target.checked)} aria-label="Create a new worktree" aria-describedby="worktree-mode-tooltip" /><GitBranch size={15} aria-hidden="true" /><span className="worktree-tooltip" id="worktree-mode-tooltip" role="tooltip">{worktree ? 'new worktree' : 'current checkout'}</span></label>
           <button className="composer-send" type="submit" disabled={!canSubmit} aria-label="Create thread" title="Create thread">{busy ? '…' : <ArrowUp size={18} strokeWidth={2.2} />}</button>
         </div>
       </div>
