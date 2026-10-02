@@ -17,11 +17,22 @@ it('archives a thread from its hover button and restores it from the Archived se
   expect(JSON.parse(String(fetch.mock.calls[1][1].body))).toEqual({ machineId: 'local', archived: false });
 });
 it('deletes permanently from the right-click menu and deletes all archived threads after confirmation', async () => {
-  const fetch = answering(); vi.stubGlobal('fetch', fetch); vi.stubGlobal('confirm', vi.fn(() => true)); renderSidebar();
+  const fetch = answering(); vi.stubGlobal('fetch', fetch); renderSidebar();
   fireEvent.contextMenu(screen.getByRole('link', { name: /Build the web terminal bridge/ }));
   fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete permanently' }));
+  expect(await screen.findByText(/removes its worktree/)).toBeTruthy(); fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
   await waitFor(() => expect(fetch.mock.calls[0][0]).toBe('/api/threads/terminal-web-bridge/delete'));
   fireEvent.click(screen.getByRole('button', { name: 'Delete all' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Delete all', hidden: false }).then(() => screen.getAllByRole('button', { name: 'Delete all' }).at(-1)!));
   await waitFor(() => expect(fetch.mock.calls[1][0]).toBe('/api/archive/delete'));
-  expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('removes its worktree, including uncommitted changes'));
+});
+it('renames a thread in place after a double click and keeps the old name on Escape', async () => {
+  const fetch = answering(); vi.stubGlobal('fetch', fetch); renderSidebar();
+  fireEvent.doubleClick(screen.getByRole('link', { name: /Build the web terminal bridge/ }));
+  const input = screen.getByRole('textbox', { name: 'Rename Build the web terminal bridge' });
+  fireEvent.change(input, { target: { value: '  Bridge v2 ' } }); fireEvent.keyDown(input, { key: 'Enter' });
+  expect(fetch.mock.calls[0][0]).toBe('/api/threads/terminal-web-bridge/rename'); expect(JSON.parse(String(fetch.mock.calls[0][1].body))).toEqual({ machineId: 'local', title: 'Bridge v2' });
+  fireEvent.doubleClick(screen.getByRole('link', { name: /Build the web terminal bridge/ }));
+  fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+  expect(screen.queryByRole('textbox')).toBeNull(); expect(fetch).toHaveBeenCalledOnce();
 });
