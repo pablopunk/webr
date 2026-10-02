@@ -29,9 +29,9 @@ export class BrowserTerminalManager {
       input: (text: string, paste = false) => { const current = this.panes.get(id); if (current?.writable) this.send({ type: 'input', streamId: id, generation: current.generation, text, paste }); },
       control: (takeover = false) => { const current = this.panes.get(id); if (current && (current.mode !== 'control' || takeover)) { this.send({ type: 'release', streamId: id, generation: current.generation }); current.reason = undefined; current.mode = 'control'; ++current.generation; current.sequence = new FrameSequence(); this.open(id, takeover); } },
       observe: () => { const current = this.panes.get(id); if (current && current.mode !== 'observe') { this.send({ type: 'release', streamId: id, generation: current.generation }); current.mode = 'observe'; ++current.generation; current.sequence = new FrameSequence(); this.open(id); } },
-      resize: (cols: number, rows: number) => {
+      resize: (cols: number, rows: number, claim = false) => {
         const current = this.panes.get(id);
-        if (!current || cols === current.cols && rows === current.rows) return;
+        if (!current || cols === current.cols && rows === current.rows && !(claim && current.mode === 'control' && current.accepted)) return;
         current.cols = cols; current.rows = rows;
         if (current.mode === 'control' && current.accepted) { current.writable = false; current.baseline = false; current.resizing = true; current.onState('Waiting for the resized full baseline.', false); this.send({ type: 'resize', streamId: id, generation: current.generation, cols, rows }); }
         else { this.send({ type: 'release', streamId: id, generation: current.generation }); ++current.generation; current.sequence = new FrameSequence(); this.open(id); }

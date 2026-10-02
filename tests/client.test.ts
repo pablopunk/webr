@@ -117,3 +117,11 @@ it('keeps established input writable during sustained delta rendering without re
   expect(onState.mock.calls.at(-1)?.[1]).toBe(true); pane.input('resized baseline with delta pending'); expect(inputs().at(-1)?.text).toBe('resized baseline with delta pending'); expect(inputs()).toHaveLength(4);
   manager.stop();
 });
+it('claims the shared terminal size on focus even when its own size has not changed', () => {
+  const { manager, pane, binary, open, writes } = setup(); pane.control(); const command = JSON.parse(binary.sent.at(-1)!);
+  binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: command.generation, writable: true }) });
+  binary.onmessage!({ data: encodeFrame({ ...frame(1, true), streamId: open.streamId, generation: command.generation }).buffer as ArrayBuffer }); writes[0].finish();
+  const resizes = () => binary.sent.filter((value) => JSON.parse(value).type === 'resize');
+  pane.resize(80, 24); expect(resizes()).toHaveLength(0);
+  pane.resize(80, 24, true); expect(JSON.parse(resizes()[0])).toMatchObject({ type: 'resize', cols: 80, rows: 24 }); manager.stop();
+});

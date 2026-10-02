@@ -61,11 +61,14 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
       timer = setTimeout(() => { const { cols, rows } = viewport(); control.current?.resize(cols, rows); }, 150);
     });
     resize.observe(host.current);
+    const claimSize = () => { if (document.visibilityState !== 'visible' || !document.hasFocus()) return; const { cols, rows } = viewport(); control.current?.resize(cols, rows, true); };
+    window.addEventListener('focus', claimSize); document.addEventListener('visibilitychange', claimSize);
     const colorObserver = new MutationObserver(() => { terminal.options.theme = themeColors(); });
     colorObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     cleanup = () => {
       clearTimeout(timer); control.current?.close(); control.current = null;
       writableRef.current = false; gestures();
+      window.removeEventListener('focus', claimSize); document.removeEventListener('visibilitychange', claimSize);
       clipboard.dispose(); links.dispose(); resize.disconnect(); colorObserver.disconnect();
       terminal.dispose(); term.current = null;
     };
