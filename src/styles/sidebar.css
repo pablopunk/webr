@@ -14,9 +14,6 @@
 .sidebar-open-worktree:hover:not(:disabled) { background: var(--card-hover); box-shadow: var(--card-shadow-hover); color: var(--ink); }
 .sidebar.is-collapsed .sidebar-actions { flex-direction: column; }
 .sidebar.is-collapsed .sidebar-open-worktree { width: 28px; height: 28px; }
-.open-worktree { display: grid; justify-items: start; gap: 8px; width: min(360px, calc(100vw - 32px)); }
-.open-worktree-title { margin: 0; font-size: 13px; font-weight: 600; }
-.open-worktree-empty { margin: 0; color: var(--ink-soft); font-size: 12px; }
 .sidebar-view-switch { display: flex; flex: none; gap: 2px; width: 70px; height: 34px; margin-left: auto; padding: 2px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-muted); }
 .sidebar-view-switch button { display: grid; flex: 1; place-items: center; min-width: 0; padding: 0; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--ink-soft); }
 .sidebar-view-switch button:hover { color: var(--ink); background: var(--surface-hover); }
@@ -34,6 +31,10 @@
 .thread-menu { min-width: 180px; padding: 4px; border: 1px solid var(--card-edge); border-radius: 8px; background: var(--surface-raised); color: var(--ink); box-shadow: var(--card-shadow-hover), 0 12px 32px rgb(0 0 0 / 18%); outline: 0; }
 .thread-menu-item { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 6px 8px; border-radius: 5px; font-size: 12px; cursor: pointer; outline: 0; }
 .thread-menu-item[data-highlighted] { background: var(--surface-hover); }
+.worktree-menu { width: 260px; padding: 0; overflow: hidden; }
+.worktree-menu-list { max-height: min(320px, var(--available-height)); padding: 4px; overflow-y: auto; }
+.worktree-menu-note { margin: 0; padding: 8px; color: var(--ink-soft); font-size: 12px; }
+.worktree-menu-chevron { margin-left: auto; color: var(--ink-soft); }
 .thread-menu-item.is-danger { color: var(--danger); }
 .archived-threads { flex: none; max-height: 45%; overflow-y: auto; padding: 6px 8px; border-top: 1px solid var(--line); scrollbar-width: thin; }
 .archived-threads .group-header { position: sticky; top: -6px; z-index: 1; background: var(--sidebar); }

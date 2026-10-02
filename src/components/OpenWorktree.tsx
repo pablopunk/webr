@@ -1,18 +1,18 @@
 import { useState } from 'react';
-import { Dialog } from '@base-ui/react/dialog';
+import { Menu } from '@base-ui/react/menu';
 import { useQuery } from '@tanstack/react-query';
 import { navigate } from 'astro:transitions/client';
-import { GitBranch, Search } from 'lucide-react';
+import { ChevronRight, GitBranch, Search } from 'lucide-react';
 import type { Project } from '../lib/models';
-import { ComposerCombobox } from './ComposerCombobox';
-import { ProjectPicker } from './ProjectPicker';
+import { ProjectIcon } from './ProjectIcon';
 import { alertDialog } from './dialogs';
 
 type Worktree = { path: string; branch: string | null; label: string };
+const projectQuery = (project: Project) => new URLSearchParams({ machineId: project.machineId ?? 'local', projectId: project.id });
+const worktreeName = (worktree: Worktree) => worktree.branch ?? worktree.label;
 
 const fetchWorktrees = async (project: Project, signal: AbortSignal) => {
-  const query = new URLSearchParams({ machineId: project.machineId ?? 'local', projectId: project.id });
-  const response = await fetch(`/api/worktrees?${query}`, { signal });
+  const response = await fetch(`/api/worktrees?${projectQuery(project)}`, { signal });
   if (!response.ok) throw new Error('Could not list worktrees.');
   return await response.json() as Worktree[];
 };
@@ -21,40 +21,40 @@ const openWorktree = async (project: Project, worktree: Worktree) => {
   if (!response.ok) throw new Error('Could not open this worktree.');
   return (await response.json() as { id: string }).id;
 };
+const openAndShow = async (project: Project, worktree: Worktree) => {
+  try { await navigate(`/threads/${encodeURIComponent(await openWorktree(project, worktree))}`); }
+  catch (error) { void alertDialog(error instanceof Error ? error.message : 'Could not open this worktree.'); }
+};
+const keepTypingInsideInput = (event: React.KeyboardEvent) => { if (event.key.length === 1 || event.key === 'Backspace') event.stopPropagation(); };
 
-function WorktreePicker({ projects, currentProjectId, onOpened }: { projects: Project[]; currentProjectId?: string; onOpened: () => void }) {
-  const [projectId, setProjectId] = useState(currentProjectId ?? projects[0]?.id ?? '');
-  const [opening, setOpening] = useState('');
-  const project = projects.find((item) => item.id === projectId) ?? projects[0];
-  const worktrees = useQuery({ queryKey: ['worktrees', project?.machineId, project?.id], enabled: !!project, queryFn: ({ signal }) => fetchWorktrees(project!, signal) });
-  const choose = async (worktree: Worktree) => {
-    setOpening(worktree.path);
-    try { const id = await openWorktree(project!, worktree); onOpened(); await navigate(`/threads/${encodeURIComponent(id)}`); }
-    catch (error) { void alertDialog(error instanceof Error ? error.message : 'Could not open this worktree.'); }
-    finally { setOpening(''); }
-  };
-  const options = (worktrees.data ?? []).map((worktree) => ({ value: worktree.path, label: worktree.branch ?? worktree.label, icon: <GitBranch size={14} /> }));
+function WorktreeSearch({ project }: { project: Project }) {
+  const [query, setQuery] = useState('');
+  const worktrees = useQuery({ queryKey: ['worktrees', project.machineId, project.id], queryFn: ({ signal }) => fetchWorktrees(project, signal) });
+  const matches = (worktrees.data ?? []).filter((worktree) => worktreeName(worktree).toLowerCase().includes(query.trim().toLowerCase()));
   return <>
-    <ProjectPicker projects={projects} projectId={project?.id ?? ''} onChange={setProjectId} />
-    <ComposerCombobox key={project?.id} label="Worktree" value={opening} icon={<GitBranch size={14} />} options={options}
-      onChange={(path) => { const worktree = worktrees.data?.find((item) => item.path === path); if (worktree) void choose(worktree); }} />
-    {worktrees.isError && <p className="form-error" role="alert">Could not list worktrees.</p>}
-    {worktrees.data && !worktrees.data.length && <p className="open-worktree-empty">Every worktree of this project already has a thread.</p>}
+    <div className="composer-select-search"><Search size={14} aria-hidden="true" />
+      <input autoFocus aria-label="Search worktrees" placeholder="Search worktrees…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={keepTypingInsideInput} />
+    </div>
+    <div className="worktree-menu-list">
+      {matches.map((worktree) => <Menu.Item key={worktree.path} className="thread-menu-item" title={worktree.path} onClick={() => void openAndShow(project, worktree)}>
+        <GitBranch size={14} aria-hidden="true" /><span>{worktreeName(worktree)}</span>
+      </Menu.Item>)}
+      {worktrees.isError && <p className="worktree-menu-note" role="alert">Could not list worktrees.</p>}
+      {worktrees.data && !matches.length && <p className="worktree-menu-note">{worktrees.data.length ? 'No matches' : 'Every worktree already has a thread'}</p>}
+    </div>
   </>;
 }
 
-export function OpenWorktree({ projects, currentProjectId }: { projects: Project[]; currentProjectId?: string }) {
-  const [open, setOpen] = useState(false);
-  return <Dialog.Root open={open} onOpenChange={setOpen}>
-    <Dialog.Trigger className="sidebar-open-worktree" aria-label="Open existing worktree" title="Open existing worktree" disabled={!projects.length}>
+export function OpenWorktree({ projects }: { projects: Project[] }) {
+  return <Menu.Root>
+    <Menu.Trigger className="sidebar-open-worktree" aria-label="Open existing worktree" title="Open existing worktree" disabled={!projects.length}>
       <Search size={16} aria-hidden="true" />
-    </Dialog.Trigger>
-    <Dialog.Portal>
-      <Dialog.Backdrop className="dialog-backdrop" />
-      <Dialog.Popup className="dialog open-worktree">
-        <Dialog.Title className="open-worktree-title">Open a worktree</Dialog.Title>
-        <WorktreePicker projects={projects} currentProjectId={currentProjectId} onOpened={() => setOpen(false)} />
-      </Dialog.Popup>
-    </Dialog.Portal>
-  </Dialog.Root>;
+    </Menu.Trigger>
+    <Menu.Portal><Menu.Positioner className="thread-menu-positioner" sideOffset={6} align="start"><Menu.Popup className="thread-menu">
+      {projects.map((project) => <Menu.SubmenuRoot key={`${project.machineId}:${project.id}`}>
+        <Menu.SubmenuTrigger className="thread-menu-item"><ProjectIcon project={project} /><span>{project.name}</span><ChevronRight size={14} aria-hidden="true" className="worktree-menu-chevron" /></Menu.SubmenuTrigger>
+        <Menu.Portal><Menu.Positioner className="thread-menu-positioner" sideOffset={4} alignOffset={-4}><Menu.Popup className="thread-menu worktree-menu"><WorktreeSearch project={project} /></Menu.Popup></Menu.Positioner></Menu.Portal>
+      </Menu.SubmenuRoot>)}
+    </Menu.Popup></Menu.Positioner></Menu.Portal>
+  </Menu.Root>;
 }
