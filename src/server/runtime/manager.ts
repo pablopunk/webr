@@ -113,7 +113,7 @@ export class RuntimeManager extends EventEmitter {
     if (!supervisor || !thread) throw new Error('thread_not_found');
     if (thread.bindingState === 'attached') {
       if (!supervisor.connected || !supervisor.target.renameTab) throw new Error('machine_disconnected');
-      await supervisor.target.renameTab(thread.tabId, title);
+      await supervisor.target.renameTab(thread.tabId, title, !!thread.ownsWorktree);
     }
     const row = this.database.threadRows(machineId).find((row) => row.id === threadId);
     if (row) this.database.saveThread({ ...row.metadata, title }, row.anchors, row.alias);
@@ -156,7 +156,7 @@ export class RuntimeManager extends EventEmitter {
     if (['pending', 'running'].includes(thread.operation?.state ?? '')) throw new Error('launch_in_progress');
     if (thread.bindingState === 'attached') {
       if (!supervisor.connected || !supervisor.target.discardTab) throw new Error('machine_disconnected');
-      await supervisor.target.discardTab(thread.tabId);
+      await supervisor.target.discardTab(thread.tabId, !!thread.ownsWorktree);
       await supervisor.readFresh();
     }
     this.database.deleteThread(threadId);

@@ -40,6 +40,7 @@ export type Thread = {
   updatedAt: string;
   branch: string;
   worktree: boolean;
+  ownsWorktree?: boolean;
   session: string;
   tabId: string;
   panes: Pane[];

@@ -55,21 +55,24 @@ it('sends the first prompt only after the agent screen stops changing', async ()
   await actions.prompt('w1:p1', 'hello', 'term_1', id, 'opencode');
   expect(calls.filter((call) => call === 'pane.read').length).toBeGreaterThanOrEqual(5); expect(calls.at(-1)).toBe('agent.prompt');
 });
-it('discards a thread with the smallest Herdr effect that removes its tab', async () => {
-  const discard = async (state: ReturnType<typeof snapshot>) => { const calls: [string, unknown][] = []; await new HerdrActions({ request: async (method, params) => { calls.push([method, params]); return {}; } }, new FakeTarget().locations, () => {}).discardTab(state, 'w1:t1'); return calls; };
+it('removes a worktree only when the thread owns it and otherwise only closes the tab', async () => {
+  const discard = async (state: ReturnType<typeof snapshot>, removeWorktree: boolean) => { const calls: [string, unknown][] = []; await new HerdrActions({ request: async (method, params) => { calls.push([method, params]); return {}; } }, new FakeTarget().locations, () => {}).discardTab(state, 'w1:t1', removeWorktree); return calls; };
   const shared = snapshot(); shared.tabs.push({ tab_id: 'w1:t2', workspace_id: 'w1', label: 'Other' });
-  expect(await discard(shared)).toEqual([['tab.close', { tab_id: 'w1:t1' }]]);
-  expect(await discard(snapshot())).toEqual([['workspace.close', { workspace_id: 'w1' }]]);
+  expect(await discard(shared, true)).toEqual([['tab.close', { tab_id: 'w1:t1' }]]);
+  expect(await discard(snapshot(), false)).toEqual([['tab.close', { tab_id: 'w1:t1' }]]);
   const worktree = snapshot(); worktree.workspaces[0].worktree!.is_linked_worktree = true;
-  expect(await discard(worktree)).toEqual([['worktree.remove', { workspace_id: 'w1', force: true }]]);
+  expect(await discard(worktree, false)).toEqual([['tab.close', { tab_id: 'w1:t1' }]]);
+  expect(await discard(worktree, true)).toEqual([['worktree.remove', { workspace_id: 'w1', force: true }]]);
   const gone = snapshot(); gone.tabs = [];
-  expect(await discard(gone)).toEqual([]);
+  expect(await discard(gone, true)).toEqual([]);
 });
-it('renames the Herdr tab and also its workspace when the thread owns it', async () => {
-  const rename = async (state: ReturnType<typeof snapshot>) => { const calls: [string, unknown][] = []; await new HerdrActions({ request: async (method, params) => { calls.push([method, params]); return {}; } }, new FakeTarget().locations, () => {}).renameTab(state, 'w1:t1', 'New name'); return calls; };
-  expect(await rename(snapshot())).toEqual([['tab.rename', { tab_id: 'w1:t1', label: 'New name' }], ['workspace.rename', { workspace_id: 'w1', label: 'New name' }]]);
+it('renames the Herdr tab and renames the workspace only for a thread that owns it alone', async () => {
+  const rename = async (state: ReturnType<typeof snapshot>, renameWorkspace: boolean) => { const calls: [string, unknown][] = []; await new HerdrActions({ request: async (method, params) => { calls.push([method, params]); return {}; } }, new FakeTarget().locations, () => {}).renameTab(state, 'w1:t1', 'New name', renameWorkspace); return calls; };
+  const tabOnly = [['tab.rename', { tab_id: 'w1:t1', label: 'New name' }]];
+  expect(await rename(snapshot(), true)).toEqual([...tabOnly, ['workspace.rename', { workspace_id: 'w1', label: 'New name' }]]);
+  expect(await rename(snapshot(), false)).toEqual(tabOnly);
   const shared = snapshot(); shared.tabs.push({ tab_id: 'w1:t2', workspace_id: 'w1', label: 'Other' });
-  expect(await rename(shared)).toEqual([['tab.rename', { tab_id: 'w1:t1', label: 'New name' }]]);
+  expect(await rename(shared, true)).toEqual(tabOnly);
 });
 it('splits a terminal from the agent pane in its directory and leaves the agent most of the space', async () => {
   const calls: [string, unknown][] = []; const state = snapshot();

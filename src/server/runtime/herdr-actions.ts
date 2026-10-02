@@ -84,21 +84,21 @@ export class HerdrActions {
     return nativePane.parse(result.pane).pane_id;
   }
   async closePane(paneId: string) { await this.api.request('pane.close', { pane_id: paneId }); }
-  async renameTab(snapshot: NativeSnapshot, tabId: string, label: string) {
+  async renameTab(snapshot: NativeSnapshot, tabId: string, label: string, renameWorkspace: boolean) {
     const tab = snapshot.tabs.find((tab) => tab.tab_id === tabId);
     if (!tab) throw new Error('thread_not_found');
     await this.api.request('tab.rename', { tab_id: tabId, label });
-    const ownsWorkspace = snapshot.tabs.filter((other) => other.workspace_id === tab.workspace_id).length === 1;
-    if (ownsWorkspace) await this.api.request('workspace.rename', { workspace_id: tab.workspace_id, label });
+    if (renameWorkspace && this.isOnlyTabOfItsWorkspace(snapshot, tab)) await this.api.request('workspace.rename', { workspace_id: tab.workspace_id, label });
   }
-  async discardTab(snapshot: NativeSnapshot, tabId: string) {
+  private isOnlyTabOfItsWorkspace(snapshot: NativeSnapshot, tab: NativeSnapshot['tabs'][number]) {
+    return snapshot.tabs.filter((other) => other.workspace_id === tab.workspace_id).length === 1;
+  }
+  async discardTab(snapshot: NativeSnapshot, tabId: string, removeWorktree: boolean) {
     const tab = snapshot.tabs.find((tab) => tab.tab_id === tabId);
     if (!tab) return;
-    const ownsWorkspace = snapshot.tabs.filter((other) => other.workspace_id === tab.workspace_id).length === 1;
-    if (!ownsWorkspace) { await this.api.request('tab.close', { tab_id: tabId }); return; }
     const linkedWorktree = snapshot.workspaces.find((workspace) => workspace.workspace_id === tab.workspace_id)?.worktree?.is_linked_worktree;
-    if (linkedWorktree) await this.api.request('worktree.remove', { workspace_id: tab.workspace_id, force: true });
-    else await this.api.request('workspace.close', { workspace_id: tab.workspace_id });
+    if (removeWorktree && linkedWorktree && this.isOnlyTabOfItsWorkspace(snapshot, tab)) await this.api.request('worktree.remove', { workspace_id: tab.workspace_id, force: true });
+    else await this.api.request('tab.close', { tab_id: tabId });
   }
   async prompt(paneId: string, prompt: string, terminalId: string, threadId: string, kind: string, input?: LaunchInput) {
     this.requireCapability(input);

@@ -19,7 +19,7 @@ it('archives a thread from its hover button and restores it from the Archived se
   expect(JSON.parse(String(fetch.mock.calls[1][1].body))).toEqual({ machineId: 'local', archived: false });
 });
 it('deletes permanently from the right-click menu and deletes all archived threads after confirmation', async () => {
-  const fetch = answering(); vi.stubGlobal('fetch', fetch); renderSidebar();
+  const fetch = answering(); vi.stubGlobal('fetch', fetch); renderSidebar(exampleThreads().slice(0, 1).map((thread) => ({ ...thread, ownsWorktree: true })));
   fireEvent.contextMenu(screen.getByRole('link', { name: /Build the web terminal bridge/ }));
   fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete permanently' }));
   expect(await screen.findByText(/removes its worktree/)).toBeTruthy(); fireEvent.click(screen.getByRole('button', { name: 'Delete' }));

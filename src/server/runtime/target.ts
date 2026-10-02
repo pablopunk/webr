@@ -28,8 +28,8 @@ export type TargetAdapter = {
   start(input: LaunchInput, paneId: string, threadId: string): Promise<void>;
   prompt(paneId: string, prompt: string, terminalId: string, threadId: string, input: LaunchInput): Promise<void>;
   focusPane?(paneId: string): Promise<void>;
-  discardTab?(tabId: string): Promise<void>;
-  renameTab?(tabId: string, label: string): Promise<void>;
+  discardTab?(tabId: string, removeWorktree: boolean): Promise<void>;
+  renameTab?(tabId: string, label: string, renameWorkspace: boolean): Promise<void>;
   splitTerminal?(paneId: string, direction: TerminalDirection): Promise<string>;
   closePane?(paneId: string): Promise<void>;
   close(): void;

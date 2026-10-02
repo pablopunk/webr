@@ -38,7 +38,7 @@ const statusBadges: Partial<Record<Thread['status'], typeof CircleHelp>> = {
 };
 
 const reportFailure = (error: unknown) => alertDialog(error instanceof Error ? error.message : 'Herdr could not complete this action.');
-const confirmDelete = async (thread: Thread) => { if (await confirmDialog(deleteWarning(1), { confirmLabel: 'Delete', danger: true })) await deleteThreadPermanently(thread).catch(reportFailure); };
+const confirmDelete = async (thread: Thread) => { if (await confirmDialog(deleteWarning([thread]), { confirmLabel: 'Delete', danger: true })) await deleteThreadPermanently(thread).catch(reportFailure); };
 
 const ThreadRow = memo(function ThreadRow({ thread, project, machineName, current, showProject }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean }) {
   const archived = !!thread.archivedAt;
@@ -75,7 +75,7 @@ function ArchivedThreads({ threads, renderThread }: { threads: Thread[]; renderT
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const deleteAll = async () => {
-    if (!await confirmDialog(deleteWarning(threads.length), { confirmLabel: 'Delete all', danger: true })) return;
+    if (!await confirmDialog(deleteWarning(threads), { confirmLabel: 'Delete all', danger: true })) return;
     setDeleting(true);
     try { const result = await deleteArchivedThreads(); if (result.failed.length) await alertDialog(`${result.failed.length} archived ${result.failed.length === 1 ? 'thread' : 'threads'} could not be deleted.`); }
     catch (error) { reportFailure(error); } finally { setDeleting(false); }

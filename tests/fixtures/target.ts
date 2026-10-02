@@ -55,7 +55,7 @@ export class FakeTarget implements TargetAdapter {
     return pane.pane_id;
   }
   async closePane(paneId: string) { this.effect('close:' + paneId); this.state.panes = this.state.panes.filter((pane) => pane.pane_id !== paneId); }
-  async discardTab(tabId: string) { this.effect('discard:' + tabId); this.state.panes = this.state.panes.filter((pane) => pane.tab_id !== tabId); this.state.tabs = this.state.tabs.filter((tab) => tab.tab_id !== tabId); }
+  async discardTab(tabId: string, _removeWorktree = false) { this.effect('discard:' + tabId); this.state.panes = this.state.panes.filter((pane) => pane.tab_id !== tabId); this.state.tabs = this.state.tabs.filter((tab) => tab.tab_id !== tabId); }
   close() { ++this.closed; }
 }
 export const launch: LaunchInput = { machineId: 'fixture', projectId: 'fixture:project', prompt: 'Test launch', agent: 'claude', model: 'Default', worktree: true };

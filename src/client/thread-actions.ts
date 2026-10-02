@@ -20,4 +20,12 @@ export const toggleThreadTerminal = (thread: Thread, direction: TerminalDirectio
 export const closeThreadTerminal = (thread: Thread) => post(`/api/threads/${encodeURIComponent(thread.id)}/terminal/close`, { machineId: thread.machineId });
 export const deleteThreadPermanently = (thread: Thread) => post(`/api/threads/${encodeURIComponent(thread.id)}/delete`, { machineId: thread.machineId });
 export const deleteArchivedThreads = () => post('/api/archive/delete') as Promise<{ deleted: number; failed: string[] }>;
-export const deleteWarning = (count: number) => `${count === 1 ? 'Delete this thread' : `Delete ${count} threads`} permanently? This closes ${count === 1 ? 'its terminal' : 'their terminals'} and removes ${count === 1 ? 'its worktree' : 'their worktrees'}, including uncommitted changes.`;
+const plural = (count: number, one: string, many: string) => count === 1 ? one : many;
+export function deleteWarning(threads: Thread[]) {
+  const count = threads.length; const worktrees = threads.filter((thread) => thread.ownsWorktree).length;
+  const subject = plural(count, 'Delete this thread', `Delete ${count} threads`);
+  const closes = plural(count, 'its terminal', 'their terminals');
+  if (!worktrees) return `${subject} permanently? This closes ${closes}. Your project files stay untouched.`;
+  const removes = worktrees === count ? plural(count, 'its worktree', 'their worktrees') : `${worktrees} ${plural(worktrees, 'worktree', 'worktrees')}`;
+  return `${subject} permanently? This closes ${closes} and removes ${removes}, including uncommitted changes.`;
+}
