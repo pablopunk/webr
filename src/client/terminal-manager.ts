@@ -88,7 +88,7 @@ export class BrowserTerminalManager {
           const record = JSON.parse(event.data);
           const pane = this.panes.get(record.streamId);
           if (!pane || pane.generation !== record.generation) return;
-          if (record.type === 'stream.opened') { pane.accepted = !!record.writable && pane.mode === 'control'; pane.writable = pane.accepted && pane.baseline; pane.onState(pane.writable ? 'Input control is active.' : pane.reason ?? (pane.accepted ? 'Waiting for the full baseline; input is disabled.' : 'Read-only'), pane.writable); }
+          if (record.type === 'stream.opened') { pane.accepted = !!record.writable && pane.mode === 'control'; if (pane.accepted) { pane.baseline = false; pane.resizing = true; this.send({ type: 'resize', streamId: record.streamId, generation: record.generation, cols: pane.cols, rows: pane.rows }); } pane.writable = pane.accepted && pane.baseline; pane.onState(pane.writable ? 'Input control is active.' : pane.reason ?? (pane.accepted ? 'Waiting for the full baseline; input is disabled.' : 'Read-only'), pane.writable); }
           if (record.type === 'stream.closed' || record.type === 'stream.error') {
             pane.writable = false; pane.accepted = false; pane.baseline = false; pane.renderer?.close(); pane.onState(record.reason === 'controller_conflict' ? conflictMessage : String(record.reason).replaceAll('_', ' '), false);
             if (record.type === 'stream.error' && pane.mode === 'control') { pane.reason = record.reason === 'controller_conflict' ? conflictMessage : String(record.reason).replaceAll('_', ' '); pane.mode = 'observe'; ++pane.generation; pane.sequence = new FrameSequence(); this.open(record.streamId); return; }

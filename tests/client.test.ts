@@ -41,7 +41,7 @@ it('ignores stale stream generations and never replays input after reconnect', (
   const { manager, binary, open, pane, writes } = setup();
   pane.control(); const writable = JSON.parse(binary.sent.at(-1)!);
   binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: writable.generation, writable: true }) });
-  pane.input('before baseline'); expect(JSON.parse(binary.sent.at(-1)!).type).toBe('open');
+  pane.input('before baseline'); expect(JSON.parse(binary.sent.at(-1)!).type).toBe('resize'); expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false);
   binary.onmessage!({ data: encodeFrame({ ...frame(), streamId: open.streamId, generation: writable.generation }).buffer as ArrayBuffer }); writes[0].finish();
   pane.input('a'); expect(JSON.parse(binary.sent.at(-1)!).text).toBe('a');
   binary.onmessage!({ data: encodeFrame({ ...frame(), streamId: open.streamId, generation: open.generation }).buffer as ArrayBuffer }); expect(writes).toHaveLength(1);
@@ -122,6 +122,14 @@ it('claims the shared terminal size on focus even when its own size has not chan
   binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: command.generation, writable: true }) });
   binary.onmessage!({ data: encodeFrame({ ...frame(1, true), streamId: open.streamId, generation: command.generation }).buffer as ArrayBuffer }); writes[0].finish();
   const resizes = () => binary.sent.filter((value) => JSON.parse(value).type === 'resize');
-  pane.resize(80, 24); expect(resizes()).toHaveLength(0);
-  pane.resize(80, 24, true); expect(JSON.parse(resizes()[0])).toMatchObject({ type: 'resize', cols: 80, rows: 24 }); manager.stop();
+  const opened = resizes().length; pane.resize(80, 24); expect(resizes()).toHaveLength(opened);
+  pane.resize(80, 24, true); expect(resizes()).toHaveLength(opened + 1); expect(JSON.parse(resizes().at(-1)!)).toMatchObject({ type: 'resize', cols: 80, rows: 24 }); manager.stop();
+});
+it('sends its own size as soon as control opens, so a fresh pane is never left at Herdr\'s default size', () => {
+  const { manager, pane, binary, open, writes } = setup(); pane.control(); const command = JSON.parse(binary.sent.at(-1)!);
+  binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: command.generation, writable: true }) });
+  expect(JSON.parse(binary.sent.at(-1)!)).toMatchObject({ type: 'resize', cols: 80, rows: 24, generation: command.generation });
+  const deliver = (seq: number, width: number, height: number) => binary.onmessage!({ data: encodeFrame({ ...frame(seq, true), width, height, streamId: open.streamId, generation: command.generation }).buffer as ArrayBuffer });
+  deliver(1, 80, 44); writes[0].finish(); pane.input('still waiting for the right size'); expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false);
+  deliver(2, 80, 24); writes[1].finish(); pane.input('now'); expect(JSON.parse(binary.sent.at(-1)!).text).toBe('now'); manager.stop();
 });
