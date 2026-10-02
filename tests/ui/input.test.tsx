@@ -37,7 +37,8 @@ it('reserves plain or Shift pointer gestures for selection and only forwards del
   const pointer = (altKey: boolean, shiftKey = false) => host.dispatchEvent(new MouseEvent('pointerdown', { clientX: 125, clientY: 55, buttons: 1, altKey, shiftKey, cancelable: true }));
   pointer(false); pointer(true, true); expect(mouse).not.toHaveBeenCalled();
   pointer(true); expect(mouse).toHaveBeenCalledExactlyOnceWith('down', 'left', 12, 5, 0);
-  host.dispatchEvent(new WheelEvent('wheel', { deltaY: -45, altKey: true, cancelable: true })); expect(scroll).toHaveBeenCalledExactlyOnceWith('up', 3);
-  writable = false; pointer(true); host.dispatchEvent(new WheelEvent('wheel', { deltaY: 40, altKey: true })); expect(mouse).toHaveBeenCalledTimes(1); expect(scroll).toHaveBeenCalledTimes(1);
+  let tick = () => {}; vi.stubGlobal('requestAnimationFrame', (run: () => void) => { tick = run; return 1; }); vi.stubGlobal('cancelAnimationFrame', () => {});
+  host.dispatchEvent(new WheelEvent('wheel', { deltaY: -25, cancelable: true })); host.dispatchEvent(new WheelEvent('wheel', { deltaY: -20, cancelable: true })); tick(); expect(scroll).toHaveBeenCalledExactlyOnceWith('up', 2);
+  writable = false; pointer(true); host.dispatchEvent(new WheelEvent('wheel', { deltaY: 40 })); expect(mouse).toHaveBeenCalledTimes(1); expect(scroll).toHaveBeenCalledTimes(1);
   dispose(); host.remove();
 });

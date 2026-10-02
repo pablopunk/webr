@@ -7,6 +7,7 @@ import { NewThreadView } from '../../src/components/NewThreadView';
 vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
 vi.mock('../../src/client/catalog', () => ({ useMachineCatalog: () => ({ data: { harnesses: [] }, isError: false }) }));
 
+const workspaceRequests = (fetch: { mock: { calls: unknown[] } }) => (fetch.mock.calls as unknown as [string, RequestInit][]).filter(([url]) => url === '/api/workspaces');
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 it('shows a connected empty Herdr session as a workspace creation form, not a setup failure', () => {
   render(<NewThreadView projects={[]} machines={[{ id: 'local', name: 'Local', connected: true, session: 'default', projectPaths: {}, harnesses: [] }]} onOpenSidebar={() => {}} />);
@@ -21,7 +22,7 @@ it('creates the first workspace with a path and name, without a source workspace
   const user = userEvent.setup(); await user.type(screen.getByLabelText('Project folder'), '/project'); await user.type(screen.getByLabelText('Workspace name'), 'Project');
   await user.click(screen.getByRole('button', { name: 'Create workspace' }));
   await waitFor(() => expect(created).toHaveBeenCalledTimes(1));
-  const [url, request] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+  const [url, request] = workspaceRequests(fetch)[0];
   expect(url).toBe('/api/workspaces'); expect(JSON.parse(request.body as string)).toEqual({ machineId: 'local', path: '/project', label: 'Project' });
   expect(request.headers).toMatchObject({ 'Idempotency-Key': expect.any(String) });
 });
@@ -31,9 +32,25 @@ it('reports an uncertain mutation and preserves its operation key instead of rep
   const user = userEvent.setup(); await user.type(screen.getByLabelText('Project folder'), '/project'); await user.type(screen.getByLabelText('Workspace name'), 'Project');
   await user.click(screen.getByRole('button', { name: 'Create workspace' }));
   await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('not known'));
-  expect(fetch).toHaveBeenCalledTimes(1); expect(created).not.toHaveBeenCalled();
+  expect(workspaceRequests(fetch)).toHaveLength(1); expect(created).not.toHaveBeenCalled();
   await user.click(screen.getByRole('button', { name: 'Create workspace' }));
-  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
-  const requests = fetch.mock.calls as unknown as [string, RequestInit][];
+  await waitFor(() => expect(workspaceRequests(fetch)).toHaveLength(2));
+  const requests = workspaceRequests(fetch);
   expect(requests[1][1].headers).toEqual(requests[0][1].headers);
+});
+it('completes a typed folder prefix from server suggestions with Tab', async () => {
+  const fetch = vi.fn(async () => ({ ok: true, json: async () => ['~/src/', '~/srv/'] })); vi.stubGlobal('fetch', fetch);
+  render(<CreateWorkspace machineId="local" onCreated={() => {}} />);
+  const user = userEvent.setup(); const input = screen.getByLabelText('Project folder') as HTMLInputElement;
+  await user.type(input, '~/sr'); await screen.findByRole('listbox');
+  await user.keyboard('{ArrowDown}{Tab}');
+  expect(input.value).toBe('~/srv/');
+});
+it('accepts the highlighted folder on Enter and closes the dropdown without submitting', async () => {
+  const fetch = vi.fn(async () => ({ ok: true, json: async () => ['~/src/', '~/srv/'] })); vi.stubGlobal('fetch', fetch);
+  render(<CreateWorkspace machineId="local" onCreated={() => {}} />);
+  const user = userEvent.setup(); const input = screen.getByLabelText('Project folder') as HTMLInputElement;
+  await user.type(input, '~/sr'); await screen.findByRole('listbox');
+  await user.keyboard('{Enter}');
+  expect(input.value).toBe('~/src/'); expect(screen.queryByRole('listbox')).toBeNull(); expect(workspaceRequests(fetch)).toHaveLength(0);
 });
