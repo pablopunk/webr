@@ -21,3 +21,17 @@
 .adoption-picker { padding: 16px; color: var(--ink-soft); display: grid; gap: 8px; font-size: 13px; }
 .adoption-picker select { margin-left: 8px; }
 .runtime-notice { padding: 10px 16px; color: var(--ink-muted); font-size: 13px; }
+.launch-progress { display: grid; align-content: center; justify-items: start; gap: 18px; width: min(520px, 100%); margin: 0 auto; padding: 0 20px; }
+.launch-progress h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.03em; }
+.launch-prompt { margin: 0; padding: 10px 14px; border-left: 2px solid var(--line-strong); color: var(--ink-soft); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 9em; overflow: auto; }
+.launch-steps { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.launch-step { display: flex; align-items: center; gap: 10px; color: var(--ink-muted); }
+.launch-step.is-done { color: var(--ink-soft); }
+.launch-step.is-active { color: var(--ink); }
+.launch-step.is-active svg { animation: launch-spin 1s linear infinite; }
+.launch-step.is-failed { color: #d16a64; }
+.launch-failure { display: grid; gap: 10px; font-size: 13px; color: var(--ink-soft); }
+.launch-failure p { margin: 0; }
+.launch-retry { justify-self: start; padding: 7px 11px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-raised); color: var(--ink); font-size: 12px; text-decoration: none; }
+@keyframes launch-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .launch-step.is-active svg { animation: none; } }

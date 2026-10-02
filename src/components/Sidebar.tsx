@@ -1,8 +1,9 @@
 import { memo, useState } from 'react';
 import { BotAvatar } from 'bot-avatars';
-import { ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, LayoutList, LoaderCircle, MessageCircleQuestion, PanelLeftClose, PanelLeftOpen, Plus, Settings2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, LayoutList, LoaderCircle, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Plus, Settings2, X } from 'lucide-react';
 import { type Project, type Thread, harnessName, relativeTime } from '../lib/models';
 import { avatarForThread } from '../lib/avatars';
+import { isLaunching, launchFailed, launchLabel } from '../lib/launch';
 import type { Machine } from '../lib/machines';
 import { ProjectIcon } from './ProjectIcon';
 import { groupProjectLocations } from '../client/project-groups';
@@ -30,12 +31,15 @@ const statusIcons: Record<Exclude<Thread['status'], 'idle'>, typeof CircleHelp> 
 };
 
 const ThreadRow = memo(function ThreadRow({ thread, project, machineName, current, showProject }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean }) {
-  const StatusIcon = thread.status === 'idle' ? null : statusIcons[thread.status];
-  return <a className={`thread-row ${current ? 'is-current' : ''}`} href={`/threads/${encodeURIComponent(thread.id)}`} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${statusLabel[thread.status]}`} title={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${statusLabel[thread.status]}`}>
-    <span className="thread-avatar" aria-hidden="true"><BotAvatar {...avatarForThread(thread)} state={thread.status === 'working' ? 'working' : 'default'} size={24} paused={thread.status !== 'working'} /></span>
-    <span className="thread-copy"><span className="thread-context">{showProject && project && <ProjectIcon project={project} />}{showProject ? project?.name : harnessName(thread.agent)}</span><span className="thread-name">{thread.title}</span></span>
+  const launching = isLaunching(thread); const failed = launchFailed(thread);
+  const StatusIcon = launching ? LoaderCircle : failed ? TriangleAlert : thread.status === 'idle' ? null : statusIcons[thread.status];
+  const status = launching ? launchLabel(thread) : failed ? 'Launch stopped' : statusLabel[thread.status];
+  const context = launching || failed ? status : showProject ? project?.name : harnessName(thread.agent);
+  return <a className={`thread-row ${current ? 'is-current' : ''}`} href={`/threads/${encodeURIComponent(thread.id)}`} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${status}`} title={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`}>
+    <span className="thread-avatar" aria-hidden="true"><BotAvatar {...avatarForThread(thread)} state={thread.status === 'working' || launching ? 'working' : 'default'} size={24} paused={thread.status !== 'working' && !launching} /></span>
+    <span className="thread-copy"><span className="thread-context">{showProject && project && !launching && !failed && <ProjectIcon project={project} />}{context}</span><span className="thread-name">{thread.title}</span></span>
     <span className="thread-time">{relativeTime(thread.updatedAt)}</span>
-    {StatusIcon && <StatusIcon className={`thread-status status-${thread.status}`} size={15} strokeWidth={1.8} aria-hidden="true" />}
+    {StatusIcon && <StatusIcon className={`thread-status status-${launching ? 'working' : failed ? 'blocked' : thread.status}`} size={15} strokeWidth={1.8} aria-hidden="true" />}
   </a>;
 });
 

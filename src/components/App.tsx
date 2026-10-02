@@ -13,6 +13,7 @@ import { useStore } from 'zustand';
 import { RuntimeProvider, useRuntime, useRuntimeSelector } from '../client/provider';
 import type { Bootstrap } from '../shared/runtime';
 import { appShortcutAction } from '../client/keyboard';
+import { isListedThread } from '../lib/launch';
 
 type Props = {
   page: 'thread' | 'new' | 'settings' | 'missing';
@@ -28,7 +29,7 @@ export default function App(props: Props) {
 function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
   const { ui, terminals } = useRuntime();
   const projects = useRuntimeSelector(useShallow((state) => state.projectIds.map((id) => state.projects[id])));
-  const threads = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id]).filter((item) => item.panes.some((pane) => pane.kind === 'agent'))));
+  const threads = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id]).filter((item) => isListedThread(item))));
   const thread = useRuntimeSelector((state) => state.threads[threadId ?? '']);
   const projections = useRuntimeSelector((state) => state.projections);
   const gatewayConnected = useRuntimeSelector((state) => state.connected);
