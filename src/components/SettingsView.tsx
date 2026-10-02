@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
 import { ThemeControl } from './ThemeControl';
+import { newSessionBehaviorLabels, readNewSessionBehavior, writeNewSessionBehavior, type NewSessionBehavior } from '../client/new-session-behavior';
 import { defaultShortcuts, getShortcuts, isReservedShortcut, keyCombo, shortcutKeys, shortcutLabels, type ShortcutAction } from './shortcuts';
 
 export function SettingsView({ onOpenSidebar }: {
   onOpenSidebar: () => void;
 }) {
-  const [worktree, setWorktree] = useState(true);
+  const [behavior, setBehavior] = useState<NewSessionBehavior>('worktree');
   const [shortcuts, setShortcuts] = useState(defaultShortcuts);
   const [recording, setRecording] = useState<ShortcutAction | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    setWorktree(localStorage.getItem('webr-new-worktree') !== 'false');
+    setBehavior(readNewSessionBehavior());
     setShortcuts(getShortcuts());
   }, []);
 
@@ -32,7 +33,7 @@ export function SettingsView({ onOpenSidebar }: {
     <button className="mobile-menu" onClick={onOpenSidebar}>Threads</button>
     <h1>Settings</h1>
     <section><h2>Appearance</h2><div className="settings-row"><span>Theme</span><ThemeControl expanded /></div></section>
-    <section><h2>New threads</h2><label className="settings-row"><span>Create a new worktree by default</span><input type="checkbox" checked={worktree} onChange={(event) => { setWorktree(event.target.checked); localStorage.setItem('webr-new-worktree', String(event.target.checked)); }} /></label></section>
+    <section><h2>New threads</h2><label className="settings-row"><span>New session behavior</span><select value={behavior} onChange={(event) => { const next = event.target.value as NewSessionBehavior; setBehavior(next); writeNewSessionBehavior(next); }}>{(Object.keys(newSessionBehaviorLabels) as NewSessionBehavior[]).map((choice) => <option key={choice} value={choice}>{newSessionBehaviorLabels[choice]}</option>)}</select></label></section>
     <section id="shortcuts"><div className="settings-section-title"><h2>Keyboard shortcuts</h2><button onClick={() => { setShortcuts(defaultShortcuts); localStorage.removeItem('webr-shortcuts'); setRecording(null); setError(''); }}>Reset</button></div>
       <p className="settings-note">Press ⌘K for all actions and threads.</p>
       {(Object.keys(shortcutLabels) as ShortcutAction[]).map((action) => <div className="settings-row" key={action}><span>{shortcutLabels[action]}</span><button className="shortcut-key" data-recording={recording === action} onClick={() => { setRecording(action); setError(''); }} onKeyDown={(event) => recording === action && recordKey(event, action)} aria-label={`Change ${shortcutLabels[action]} shortcut`}>{recording === action ? 'Press keys…' : shortcutKeys(shortcuts[action]).map((key, index) => <kbd key={index}>{key}</kbd>)}</button></div>)}

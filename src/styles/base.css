@@ -4,7 +4,7 @@ body { margin: 0; color: var(--ink); background: var(--page); font: 13px/1.45 va
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
 a { color: inherit; text-decoration: none; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 0; }
 .app-shell { min-height: 100dvh; display: flex; }
 .main-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 100dvh; height: 100dvh; }
 .icon-button { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 30px; border: 0; border-radius: 6px; color: var(--ink-muted); background: transparent; }
