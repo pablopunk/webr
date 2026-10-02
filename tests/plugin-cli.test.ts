@@ -5,7 +5,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { realRun } from '../server/command';
-import { enterPluginDevMode } from '../server/plugin/dev';
+import { enterPluginDevMode, stopProductionWebr } from '../server/plugin/dev';
 import { installPlugin, pluginStatus, restartPluginWebr, uninstallWebrPlugin, type PluginDeps } from '../server/plugin';
 import { isPortOpen } from '../server/plugin/probe';
 import { PLUGIN_ID, PLUGIN_SOURCE } from '../server/plugin/herdr';
@@ -17,7 +17,7 @@ function fakeHerdr(installed: 'none' | 'github' | 'local' = 'none') {
   const root = mkdtempSync(join(tmpdir(), 'webr-herdr-')); roots.push(root);
   const pluginRoot = join(root, 'plugin-root');
   mkdirSync(pluginRoot); mkdirSync(join(root, 'config')); mkdirSync(join(root, 'state'));
-  writeFileSync(join(pluginRoot, 'launch.mjs'), "console.log('launched with ' + process.env.HERDR_PLUGIN_CONFIG_DIR);\n");
+  writeFileSync(join(pluginRoot, 'launch.mjs'), "import { appendFileSync } from 'node:fs';\nappendFileSync(process.env.HERDR_PLUGIN_STATE_DIR + '/launches', 'x');\nconsole.log('launched with ' + process.env.HERDR_PLUGIN_CONFIG_DIR);\n");
   const calls = join(root, 'calls.txt');
   const registry = join(root, 'registry');
   if (installed !== 'none') writeFileSync(registry, installed);
@@ -138,4 +138,21 @@ it('links the checkout in dev mode and restores the GitHub plugin afterwards', (
   expect(existsSync(join(herdr.state, 'dev.json'))).toBe(false);
   expect(readFileSync(herdr.registry, 'utf8').trim()).toBe('github');
   expect(herdr.calls().slice(-2)).toEqual(['plugin link /checkout/plugin', `plugin install ${PLUGIN_SOURCE} --yes`]);
+});
+
+it('stops the production Webr for dev and starts it again when dev stops', async () => {
+  const herdr = fakeHerdr('github');
+  const webr = await startFakeWebr(herdr);
+  expect(await stopProductionWebr(herdr.run, herdr.state)).toBe(true);
+  await webr.exited;
+  const restore = enterPluginDevMode('/checkout', herdr.run, herdr.state, true);
+  expect(existsSync(join(herdr.state, 'dev.json'))).toBe(true);
+  restore();
+  expect(existsSync(join(herdr.state, 'dev.json'))).toBe(false);
+  expect(readFileSync(join(herdr.state, 'launches'), 'utf8')).toBe('x');
+});
+
+it('leaves the production Webr alone when it is not running', async () => {
+  const herdr = fakeHerdr('github');
+  expect(await stopProductionWebr(herdr.run, herdr.state)).toBe(false);
 });

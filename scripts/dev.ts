@@ -1,7 +1,9 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolvePort } from '../server/port';
-import { enterPluginDevMode } from '../server/plugin/dev';
+import { realRun } from '../server/command';
+import { enterPluginDevMode, stopProductionWebr } from '../server/plugin/dev';
+import { pluginStateDir } from '../server/plugin/files';
 
 const port = await resolvePort();
 const STOP_TIMEOUT_MS = 5000;
@@ -30,8 +32,9 @@ async function stopPreviousServer() {
   }
 }
 
+const productionWasRunning = await stopProductionWebr();
 await stopPreviousServer();
-const restorePlugin = enterPluginDevMode(fileURLToPath(new URL('..', import.meta.url)));
+const restorePlugin = enterPluginDevMode(fileURLToPath(new URL('..', import.meta.url)), realRun, pluginStateDir(), productionWasRunning);
 process.once('exit', restorePlugin);
 const server = spawn('pnpm', ['start'], { stdio: 'inherit', env: { ...process.env, HOST: process.env.HOST ?? '0.0.0.0', PORT: String(port), WEBR_DEV: '1' } });
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => server.kill(signal));

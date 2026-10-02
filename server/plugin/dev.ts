@@ -3,7 +3,11 @@ import { join } from 'node:path';
 import { realRun } from '../command';
 import type { RunCommand } from '../command';
 import { DEV_FILE, pluginStateDir } from './files';
-import { installFromGithub, installedPlugin, linkLocalPlugin } from './herdr';
+import { readPluginConfig } from './config';
+import { startNow } from './index';
+import { probeAddress } from './probe';
+import { stopPluginWebr } from './stop';
+import { installFromGithub, installedPlugin, linkLocalPlugin, pluginConfigDir } from './herdr';
 
 type Restore = () => void;
 const nothingToRestore: Restore = () => {};
@@ -13,7 +17,19 @@ function restorePrevious(previous: ReturnType<typeof installedPlugin>, run: RunC
   if (previous) return linkLocalPlugin(run, previous.root);
 }
 
-export function enterPluginDevMode(checkout: string, run: RunCommand = realRun, stateDir = pluginStateDir()): Restore {
+function startProduction(run: RunCommand, stateDir: string) {
+  const plugin = installedPlugin(run);
+  if (plugin) startNow(plugin.root, pluginConfigDir(run), { run, stateDir });
+}
+
+export async function stopProductionWebr(run: RunCommand = realRun, stateDir = pluginStateDir()) {
+  if (!installedPlugin(run)) return false;
+  const stopped = await stopPluginWebr(stateDir, probeAddress(readPluginConfig(pluginConfigDir(run))));
+  if (stopped) console.log('Stopped the production Webr. It starts again when dev stops.');
+  return stopped;
+}
+
+export function enterPluginDevMode(checkout: string, run: RunCommand = realRun, stateDir = pluginStateDir(), restartProduction = false): Restore {
   const previous = installedPlugin(run);
   if (!previous) return nothingToRestore;
   mkdirSync(stateDir, { recursive: true });
@@ -23,5 +39,6 @@ export function enterPluginDevMode(checkout: string, run: RunCommand = realRun, 
   return () => {
     rmSync(join(stateDir, DEV_FILE), { force: true });
     restorePrevious(previous, run);
+    if (restartProduction) startProduction(run, stateDir);
   };
 }

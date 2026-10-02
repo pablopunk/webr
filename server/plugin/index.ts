@@ -14,7 +14,7 @@ export type PluginDeps = {
 
 export const defaultDeps = (): PluginDeps => ({ run: realRun, stateDir: pluginStateDir() });
 
-const startNow = (root: string, configDir: string, deps: PluginDeps) =>
+export const startNow = (root: string, configDir: string, deps: PluginDeps) =>
   deps.run(process.execPath, [join(root, 'launch.mjs')], { HERDR_PLUGIN_CONFIG_DIR: configDir, HERDR_PLUGIN_STATE_DIR: deps.stateDir }).output.trim();
 
 export async function installPlugin(config: PluginConfig, deps: PluginDeps) {
