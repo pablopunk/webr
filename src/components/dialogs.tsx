@@ -5,9 +5,12 @@ type DialogRequest = { message: string; confirmLabel: string; cancelLabel?: stri
 type ConfirmOptions = { confirmLabel?: string; danger?: boolean };
 
 let root: Root | undefined;
+let showing: DialogRequest | undefined;
 const show = (request: DialogRequest) => {
   root ??= createRoot(document.body.appendChild(document.createElement('div')));
-  const settle = (accepted: boolean) => { root?.render(null); request.resolve(accepted); };
+  showing?.resolve(false);
+  showing = request;
+  const settle = (accepted: boolean) => { if (showing !== request) return; showing = undefined; root?.render(null); request.resolve(accepted); };
   root.render(<DialogView request={request} settle={settle} />);
 };
 

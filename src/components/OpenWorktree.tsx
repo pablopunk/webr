@@ -32,7 +32,7 @@ const keepTypingInsideInput = (event: React.KeyboardEvent) => { if (event.key.le
 
 function WorktreeSearch({ project }: { project: Project }) {
   const [query, setQuery] = useState('');
-  const worktrees = useQuery({ queryKey: ['worktrees', project.machineId, project.id], queryFn: ({ signal }) => fetchWorktrees(project, signal) });
+  const worktrees = useQuery({ queryKey: ['worktrees', project.machineId, project.id], queryFn: ({ signal }) => fetchWorktrees(project, signal), staleTime: 0, gcTime: 0 });
   const matches = (worktrees.data ?? []).filter((worktree) => matchesSearch(worktree, query));
   return <>
     <div className="composer-select-search"><Search size={14} aria-hidden="true" />
