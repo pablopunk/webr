@@ -2,6 +2,7 @@ import Fastify, { type FastifyRequest } from 'fastify';
 import websocket from '@fastify/websocket';
 import staticFiles from '@fastify/static';
 import { resolve } from 'node:path';
+import { distRoot } from './dist';
 import { z } from 'zod';
 import type { RuntimeManager } from './runtime/manager';
 import { launchInput, opaqueId } from '../shared/runtime';
@@ -143,7 +144,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
   });
   app.get('/api/stats', async () => hub.stats());
   if (ssr) {
-    const clientRoot = resolve(process.env.WEBR_DIST ?? 'dist', 'client');
+    const clientRoot = resolve(distRoot(), 'client');
     await app.register(staticFiles, { root: clientRoot, serve: false });
     app.get('/_astro/*', async (request, reply) => {
       const path = z.string().regex(/^[A-Za-z0-9_./-]+$/).parse((request.params as { '*': string })['*']);

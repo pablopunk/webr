@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { distRoot } from '../src/server/dist';
 
 type Locals = Record<string, unknown>;
 export type Ssr = { handler: (request: object, response: unknown, next: unknown, locals: Locals) => void; stop: () => Promise<void> };
@@ -7,7 +8,7 @@ export type Ssr = { handler: (request: object, response: unknown, next: unknown,
 const astroLocalsSymbol = Symbol.for('astro.locals');
 
 export async function builtSsr(): Promise<Ssr> {
-  const { handler } = await import(pathToFileURL(resolve(process.env.WEBR_DIST ?? 'dist', 'server/entry.mjs')).href);
+  const { handler } = await import(pathToFileURL(resolve(distRoot(), 'server/entry.mjs')).href);
   return { handler, stop: async () => {} };
 }
 
