@@ -75,6 +75,12 @@ async function verifyPairing(origin: string) {
   expect(authorized.status === 200, 'the paired device to read /api/runtime');
 }
 
+const stop = (server: ChildProcess) => new Promise<void>((done) => {
+  if (server.exitCode !== null || server.signalCode !== null) return done();
+  server.once('exit', () => done());
+  server.kill('SIGTERM');
+});
+
 async function verifyInstaller(installer: Installer, tarball: string, root: string) {
   step(`${installer}: install ${tarball}`);
   const sandbox: Sandbox = { root, env: {}, binDir: '' };
@@ -93,7 +99,7 @@ async function verifyInstaller(installer: Installer, tarball: string, root: stri
     await waitForServer(origin, server, () => log);
     expect((await json(origin, '/api/runtime')).status === 200, 'loopback /api/runtime to answer without a token');
     await verifyPairing(origin);
-  } finally { server.kill('SIGTERM'); }
+  } finally { await stop(server); }
 }
 
 async function main() {
