@@ -29,10 +29,10 @@ it('tells npm, pnpm and bun installs apart and refuses source checkouts', () => 
   expect(detectPackageManager('/h/code/webr/package.json')).toBeUndefined();
 });
 
-it('installs the latest version globally with the matching package manager', () => {
-  expect(globalInstallCommand('npm', '@pablopunk/webr')).toEqual({ command: 'npm', args: ['install', '-g', '@pablopunk/webr@latest'] });
-  expect(globalInstallCommand('pnpm', 'webr')).toEqual({ command: 'pnpm', args: ['add', '-g', 'webr@latest'] });
-  expect(globalInstallCommand('bun', 'webr')).toEqual({ command: 'bun', args: ['add', '-g', 'webr@latest'] });
+it('installs the exact new version globally with the matching package manager', () => {
+  expect(globalInstallCommand('npm', '@pablopunk/webr', '1.2.3')).toEqual({ command: 'npm', args: ['install', '-g', '@pablopunk/webr@1.2.3'] });
+  expect(globalInstallCommand('pnpm', 'webr', '1.2.3')).toEqual({ command: 'pnpm', args: ['add', '-g', 'webr@1.2.3'] });
+  expect(globalInstallCommand('bun', 'webr', '1.2.3')).toEqual({ command: 'bun', args: ['add', '-g', '--no-cache', 'webr@1.2.3'] });
 });
 
 it('reads the latest version from the registry, encoding scoped names', async () => {
@@ -86,6 +86,7 @@ const environment = (overrides: Partial<UpdateEnvironment> = {}): UpdateEnvironm
   installPath: () => '/usr/local/lib/node_modules/webr/package.json',
   latestVersion: async () => newer,
   install: () => true,
+  installedVersion: () => newer,
   restartPlugin: async () => ['Restarted the plugin.'],
   ...overrides,
 });
@@ -94,7 +95,7 @@ it('installs a newer version and restarts the plugin', async () => {
   process.env.WEBR_HOME = env().WEBR_HOME;
   const install = vi.fn(() => true);
   const lines = await runUpdate(environment({ install }));
-  expect(install).toHaveBeenCalledWith({ command: 'npm', args: ['install', '-g', `${packageInfo().name}@latest`] });
+  expect(install).toHaveBeenCalledWith({ command: 'npm', args: ['install', '-g', `${packageInfo().name}@${newer}`] });
   expect(lines).toEqual([`Updated Webr ${version} → ${newer}.`, 'Restarted the plugin.']);
 });
 
@@ -114,6 +115,8 @@ it('fails clearly when the install fails or the copy is not a global install', a
   process.env.WEBR_HOME = env().WEBR_HOME;
   await expect(runUpdate(environment({ install: () => false }))).rejects.toThrow('npm could not install');
   await expect(runUpdate(environment({ installPath: () => '/code/webr/package.json' }))).rejects.toThrow('not installed globally');
+  await expect(runUpdate(environment({ installedVersion: () => version }))).rejects.toThrow(`still ${version} instead of ${newer}`);
+  await expect(runUpdate(environment({ installedVersion: () => undefined }))).rejects.toThrow('still unreadable');
 });
 
 const local = { id: 'local', name: 'Local', session: 'default', enabled: true, transport: 'local', locations: [] } as TargetProfile;

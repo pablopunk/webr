@@ -16,9 +16,9 @@ export function detectPackageManager(installPath: string): PackageManager | unde
 
 export const installedPackagePath = () => realpathSync(fileURLToPath(new URL('../../package.json', import.meta.url)));
 
-export function globalInstallCommand(manager: PackageManager, packageName: string): InstallCommand {
-  const target = `${packageName}@latest`;
+export function globalInstallCommand(manager: PackageManager, packageName: string, version: string): InstallCommand {
+  const target = `${packageName}@${version}`;
   if (manager === 'pnpm') return { command: 'pnpm', args: ['add', '-g', target] };
-  if (manager === 'bun') return { command: 'bun', args: ['add', '-g', target] };
+  if (manager === 'bun') return { command: 'bun', args: ['add', '-g', '--no-cache', target] };
   return { command: 'npm', args: ['install', '-g', target] };
 }
