@@ -50,6 +50,17 @@ it('ignores stale stream generations and never replays input after reconnect', (
   const reconnectCommands = BrowserSocket.instances[3].sent.map((message) => JSON.parse(message));
   expect(reconnectCommands).toHaveLength(1); expect(reconnectCommands[0].mode).toBe('observe'); expect(reconnectCommands[0].type).toBe('open'); manager.stop();
 });
+it('keeps a controller conflict visible until an explicit takeover', () => {
+  const { manager, pane, binary, open, onState } = setup(); pane.control();
+  const control = JSON.parse(binary.sent.at(-1)!);
+  binary.onmessage!({ data: JSON.stringify({ type: 'stream.error', streamId: open.streamId, generation: control.generation, reason: 'controller_conflict' }) });
+  const observer = JSON.parse(binary.sent.at(-1)!);
+  binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: observer.generation, writable: false }) });
+  expect(onState.mock.calls.at(-1)).toEqual(['Another controller owns this terminal.', false]);
+  pane.input('not sent'); expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false);
+  pane.control(true); expect(JSON.parse(binary.sent.at(-1)!).takeover).toBe(true);
+  expect(onState.mock.calls.at(-1)).toEqual(['Waiting for terminal control.', false]); manager.stop();
+});
 it('recreates a fresh baseline after a sequence gap instead of accepting missing deltas', () => {
   const { manager, binary, open } = setup();
   const send = (seq: number, full: boolean) => binary.onmessage!({ data: encodeFrame({ ...frame(seq, full), streamId: open.streamId, generation: open.generation }).buffer as ArrayBuffer });

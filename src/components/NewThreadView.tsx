@@ -21,6 +21,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [creatingWorkspace, setCreatingWorkspace] = useState(false);
+  const [validating, setValidating] = useState(false);
   const operation = useRef<{ payload: string; key: string } | null>(null);
   const baseMachine = machines.find((machine) => machine.id === machineId) ?? { id: '', name: 'No target', connected: false, session: '', projectPaths: {}, harnesses: [] };
   const catalog = useMachineCatalog(machineId, baseMachine.connected, baseMachine.configVersion, baseMachine.session, projectId);
@@ -78,6 +79,18 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     }
   };
 
+  const validateLaunch = async () => {
+    if (!selectedHarness || !projectId || !machine.connected || validating || !confirm(`Start a temporary ${selectedHarness.name} agent in ${machineProjects.find((project) => project.id === projectId)?.name ?? 'this project'} to check launch? This sends one test prompt and may use a paid API.`)) return;
+    setValidating(true); setError('');
+    try {
+      const response = await fetch('/api/launch-approval', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ machineId, projectId, agent: selectedHarness.id, model: model.trim(), consent: true }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Launch check failed.');
+      await catalog.refetch();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Launch check failed.'); }
+    finally { setValidating(false); }
+  };
+
   return <main className="new-thread-page" aria-label="New thread">
     <button className="mobile-menu" onClick={onOpenSidebar}>Threads</button>
     <h1>What do you want to build today?</h1>
@@ -101,6 +114,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
       </div>
     </form>
     {(selectedHarness?.reason || !machines.length || machine.error || catalog.isError) && <p className="composer-preview-note">{selectedHarness?.reason ?? (!machines.length ? 'No target is configured.' : machine.error ? `Machine is not connected: ${machine.error.replaceAll('_', ' ')}.` : 'The machine catalog is not available.')}</p>}
+    {selectedHarness && !selectedHarness.launchEnabled && machine.id === 'local' && machine.connected && projectId && <button type="button" className="launch-validation-button" disabled={validating} onClick={validateLaunch}>{validating ? 'Checking launch…' : 'Check and enable launch'}</button>}
     {error && <p className="form-error" role="alert">{error}</p>}
     </>}
   </main>;

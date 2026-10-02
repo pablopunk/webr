@@ -11,7 +11,7 @@ import { createWorkspace } from './runtime/workspace';
 const localOwner = 'local';
 type SsrHandler = (request: FastifyRequest['raw'], response: import('node:http').ServerResponse, next: (error?: unknown) => void, locals: Record<string, unknown>) => void;
 
-export async function createHost(manager: RuntimeManager, origin: string, ssr?: SsrHandler, tls?: { key: Buffer; cert: Buffer }) {
+export async function createHost(manager: RuntimeManager, origin: string, ssr?: SsrHandler, tls?: { key: Buffer; cert: Buffer }, approveLaunch?: (selection: { machineId: string; projectId: string; agent: 'claude' | 'codex' | 'opencode'; model: string }) => Promise<boolean>) {
   const app = Fastify({ logger: false, bodyLimit: 16 * 1024, ...(tls ? { https: tls } : {}), requestTimeout: 10_000 });
   const configuredOrigin = new URL(origin);
   const allowedHosts = new Set([configuredOrigin.host]);
@@ -37,6 +37,17 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     const { machineId } = z.object({ machineId: opaqueId }).parse(request.params);
     const { projectId } = z.object({ projectId: opaqueId.optional() }).strict().parse(request.query);
     return manager.catalog(machineId, projectId);
+  });
+  app.post('/api/launch-approval', async (request, reply) => {
+    const { consent: _consent, ...selection } = z.object({ machineId: opaqueId, projectId: opaqueId, agent: z.enum(['claude', 'codex', 'opencode']), model: z.string().regex(/^[A-Za-z0-9_/.:+-]{1,120}$/), consent: z.literal(true) }).strict().parse(request.body);
+    if (!approveLaunch) return reply.code(501).send({ error: 'launch_validation_unavailable' });
+    const supervisor = manager.supervisors.get(selection.machineId);
+    if (!supervisor?.connected || !supervisor.target.locations.some((location) => location.projectId === selection.projectId)) return reply.code(409).send({ error: 'unknown_project_location' });
+    const catalog = await manager.catalog(selection.machineId, selection.projectId);
+    if (!catalog.harnesses.some((harness) => harness.id === selection.agent)) return reply.code(409).send({ error: 'harness_not_installed' });
+    if (!await approveLaunch(selection)) return reply.code(409).send({ error: 'Launch validation failed; inspect .data/validation before retrying.' });
+    manager.refreshCatalog(selection.machineId);
+    return { approved: true };
   });
   app.get('/api/runtime', async () => manager.bootstrap());
   app.post('/api/workspaces', async (request, reply) => {

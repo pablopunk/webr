@@ -4,19 +4,41 @@ import { nativePane, nativeSnapshot, nativeTab, nativeWorkspace } from '../proto
 import { SocketApi } from '../protocol/socket';
 import { localSocket, type TargetProfile } from '../transport/registry';
 import { quoteShell } from '../transport/ssh';
-import { controlGranted, verifyEvidence } from './evidence';
+import { controlGranted, launchGranted, verifyEvidence } from './evidence';
 import type { MetadataDatabase } from '../storage/database';
+import { nativeLocations } from '../transport/native-locations';
+import type { LaunchInput } from '../../shared/runtime';
 
 const methods = new Set(['session.snapshot', 'workspace.create', 'workspace.close', 'pane.send_input', 'pane.read', 'pane.process_info']);
 const pause = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
 
+type Selection = Pick<LaunchInput, 'projectId' | 'agent' | 'model'>;
+const approved = (database: MetadataDatabase, profile: TargetProfile, key: string, fingerprint: string) => verifyEvidence(database.getSetting('validation:' + profile.id), key, fingerprint);
+
 export async function validateLocalControl(profile: TargetProfile, database: MetadataDatabase, key: string, fingerprint: string, api = new SocketApi(localSocket(profile), 5000, methods)) {
+  if (controlGranted(approved(database, profile, key, fingerprint))) { api.close(); return true; }
+  return validateInOwnedShell(profile, api, '', () => controlGranted(approved(database, profile, key, fingerprint)));
+}
+
+export async function validateLocalLaunch(profile: TargetProfile, database: MetadataDatabase, key: string, fingerprint: string, selection: Selection, api = new SocketApi(localSocket(profile), 5000, methods)) {
+  if (profile.transport !== 'local' || !profile.automatic) { api.close(); throw new Error('launch_validation_unavailable'); }
+  try {
+    const snapshot = nativeSnapshot.parse((await api.request('session.snapshot')).snapshot);
+    const location = nativeLocations(profile.id, snapshot).find((item) => item.projectId === selection.projectId);
+    if (!location) throw new Error('unknown_project_location');
+    const check = () => launchGranted(approved(database, profile, key, fingerprint), selection, location.path);
+    if (check()) return true;
+    const args = ` --launch-only --harness ${quoteShell(selection.agent)} --model ${quoteShell(selection.model)} --project ${quoteShell(selection.projectId)}`;
+    return await validateInOwnedShell(profile, api, args, check, snapshot, 'launch');
+  } finally { api.close(); }
+}
+
+async function validateInOwnedShell(profile: TargetProfile, api: SocketApi, args: string, check: () => boolean, snapshot?: ReturnType<typeof nativeSnapshot.parse>, kind = 'control') {
   try {
     if (!profile.automatic || profile.transport !== 'local') return false;
-    if (controlGranted(verifyEvidence(database.getSetting('validation:' + profile.id), key, fingerprint))) return true;
-    const initial = nativeSnapshot.parse((await api.request('session.snapshot')).snapshot);
+    const initial = snapshot ?? nativeSnapshot.parse((await api.request('session.snapshot')).snapshot);
     const nonce = randomUUID();
-    const label = `herdr-web-control-check-${nonce}`;
+    const label = `herdr-web-${kind}-check-${nonce}`;
     const cwd = resolve('.');
     const created = await api.request('workspace.create', { cwd, label, focus: false }, { requestId: nonce, timeoutMs: 30_000 });
     const workspace = nativeWorkspace.parse(created.workspace);
@@ -26,7 +48,7 @@ export async function validateLocalControl(profile: TargetProfile, database: Met
     const marker = `HERDR_WEB_CONTROL_CHECK_${nonce.replaceAll('-', '')}`;
     const databasePath = resolve(process.env.HERDR_WEB_DATABASE ?? '.data/gateway.sqlite');
     const env = `HERDR_WEB_DATABASE=${quoteShell(databasePath)}${process.env.HERDR_WEB_TARGETS ? ` HERDR_WEB_TARGETS=${quoteShell(resolve(process.env.HERDR_WEB_TARGETS))}` : ''}`;
-    const command = `${env} mise exec -- pnpm run validate:live --target ${quoteShell(profile.id)} --consent --approve; printf '\\n${marker}:%s\\n' "$?"`;
+    const command = `${env} mise exec -- pnpm run validate:live --target ${quoteShell(profile.id)} --consent --approve${args}; printf '\\n${marker}:%s\\n' "$?"`;
     let shellReady = false;
     for (let i = 0; i < 40; i++) {
       try {
@@ -45,7 +67,7 @@ export async function validateLocalControl(profile: TargetProfile, database: Met
       if (completion) { exitCode = Number(completion[1]); break; }
       await pause(500);
     }
-    if (exitCode === undefined) throw new Error('Automatic control validation did not finish; preserve its workspace');
+    if (exitCode === undefined) throw new Error('Automatic validation did not finish; preserve its workspace');
     const fresh = nativeSnapshot.parse((await api.request('session.snapshot')).snapshot);
     const members = fresh.panes.filter((item) => item.workspace_id === workspace.workspace_id);
     const tabs = fresh.tabs.filter((item) => item.workspace_id === workspace.workspace_id);
@@ -53,6 +75,6 @@ export async function validateLocalControl(profile: TargetProfile, database: Met
     const processInfo = (await api.request('pane.process_info', { pane_id: pane.pane_id })).process_info as { shell_pid: number; foreground_processes: { pid: number }[] };
     if (!processInfo?.shell_pid || !processInfo.foreground_processes?.length || !processInfo.foreground_processes.every((process) => process.pid === processInfo.shell_pid)) throw new Error('Automatic validation process is still active; preserve its workspace');
     await api.request('workspace.close', { workspace_id: workspace.workspace_id, close_group: false });
-    return exitCode === 0 && controlGranted(verifyEvidence(database.getSetting('validation:' + profile.id), key, fingerprint));
+    return exitCode === 0 && check();
   } finally { api.close(); }
 }

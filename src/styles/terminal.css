@@ -13,6 +13,8 @@
 .terminal-pane { position: relative; }
 .terminal-input-capture { position: absolute; left: 12px; bottom: 8px; width: 2px; height: 2px; opacity: .01; padding: 0; border: 0; resize: none; }
 .terminal-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.terminal-control-conflict { position: absolute; z-index: 10; top: 8px; left: 50%; display: flex; align-items: center; gap: 10px; max-width: calc(100% - 16px); padding: 6px 10px; transform: translateX(-50%); border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-raised); color: var(--ink-soft); box-shadow: var(--card-shadow); white-space: nowrap; }
+.terminal-control-conflict button { padding: 3px 7px; border: 0; border-radius: 5px; background: var(--surface-hover); color: var(--ink); }
 .terminal-context-menu { position: absolute; z-index: 20; display: grid; gap: 4px; width: 220px; padding: 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-raised); box-shadow: var(--shadow); }
 .terminal-context-menu button { text-align: left; padding: 5px 8px; font: inherit; color: var(--ink); background: var(--surface); border: 0; }
 .terminal-context-menu small { color: var(--ink-muted); }

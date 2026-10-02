@@ -17,6 +17,8 @@ it('automates complete same-session validation on only new resources while injec
   expect(report.errors).toEqual([]); expect(report.success).toBe(true); expect(report.missing).toEqual([]); expect(report.provenance).toBe('fixture'); expect(report.receipt).toBeUndefined(); expect(isLiveTransport(transport)).toBe(false);
   expect({ workspace: transport.state.workspaces[0], pane: transport.state.panes[0], process: transport.processes.get(transport.callerPaneId) }).toEqual(existing); expect(transport.state.workspaces).toHaveLength(1);
   expect(transport.calls.filter((call) => ['workspace.create', 'worktree.create'].includes(call.method)).every((call) => call.params.focus === false)).toBe(true);
+  expect(transport.calls.find((call) => call.method === 'worktree.create')?.params.workspace_id).toBe('wUSER');
+  expect(transport.calls.filter((call) => call.method === 'workspace.create')).toHaveLength(1);
   expect(transport.calls.filter((call) => call.method !== 'workspace.create' && call.params.pane_id).every((call) => call.params.pane_id !== transport.callerPaneId)).toBe(true);
   expect(transport.calls.some((call) => call.method === 'server.stop' || call.params.close_group === true || call.params.force === true)).toBe(false);
   expect(transport.calls.filter((call) => call.method === 'agent.prompt')).toHaveLength(1); expect(transport.calls.filter((call) => call.method === 'worktree.create')).toHaveLength(1);

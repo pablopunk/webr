@@ -43,6 +43,10 @@ export class RuntimeManager extends EventEmitter {
     this.catalogs.set(key, { expires: Date.now() + 30_000, value });
     try { return await value; } catch (error) { this.catalogs.delete(key); throw error; }
   }
+  refreshCatalog(machineId: string) {
+    for (const key of this.catalogs.keys()) if (JSON.parse(key)[0] === machineId) this.catalogs.delete(key);
+    this.supervisors.get(machineId)?.invalidate();
+  }
   binding(machineId: string, threadId: string, terminalId: string) {
     const supervisor = this.supervisors.get(machineId);
     const projection = this.projections.get(machineId);

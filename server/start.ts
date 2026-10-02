@@ -7,7 +7,7 @@ import { RuntimeManager } from '../src/server/runtime/manager';
 import { loadRegistry } from '../src/server/transport/registry';
 import { HerdrTarget } from '../src/server/transport/herdr-target';
 import { createHost } from '../src/server/host';
-import { validateLocalControl } from '../src/server/validation/automatic';
+import { validateLocalControl, validateLocalLaunch } from '../src/server/validation/automatic';
 
 const host = process.env.HOST ?? '127.0.0.1';
 const port = Number(process.env.PORT ?? 4321);
@@ -23,7 +23,16 @@ const profiles = await loadRegistry(process.env.HERDR_WEB_TARGETS);
 const manager = new RuntimeManager(database, profiles.map((profile) => new HerdrTarget(profile, { read: () => database.getSetting('validation:' + profile.id), key })));
 const { handler } = await import(pathToFileURL(resolve('dist/server/entry.mjs')).href);
 const tls = process.env.HERDR_WEB_TLS_CERT && process.env.HERDR_WEB_TLS_KEY ? { cert: await readFile(process.env.HERDR_WEB_TLS_CERT), key: await readFile(process.env.HERDR_WEB_TLS_KEY) } : undefined;
-const app = await createHost(manager, origin, handler, tls);
+let launchValidationRunning = false;
+const app = await createHost(manager, origin, handler, tls, async (selection) => {
+  const profile = profiles.find((item) => item.id === selection.machineId);
+  const supervisor = manager.supervisors.get(selection.machineId);
+  if (!profile?.automatic || profile.transport !== 'local' || !supervisor?.connected) throw new Error('launch_validation_unavailable');
+  if (launchValidationRunning) throw new Error('launch_validation_in_progress');
+  launchValidationRunning = true;
+  try { return await validateLocalLaunch(profile, database, key, supervisor.target.fingerprint, selection); }
+  finally { launchValidationRunning = false; }
+});
 await app.listen({ host, port });
 const automaticLocal = profiles.find((profile) => profile.id === 'local' && profile.automatic && profile.transport === 'local');
 let validationStarted = false;

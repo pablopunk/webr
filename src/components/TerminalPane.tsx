@@ -76,6 +76,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
 
   return <section className={`terminal-pane ${active ? 'is-active' : ''}`} aria-label={`${pane.title} terminal`} onClick={() => { onFocus(); if (!menu) focusInput(); }} onContextMenu={(event) => { if (event.altKey || event.shiftKey) return; event.preventDefault(); onFocus(); const rect = event.currentTarget.getBoundingClientRect(); setMenu({ x: Math.max(0, Math.min(event.clientX - rect.left, rect.width - 220)), y: Math.max(0, Math.min(event.clientY - rect.top, rect.height - 180)) }); }}>
     <span className="terminal-status" role="status">{message}</span>
+    {message === 'Another controller owns this terminal.' && <div className="terminal-control-conflict">Another controller has input.<button type="button" onClick={(event) => { event.stopPropagation(); if (confirm('Replace the active terminal controller?')) control.current?.control(true); }}>Take over</button></div>}
     <div ref={host} className="terminal-host" />
     {writable && <TerminalInput onInput={(text, paste) => control.current?.input(text, paste)} />}
     {menu && <div role="menu" aria-label="Terminal actions" className="terminal-context-menu" style={{ left: menu.x, top: menu.y }} onKeyDown={(event) => { if (event.key === 'Escape') setMenu(null); }}>
