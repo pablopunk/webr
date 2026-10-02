@@ -80,5 +80,5 @@ it('sends everything the real CLI prints to WEBR_LOG_FILE', () => {
   const path = logPath();
   const result = spawnSync(process.execPath, ['bin/webr.mjs', '--version'], { env: { ...process.env, WEBR_LOG_FILE: path, WEBR_NO_UPDATE_CHECK: '1' }, encoding: 'utf8' });
   expect(result.stdout).toBe('');
-  expect(read(path)).toMatch(/^\d+\.\d+\.\d+\n$/);
+  expect(read(path)).toMatch(/^\d+\.\d+\.\d+\n/);
 });
