@@ -33,7 +33,7 @@ export function findOnPath(name, pathValue = process.env.PATH ?? '') {
   return pathValue.split(delimiter).filter(Boolean).map((dir) => join(dir, name)).find((candidate) => existsSync(candidate));
 }
 
-export const usableCheckout = (dev) => dev?.checkout && existsSync(devTsx(dev.checkout)) ? dev.checkout : undefined;
+export const usableCheckout = (dev) => dev?.checkout && existsSync(devTsx(dev.checkout)) && (dev.pid === undefined || isPidAlive(dev.pid)) ? dev.checkout : undefined;
 
 export const openAppendLog = (path) => openSync(path, 'a');
 export const closeLog = closeSync;

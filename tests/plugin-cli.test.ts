@@ -1,17 +1,20 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it } from 'vitest';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { realRun } from '../server/command';
 import { enterPluginDevMode, stopProductionWebr } from '../server/plugin/dev';
-import { installPlugin, pluginStatus, restartPluginWebr, uninstallWebrPlugin, type PluginDeps } from '../server/plugin';
+import { fixPlugin, installPlugin, pluginStatus, restartPluginWebr, uninstallWebrPlugin, type PluginDeps } from '../server/plugin';
 import { isPortOpen } from '../server/plugin/probe';
+import { modeLines, pluginMode } from '../server/plugin/mode';
 import { PLUGIN_ID, PLUGIN_SOURCE } from '../server/plugin/herdr';
 
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+const realHome = process.env.WEBR_HOME;
+beforeEach(() => { const home = mkdtempSync(join(tmpdir(), 'webr-home-')); roots.push(home); process.env.WEBR_HOME = home; });
+afterEach(() => { if (realHome === undefined) delete process.env.WEBR_HOME; else process.env.WEBR_HOME = realHome; for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 function fakeHerdr(installed: 'none' | 'github' | 'local' = 'none') {
   const root = mkdtempSync(join(tmpdir(), 'webr-herdr-')); roots.push(root);
@@ -132,7 +135,7 @@ it('never adds the plugin in dev mode for someone who did not install it', () =>
 it('links the checkout in dev mode and restores the GitHub plugin afterwards', () => {
   const herdr = fakeHerdr('github');
   const restore = enterPluginDevMode('/checkout', herdr.run, herdr.state);
-  expect(JSON.parse(readFileSync(join(herdr.state, 'dev.json'), 'utf8'))).toEqual({ checkout: '/checkout' });
+  expect(JSON.parse(readFileSync(join(herdr.state, 'dev.json'), 'utf8'))).toEqual({ checkout: '/checkout', pid: process.pid });
   expect(readFileSync(herdr.registry, 'utf8').trim()).toBe('local');
   restore();
   expect(existsSync(join(herdr.state, 'dev.json'))).toBe(false);
@@ -155,4 +158,53 @@ it('stops the production Webr for dev and starts it again when dev stops', async
 it('leaves the production Webr alone when it is not running', async () => {
   const herdr = fakeHerdr('github');
   expect(await stopProductionWebr(herdr.run, herdr.state)).toBe(false);
+});
+
+const deadPid = () => spawnSync(process.execPath, ['-e', '']).pid!;
+const recordDev = (herdr: ReturnType<typeof fakeHerdr>, pid: number) => writeFileSync(join(herdr.state, 'dev.json'), JSON.stringify({ checkout: '/checkout', pid }));
+
+it('tells production, a live dev run, a stuck link and no plugin apart', () => {
+  expect(pluginMode(fakeHerdr().run, fakeHerdr().state)).toEqual({ kind: 'absent' });
+  expect(pluginMode(fakeHerdr('github').run, fakeHerdr('github').state)).toEqual({ kind: 'production' });
+  const live = fakeHerdr('local'); recordDev(live, process.pid);
+  expect(pluginMode(live.run, live.state)).toEqual({ kind: 'dev', checkout: '/checkout' });
+  const crashed = fakeHerdr('local'); recordDev(crashed, deadPid());
+  expect(pluginMode(crashed.run, crashed.state)).toEqual({ kind: 'stuck', where: '/checkout' });
+  const linked = fakeHerdr('local');
+  expect(pluginMode(linked.run, linked.state).kind).toBe('stuck');
+});
+
+it('shows the mode in status and says how to recover', async () => {
+  const live = fakeHerdr('local'); recordDev(live, process.pid);
+  expect((await pluginStatus(live.deps())).join('\n')).toContain('Mode: dev, running from /checkout');
+  const crashed = fakeHerdr('local'); recordDev(crashed, deadPid());
+  expect(modeLines(pluginMode(crashed.run, crashed.state)).join('')).toContain('webr fix');
+  expect((await pluginStatus(fakeHerdr('github').deps())).join('\n')).toContain('Mode: production');
+});
+
+it('webr fix puts production back after a crashed dev run', async () => {
+  const herdr = fakeHerdr('local'); recordDev(herdr, deadPid());
+  writeFileSync(join(herdr.config, 'config.json'), JSON.stringify({ port: await freePort() }));
+  const lines = await fixPlugin(herdr.deps());
+  expect(lines[0]).toBe('Restored the production plugin.');
+  expect(readFileSync(herdr.registry, 'utf8').trim()).toBe('github');
+  expect(existsSync(join(herdr.state, 'dev.json'))).toBe(false);
+  expect(readFileSync(join(herdr.state, 'launches'), 'utf8')).toBe('x');
+});
+
+it('webr fix also repairs a link that has no dev record', async () => {
+  const herdr = fakeHerdr('local');
+  expect((await fixPlugin(herdr.deps()))[0]).toBe('Restored the production plugin.');
+  expect(readFileSync(herdr.registry, 'utf8').trim()).toBe('github');
+});
+
+it('webr fix leaves a running dev alone and a healthy production alone', async () => {
+  const live = fakeHerdr('local'); recordDev(live, process.pid);
+  expect((await fixPlugin(live.deps()))[0]).toContain('"pnpm dev" is running');
+  expect(readFileSync(live.registry, 'utf8').trim()).toBe('local');
+  const healthy = fakeHerdr('github');
+  const webr = await startFakeWebr(healthy);
+  expect((await fixPlugin(healthy.deps()))[0]).toContain('Nothing to fix');
+  webr.child.kill();
+  expect((await fixPlugin(fakeHerdr().deps())).at(0)).toContain('not installed');
 });

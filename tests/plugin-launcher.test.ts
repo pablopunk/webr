@@ -97,6 +97,16 @@ it('starts the dev checkout instead of the global webr while dev mode is recorde
   expect((await box.recordsAfterStart())[0]).toBe(`checkout ${box.port} server/start.ts`);
 });
 
+it('ignores a dev record whose dev process has died', async () => {
+  const box = await sandbox();
+  fakeProgram(join(box.bin, 'webr'), box.record, 'global');
+  const checkout = join(box.root, 'checkout');
+  fakeProgram(plan.devTsx(checkout), box.record, 'checkout');
+  const dead = spawnSync(process.execPath, ['-e', '']).pid!;
+  writeFileSync(join(box.state, 'dev.json'), JSON.stringify({ checkout, pid: dead }));
+  expect(box.launch().stdout).toContain('Started Webr (global)');
+});
+
 it('ignores a stale dev record whose checkout is gone', async () => {
   const box = await sandbox();
   fakeProgram(join(box.bin, 'webr'), box.record, 'global');

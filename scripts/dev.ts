@@ -37,5 +37,5 @@ await stopPreviousServer();
 const restorePlugin = enterPluginDevMode(fileURLToPath(new URL('..', import.meta.url)), realRun, pluginStateDir(), productionWasRunning);
 process.once('exit', restorePlugin);
 const server = spawn('pnpm', ['start'], { stdio: 'inherit', env: { ...process.env, HOST: process.env.HOST ?? '0.0.0.0', PORT: String(port), WEBR_DEV: '1' } });
-for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => server.kill(signal));
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(signal, () => server.kill(signal === 'SIGHUP' ? 'SIGTERM' : signal));
 server.on('exit', (code) => process.exit(code ?? 0));

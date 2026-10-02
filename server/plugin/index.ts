@@ -5,6 +5,8 @@ import { readPluginConfig, writePluginConfig, type PluginConfig } from './config
 import { pluginStateDir } from './files';
 import { isPortOpen, probeAddress } from './probe';
 import { stopPluginWebr } from './stop';
+import { modeLines, pluginMode } from './mode';
+import { DEV_FILE } from './files';
 import { installFromGithub, installedPlugin, pluginConfigDir, requireGit, requireHerdr, uninstallPlugin, unlinkLocalPlugin } from './herdr';
 
 export type PluginDeps = {
@@ -62,7 +64,22 @@ export async function pluginStatus(deps: PluginDeps) {
   return [
     `Installed (${plugin.kind === 'github' ? 'from GitHub' : `linked to ${plugin.root}`}).`,
     `Webr is ${await isPortOpen(address) ? 'running' : 'not running'} on port ${address.port}.`,
+    ...modeLines(pluginMode(deps.run, deps.stateDir)),
     `Settings: ${JSON.stringify(config)}`,
     `Logs and state: ${deps.stateDir}`,
   ];
+}
+
+export async function fixPlugin(deps: PluginDeps) {
+  requireHerdr(deps.run);
+  const mode = pluginMode(deps.run, deps.stateDir);
+  if (mode.kind === 'absent') return ['The Webr plugin is not installed, so there is nothing to fix. Install it with "webr plugin install".'];
+  if (mode.kind === 'dev') return ['"pnpm dev" is running. Stop it with Ctrl+C and production comes back by itself.'];
+  const plugin = installedPlugin(deps.run)!;
+  const configDir = pluginConfigDir(deps.run);
+  if (mode.kind === 'production') return [await isPortOpen(probeAddress(readPluginConfig(configDir))) ? 'Production is active and Webr is running. Nothing to fix.' : startNow(plugin.root, configDir, deps)];
+  rmSync(join(deps.stateDir, DEV_FILE), { force: true });
+  requireGit(deps.run);
+  installFromGithub(deps.run);
+  return ['Restored the production plugin.', ...((await restartPluginWebr(deps)) ?? [])];
 }

@@ -18,7 +18,7 @@ function recordedPid(stateDir: string) {
   } catch { return undefined; }
 }
 
-function isAlive(pid: number) {
+export function isAlive(pid: number) {
   try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === 'EPERM'; }
 }
 

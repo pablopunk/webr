@@ -33,12 +33,12 @@ export function enterPluginDevMode(checkout: string, run: RunCommand = realRun, 
   const previous = installedPlugin(run);
   if (!previous) return nothingToRestore;
   mkdirSync(stateDir, { recursive: true });
-  writeFileSync(join(stateDir, DEV_FILE), JSON.stringify({ checkout }));
+  writeFileSync(join(stateDir, DEV_FILE), JSON.stringify({ checkout, pid: process.pid }));
   linkLocalPlugin(run, join(checkout, 'plugin'));
   console.log('Webr plugin linked to this checkout. It is restored when dev stops.');
   return () => {
     rmSync(join(stateDir, DEV_FILE), { force: true });
     restorePrevious(previous, run);
-    if (restartProduction) startProduction(run, stateDir);
+    if (restartProduction) try { startProduction(run, stateDir); } catch { console.error('Could not start production Webr. Run "webr fix".'); }
   };
 }
