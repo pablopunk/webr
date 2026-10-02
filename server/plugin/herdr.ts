@@ -22,6 +22,10 @@ export const requireHerdr = (run: RunCommand) => {
   if (!run('herdr', ['--version']).ok) throw new Error('Herdr is not installed or not on your PATH. Install it from https://herdr.dev first.');
 };
 
+export const requireGit = (run: RunCommand) => {
+  if (!run('git', ['--version']).ok) throw new Error('Git is not installed or not on your PATH. Herdr needs it to install plugins from GitHub.');
+};
+
 export const pluginConfigDir = (run: RunCommand) => succeeded(run('herdr', ['plugin', 'config-dir', PLUGIN_ID]), 'find the plugin config folder').trim();
 export const installFromGithub = (run: RunCommand) => succeeded(run('herdr', ['plugin', 'install', PLUGIN_SOURCE, '--yes']), 'install the plugin');
 export const uninstallPlugin = (run: RunCommand) => succeeded(run('herdr', ['plugin', 'uninstall', PLUGIN_ID]), 'uninstall the plugin');

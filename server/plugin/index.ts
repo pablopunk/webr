@@ -1,10 +1,11 @@
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { realRun, type RunCommand } from '../command';
 import { readPluginConfig, writePluginConfig, type PluginConfig } from './config';
 import { pluginStateDir } from './files';
 import { isPortOpen, probeAddress } from './probe';
 import { stopPluginWebr } from './stop';
-import { installFromGithub, installedPlugin, pluginConfigDir, requireHerdr, uninstallPlugin, unlinkLocalPlugin } from './herdr';
+import { installFromGithub, installedPlugin, pluginConfigDir, requireGit, requireHerdr, uninstallPlugin, unlinkLocalPlugin } from './herdr';
 
 export type PluginDeps = {
   run: RunCommand;
@@ -18,6 +19,7 @@ const startNow = (root: string, configDir: string, deps: PluginDeps) =>
 
 export async function installPlugin(config: PluginConfig, deps: PluginDeps) {
   requireHerdr(deps.run);
+  requireGit(deps.run);
   const configDir = pluginConfigDir(deps.run);
   writePluginConfig(configDir, config);
   installFromGithub(deps.run);
@@ -29,14 +31,14 @@ export async function installPlugin(config: PluginConfig, deps: PluginDeps) {
   ];
 }
 
-const runningAddress = (deps: PluginDeps) => probeAddress(readPluginConfig(pluginConfigDir(deps.run)));
-
 export async function uninstallWebrPlugin(deps: PluginDeps) {
   requireHerdr(deps.run);
   const plugin = installedPlugin(deps.run);
   if (!plugin) return ['The Webr plugin is not installed.'];
-  const stopped = await stopPluginWebr(deps.stateDir, runningAddress(deps));
+  const configDir = pluginConfigDir(deps.run);
+  const stopped = await stopPluginWebr(deps.stateDir, probeAddress(readPluginConfig(configDir)));
   if (plugin.kind === 'github') uninstallPlugin(deps.run); else unlinkLocalPlugin(deps.run);
+  rmSync(configDir, { recursive: true, force: true });
   return ['Removed the Webr plugin.', ...(stopped ? ['Stopped the running Webr.'] : [])];
 }
 

@@ -46,6 +46,12 @@ it('installs from GitHub, writes the settings and starts Webr now', async () => 
   expect(lines.join('\n')).toContain(`launched with ${herdr.config}`);
 });
 
+it('refuses to install without git because herdr clones plugins with it', async () => {
+  const herdr = fakeHerdr();
+  const withoutGit: PluginDeps['run'] = (command, args, env) => command === 'git' ? { ok: false, output: '' } : herdr.run(command, args, env);
+  await expect(installPlugin({}, herdr.deps({ run: withoutGit }))).rejects.toThrow('Git is not installed');
+});
+
 it('refuses to install without herdr', async () => {
   const herdr = fakeHerdr();
   await expect(installPlugin({}, herdr.deps({ run: () => ({ ok: false, output: '' }) }))).rejects.toThrow('Herdr is not installed');
@@ -54,6 +60,7 @@ it('refuses to install without herdr', async () => {
 it('uninstalls a GitHub plugin and unlinks a linked one', async () => {
   const github = fakeHerdr('github');
   await uninstallWebrPlugin(github.deps());
+  expect(existsSync(github.config)).toBe(false);
   expect(github.calls()).toContain(`plugin uninstall ${PLUGIN_ID}`);
   const local = fakeHerdr('local');
   await uninstallWebrPlugin(local.deps());
