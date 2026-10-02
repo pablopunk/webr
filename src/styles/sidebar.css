@@ -38,6 +38,7 @@
 .worktree-menu-name { display: grid; min-width: 0; overflow-wrap: anywhere; }
 .worktree-menu-name small { color: var(--ink-soft); font-size: 10.5px; }
 .worktree-menu-chevron { margin-left: auto; color: var(--ink-soft); }
+.thread-menu-path { max-width: 240px; margin-top: 4px; padding: 6px 8px 4px; border-top: 1px solid var(--line); color: var(--ink-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
 .thread-menu-item.is-danger { color: var(--danger); }
 .archived-threads { flex: none; max-height: 45%; overflow-y: auto; padding: 6px 8px; border-top: 1px solid var(--line); scrollbar-width: thin; }
 .archived-threads .group-header { position: sticky; top: -6px; z-index: 1; background: var(--sidebar); }

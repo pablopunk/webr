@@ -13,6 +13,7 @@ import { Tooltip } from './Tooltip';
 import { useFlipList } from './useFlipList';
 import { navigate } from 'astro:transitions/client';
 import { groupProjectLocations } from '../client/project-groups';
+import { withTildeHome } from '../client/home-path';
 import { alertDialog, confirmDialog } from './dialogs';
 import { deleteArchivedThreads, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
 
@@ -87,6 +88,7 @@ function ProjectGroupHeader({ project, closed, onToggle }: { project: Project; c
     <ContextMenu.Portal><ContextMenu.Positioner className="thread-menu-positioner"><ContextMenu.Popup className="thread-menu">
       <ContextMenu.Item className="thread-menu-item" onClick={() => void navigate(`/new?project=${encodeURIComponent(project.id)}`)}><Plus size={14} aria-hidden="true" />New thread</ContextMenu.Item>
       <ContextMenu.Item className="thread-menu-item" onClick={() => setRenaming(true)}><Pencil size={14} aria-hidden="true" />Rename project</ContextMenu.Item>
+      <div className="thread-menu-path" title={project.path}>{withTildeHome(project.path)}</div>
     </ContextMenu.Popup></ContextMenu.Positioner></ContextMenu.Portal>
   </ContextMenu.Root>;
 }
