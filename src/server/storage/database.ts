@@ -32,6 +32,12 @@ export class MetadataDatabase {
     const row = { id: thread.id, machineId: thread.machineId, session: thread.session, alias, metadata: thread, anchors, avatar: thread.avatarIndex };
     this.db.insert(schema.threads).values(row).onConflictDoUpdate({ target: schema.threads.id, set: row }).run();
   }
+  deleteThread(id: string) {
+    this.db.transaction(() => {
+      this.db.delete(schema.operations).where(eq(schema.operations.threadId, id)).run();
+      this.db.delete(schema.threads).where(eq(schema.threads.id, id)).run();
+    });
+  }
   beginLaunch(accountId: string, key: string, input: LaunchInput, thread: Thread) {
     const hash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
     return this.db.transaction(() => {

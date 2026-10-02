@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { PanelLeft, Search } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
 import { NewThreadView } from './NewThreadView';
@@ -31,7 +31,8 @@ export default function App(props: Props) {
 function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
   const { ui, terminals } = useRuntime();
   const projects = useRuntimeSelector(useShallow((state) => state.projectIds.map((id) => state.projects[id])));
-  const threads = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id]).filter((item) => isListedThread(item))));
+  const threads = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id]).filter((item) => !item.archivedAt && isListedThread(item))));
+  const archived = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id]).filter((item) => !!item.archivedAt)));
   const thread = useRuntimeSelector((state) => state.threads[threadId ?? '']);
   const projections = useRuntimeSelector((state) => state.projections);
   const gatewayConnected = useRuntimeSelector((state) => state.connected);
@@ -45,6 +46,12 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
   const focusedPane = thread?.panes.some((pane) => pane.id === storedFocus) ? storedFocus! : thread?.panes[0]?.id ?? '';
   const setFocusedPane = useCallback((paneId: string) => ui.getState().focus(scope, paneId), [ui, scope]);
   useClearDoneOnVisit(page === 'thread' ? thread : undefined, focusedPane, gatewayConnected && !!machines.find((machine) => machine.id === thread?.machineId)?.writable);
+
+  const shownThreadId = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (thread) shownThreadId.current = thread.id;
+    else if (page === 'thread' && shownThreadId.current === threadId) void navigate('/');
+  }, [thread, page, threadId]);
 
   useEffect(() => {
     const keepFileDropsInsideTheApp = (event: DragEvent) => { if (carriesFiles(event.dataTransfer)) event.preventDefault(); };
@@ -100,7 +107,7 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
   }, [thread, threads, paletteOpen, toggleSidebar, focusedPane, setFocusedPane]);
 
   return <div className="app-shell">
-    <Sidebar projects={projects} threads={threads} machines={machines} currentId={thread?.id} mode={mode} onModeChange={changeMode} collapsed={collapsed}
+    <Sidebar projects={projects} threads={threads} archived={archived} machines={machines} currentId={thread?.id} mode={mode} onModeChange={changeMode} collapsed={collapsed}
       mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} />
     <div className="main-panel">
       {page === 'thread' && thread && <ThreadView thread={thread} layouts={projections[thread.machineId]?.layouts ?? []} tabs={projections[thread.machineId]?.availableTabs ?? []} connected={gatewayConnected && !!projections[thread.machineId]?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} />}

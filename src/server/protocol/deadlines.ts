@@ -3,6 +3,7 @@ export const SHELL_READY_TIMEOUT_MS = 15_000;
 export const SCREEN_SETTLE_TIMEOUT_MS = 10_000;
 export const TRANSPORT_MARGIN_MS = 5000;
 export const WORKTREE_TIMEOUT_MS = 120_000;
+export const WORKTREE_REMOVE_TIMEOUT_MS = 60_000;
 export const MAX_RPC_TIMEOUT_MS = 305_000;
 export type RpcOptions = { timeoutMs: number; requestId?: string };
 
@@ -14,9 +15,10 @@ export function requestDeadline(method: string, params: Record<string, unknown>,
     timeout = ready + TRANSPORT_MARGIN_MS;
   }
   if (method === 'worktree.create') timeout = WORKTREE_TIMEOUT_MS;
+  if (method === 'worktree.remove') timeout = WORKTREE_REMOVE_TIMEOUT_MS;
   if (method === 'tab.create' || method === 'workspace.create') timeout = 30_000;
   timeout = options?.timeoutMs ?? timeout;
-  const maximum = ['agent.start', 'worktree.create', 'tab.create', 'workspace.create'].includes(method) ? MAX_RPC_TIMEOUT_MS : 5000;
+  const maximum = ['agent.start', 'worktree.create', 'worktree.remove', 'tab.create', 'workspace.create'].includes(method) ? MAX_RPC_TIMEOUT_MS : 5000;
   if (!Number.isInteger(timeout) || timeout < 1 || timeout > maximum) throw new Error('invalid_rpc_timeout');
   return timeout;
 }

@@ -22,6 +22,7 @@
   --focus-ring: #579bcf;
   --working: #58a47a;
   --blocked: #dca362;
+  --danger: #c9534d;
   --done: #7196ca;
   --idle: #9a9fa3;
   --terminal-bg: #fefefd;
@@ -58,6 +59,7 @@ html[data-theme='dark'] {
   --focus-ring: #9dd5e9;
   --working: #85cba2;
   --blocked: #ecc188;
+  --danger: #e07a74;
   --done: #a0bdec;
   --idle: #858d8b;
   --terminal-bg: #181a1a;

@@ -1,18 +1,21 @@
-import { memo, useState } from 'react';
+import { memo, useState, type ReactNode } from 'react';
+import { ContextMenu } from '@base-ui/react/context-menu';
 import { BotAvatar } from 'bot-avatars';
-import { ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, LayoutList, LoaderCircle, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Plus, Settings2, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, LayoutList, LoaderCircle, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Plus, Settings2, Trash2, X } from 'lucide-react';
 import { type Project, type Thread, harnessName, relativeTime } from '../lib/models';
 import { avatarForThread } from '../lib/avatars';
 import { isLaunching, launchFailed, launchLabel } from '../lib/launch';
 import type { Machine } from '../lib/machines';
 import { ProjectIcon } from './ProjectIcon';
 import { groupProjectLocations } from '../client/project-groups';
+import { deleteArchivedThreads, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
 
 export type SidebarMode = 'projects' | 'threads';
 
 type Props = {
   projects: Project[];
   threads: Thread[];
+  archived?: Thread[];
   machines: Machine[];
   currentId?: string;
   mode: SidebarMode;
@@ -30,7 +33,25 @@ const statusIcons: Record<Exclude<Thread['status'], 'idle'>, typeof CircleHelp> 
   working: LoaderCircle, blocked: MessageCircleQuestion, done: CircleCheck, unknown: CircleHelp,
 };
 
+const reportFailure = (error: unknown) => alert(error instanceof Error ? error.message : 'Herdr could not complete this action.');
+const confirmDelete = (thread: Thread) => { if (confirm(deleteWarning(1))) void deleteThreadPermanently(thread).catch(reportFailure); };
+
 const ThreadRow = memo(function ThreadRow({ thread, project, machineName, current, showProject }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean }) {
+  const archived = !!thread.archivedAt;
+  const ArchiveIcon = archived ? ArchiveRestore : Archive;
+  const archiveLabel = archived ? `Unarchive ${thread.title}` : `Archive ${thread.title}`;
+  return <ContextMenu.Root>
+    <ContextMenu.Trigger className="thread-item">
+      <ThreadLink thread={thread} project={project} machineName={machineName} current={current} showProject={showProject} />
+      <button type="button" className="thread-archive" aria-label={archiveLabel} title={archived ? 'Unarchive' : 'Archive'} onClick={() => void setThreadArchived(thread, !archived).catch(reportFailure)}><ArchiveIcon size={15} strokeWidth={1.8} aria-hidden="true" /></button>
+    </ContextMenu.Trigger>
+    <ContextMenu.Portal><ContextMenu.Positioner className="thread-menu-positioner"><ContextMenu.Popup className="thread-menu">
+      <ContextMenu.Item className="thread-menu-item is-danger" onClick={() => confirmDelete(thread)}><Trash2 size={14} aria-hidden="true" />Delete permanently</ContextMenu.Item>
+    </ContextMenu.Popup></ContextMenu.Positioner></ContextMenu.Portal>
+  </ContextMenu.Root>;
+});
+
+function ThreadLink({ thread, project, machineName, current, showProject }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean }) {
   const launching = isLaunching(thread); const failed = launchFailed(thread);
   const StatusIcon = launching ? LoaderCircle : failed ? TriangleAlert : thread.status === 'idle' ? null : statusIcons[thread.status];
   const status = launching ? launchLabel(thread) : failed ? 'Launch stopped' : statusLabel[thread.status];
@@ -41,9 +62,29 @@ const ThreadRow = memo(function ThreadRow({ thread, project, machineName, curren
     <span className="thread-time">{relativeTime(thread.updatedAt)}</span>
     {StatusIcon && <StatusIcon className={`thread-status status-${launching ? 'working' : failed ? 'blocked' : thread.status}`} size={15} strokeWidth={1.8} aria-hidden="true" />}
   </a>;
-});
+}
 
-export function Sidebar({ projects, threads, machines, currentId, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile }: Props) {
+function ArchivedThreads({ threads, renderThread }: { threads: Thread[]; renderThread: (thread: Thread) => ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const deleteAll = async () => {
+    if (!confirm(deleteWarning(threads.length))) return;
+    setDeleting(true);
+    try { const result = await deleteArchivedThreads(); if (result.failed.length) alert(`${result.failed.length} archived ${result.failed.length === 1 ? 'thread' : 'threads'} could not be deleted.`); }
+    catch (error) { reportFailure(error); } finally { setDeleting(false); }
+  };
+  return <section className="thread-group archived-threads" aria-label="Archived threads">
+    <div className="group-header">
+      <button className="group-title" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+        <span className="group-chevron" aria-hidden="true">{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span><Archive size={14} aria-hidden="true" /><span className="group-name">Archived</span><span className="group-count">{threads.length}</span>
+      </button>
+      <button type="button" className="archived-delete-all" onClick={() => void deleteAll()} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete all'}</button>
+    </div>
+    {open && threads.map(renderThread)}
+  </section>;
+}
+
+export function Sidebar({ projects, threads, archived = [], machines, currentId, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile }: Props) {
   const [closedProjects, setClosedProjects] = useState<string[]>([]);
   const currentProjectId = threads.find((thread) => thread.id === currentId)?.projectId;
   const projectGroups = groupProjectLocations(projects, currentProjectId);
@@ -81,8 +122,9 @@ export function Sidebar({ projects, threads, machines, currentId, mode, onModeCh
             </div>
             {!closedProjects.includes(id) && threads.filter((thread) => locations.includes(thread.projectId)).map((thread) => threadLink(thread, false))}
           </section>) : threads.map((thread) => threadLink(thread, true))}
-          {!threads.length && <p className="sidebar-empty">No agents yet. Press ⌘K to start one.</p>}
+          {!threads.length && !archived.length && <p className="sidebar-empty">No agents yet. Press ⌘K to start one.</p>}
         </nav>
+        {!!archived.length && <ArchivedThreads threads={archived} renderThread={(thread) => threadLink(thread, true)} />}
         <a className="sidebar-settings" href="/settings"><Settings2 size={15} /> Settings</a>
       </>}
     </aside>

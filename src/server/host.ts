@@ -86,6 +86,17 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     const input = z.object({ machineId: opaqueId, paneId: opaqueId }).strict().parse(request.body);
     await manager.focusPane(input.machineId, id, input.paneId); return { focused: true };
   });
+  app.post('/api/threads/:id/archive', async (request) => {
+    const { id } = z.object({ id: z.uuid() }).parse(request.params);
+    const input = z.object({ machineId: opaqueId, archived: z.boolean() }).strict().parse(request.body);
+    manager.archive(input.machineId, id, input.archived); return { archived: input.archived };
+  });
+  app.post('/api/threads/:id/delete', async (request) => {
+    const { id } = z.object({ id: z.uuid() }).parse(request.params);
+    const input = z.object({ machineId: opaqueId }).strict().parse(request.body);
+    await manager.deleteThread(input.machineId, id); return { deleted: true };
+  });
+  app.post('/api/archive/delete', async () => manager.deleteArchived());
   app.get('/api/operations/:id', async (request, reply) => {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
     const operation = manager.database.operation(id);
@@ -114,6 +125,8 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     if (status === 413) return reply.code(413).send({ error: 'image_too_large' });
     if (status === 415 || message === 'unsupported_image') return reply.code(415).send({ error: 'unsupported_image' });
     if (status && status >= 400 && status < 500) return reply.code(status).send({ error: 'invalid_request' });
+    if (message === 'thread_not_found') return reply.code(404).send({ error: message });
+    if (message === 'launch_in_progress') return reply.code(409).send({ error: message });
     return reply.code(['idempotency_conflict', 'binding_conflict', 'invalid_adoption'].includes(message) ? 409 : 503).send({ error: ['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected'].includes(message) ? message : 'request_failed' });
   });
   app.addHook('onClose', async () => manager.close());

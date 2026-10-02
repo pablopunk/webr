@@ -48,6 +48,7 @@ export type Thread = {
   bindingFingerprint?: string;
   bindingConfigVersion?: number;
   semanticSignature?: string;
+  archivedAt?: string;
 };
 
 export const projects: Project[] = [

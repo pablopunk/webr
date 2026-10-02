@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { LaunchInput } from '../../shared/runtime';
 import type { LaunchLocation } from './target';
-import { nativePane, nativeTab } from '../protocol/native';
+import { nativePane, nativeTab, type NativeSnapshot } from '../protocol/native';
 import { AGENT_READY_TIMEOUT_MS, SCREEN_SETTLE_TIMEOUT_MS, SHELL_READY_TIMEOUT_MS, requestDeadline, type RpcOptions } from '../protocol/deadlines';
 
 type Api = { request(method: string, params?: Record<string, unknown>, options?: RpcOptions): Promise<Record<string, unknown>> };
@@ -69,6 +69,15 @@ export class HerdrActions {
     throw new Error('agent_not_ready');
   }
   async focus(paneId: string) { await this.api.request('pane.focus', { pane_id: paneId }); }
+  async discardTab(snapshot: NativeSnapshot, tabId: string) {
+    const tab = snapshot.tabs.find((tab) => tab.tab_id === tabId);
+    if (!tab) return;
+    const ownsWorkspace = snapshot.tabs.filter((other) => other.workspace_id === tab.workspace_id).length === 1;
+    if (!ownsWorkspace) { await this.api.request('tab.close', { tab_id: tabId }); return; }
+    const linkedWorktree = snapshot.workspaces.find((workspace) => workspace.workspace_id === tab.workspace_id)?.worktree?.is_linked_worktree;
+    if (linkedWorktree) await this.api.request('worktree.remove', { workspace_id: tab.workspace_id, force: true });
+    else await this.api.request('workspace.close', { workspace_id: tab.workspace_id });
+  }
   async prompt(paneId: string, prompt: string, terminalId: string, threadId: string, kind: string, input?: LaunchInput) {
     this.requireCapability(input);
     const name = agentName(threadId);

@@ -55,3 +55,13 @@ it('sends the first prompt only after the agent screen stops changing', async ()
   await actions.prompt('w1:p1', 'hello', 'term_1', id, 'opencode');
   expect(calls.filter((call) => call === 'pane.read').length).toBeGreaterThanOrEqual(5); expect(calls.at(-1)).toBe('agent.prompt');
 });
+it('discards a thread with the smallest Herdr effect that removes its tab', async () => {
+  const discard = async (state: ReturnType<typeof snapshot>) => { const calls: [string, unknown][] = []; await new HerdrActions({ request: async (method, params) => { calls.push([method, params]); return {}; } }, new FakeTarget().locations, () => {}).discardTab(state, 'w1:t1'); return calls; };
+  const shared = snapshot(); shared.tabs.push({ tab_id: 'w1:t2', workspace_id: 'w1', label: 'Other' });
+  expect(await discard(shared)).toEqual([['tab.close', { tab_id: 'w1:t1' }]]);
+  expect(await discard(snapshot())).toEqual([['workspace.close', { workspace_id: 'w1' }]]);
+  const worktree = snapshot(); worktree.workspaces[0].worktree!.is_linked_worktree = true;
+  expect(await discard(worktree)).toEqual([['worktree.remove', { workspace_id: 'w1', force: true }]]);
+  const gone = snapshot(); gone.tabs = [];
+  expect(await discard(gone)).toEqual([]);
+});

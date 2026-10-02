@@ -71,6 +71,32 @@ export class RuntimeManager extends EventEmitter {
     if (!supervisor?.connected || !thread?.panes.some((pane) => pane.id === paneId) || !supervisor.target.focusPane) throw new Error('invalid_focus');
     await supervisor.target.focusPane(paneId);
   }
+  archive(machineId: string, threadId: string, archived: boolean) {
+    const supervisor = this.supervisors.get(machineId);
+    const row = this.database.threadRows(machineId).find((row) => row.id === threadId);
+    if (!supervisor || !row) throw new Error('thread_not_found');
+    this.database.saveThread({ ...row.metadata, archivedAt: archived ? new Date().toISOString() : undefined }, row.anchors, row.alias);
+    this.publish(supervisor);
+  }
+  async deleteThread(machineId: string, threadId: string) {
+    const supervisor = this.supervisors.get(machineId);
+    const thread = this.projections.get(machineId)?.threads.find((thread) => thread.id === threadId);
+    if (!supervisor || !thread) throw new Error('thread_not_found');
+    if (['pending', 'running'].includes(thread.operation?.state ?? '')) throw new Error('launch_in_progress');
+    if (thread.bindingState === 'attached') {
+      if (!supervisor.connected || !supervisor.target.discardTab) throw new Error('machine_disconnected');
+      await supervisor.target.discardTab(thread.tabId);
+      await supervisor.readFresh();
+    }
+    this.database.deleteThread(threadId);
+    this.publish(supervisor);
+  }
+  async deleteArchived() {
+    const archived = [...this.projections.values()].flatMap((projection) => projection.threads.filter((thread) => thread.archivedAt));
+    const failed: string[] = [];
+    for (const thread of archived) await this.deleteThread(thread.machineId, thread.id).catch(() => failed.push(thread.id));
+    return { deleted: archived.length - failed.length, failed };
+  }
   private publishAll() { for (const supervisor of this.supervisors.values()) { this.publish(supervisor); supervisor.invalidate(); } }
   private publish(supervisor: TargetSupervisor) {
     const records = supervisor.snapshot ? reconcile(this.database, supervisor.target, supervisor.snapshot) : { threads: this.database.threadRows(supervisor.target.id).map((row) => ({ ...row.metadata, panes: [], bindingState: 'detached' as const, status: 'unknown' as const })), projects: [] };

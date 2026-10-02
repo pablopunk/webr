@@ -92,3 +92,13 @@ it('invalidates absent runtime on gateway loss without treating enabled profiles
   expect(store.getState().projections[target.id].connected).toBe(false); expect(store.getState().threads[records.threads[0].id].panes).toEqual([]);
   store.getState().install(projection); expect(store.getState().projections[target.id].connected).toBe(true); expect(store.getState().threads[records.threads[0].id].bindingState).toBe('attached');
 });
+it('archives a thread out of the list and deletes archived threads together with their Herdr tab', async () => {
+  const target = new FakeTarget(); const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0];
+  manager.archive('fixture', thread.id, true);
+  expect(manager.bootstrap().threads[0].archivedAt).toBeTypeOf('string');
+  expect(await manager.deleteArchived()).toEqual({ deleted: 1, failed: [] });
+  expect(target.effects).toEqual(['discard:w1:t1']); expect(manager.database.threadRows('fixture')).toEqual([]);
+  await expect(manager.deleteThread('fixture', thread.id)).rejects.toThrow('thread_not_found');
+});
