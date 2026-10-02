@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, GitBranch } from 'lucide-react';
 import type { Project } from '../lib/models';
-import { usePromptImages } from './usePromptImages';
+import { promptWithImages, usePromptImages } from './usePromptImages';
+import { X } from 'lucide-react';
 import type { Machine } from '../lib/machines';
 import { LaunchSelectors } from './LaunchSelectors';
 import { useMachineCatalog } from '../client/catalog';
@@ -23,13 +24,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   const [error, setError] = useState('');
   const [creatingWorkspace, setCreatingWorkspace] = useState(false);
   const operation = useRef<{ payload: string; key: string } | null>(null);
-  const promptInput = useRef<HTMLTextAreaElement>(null);
-  const insertIntoPrompt = (text: string) => {
-    const field = promptInput.current; const start = field?.selectionStart ?? prompt.length; const end = field?.selectionEnd ?? prompt.length;
-    setPrompt((current) => current.slice(0, start) + text + current.slice(end));
-    requestAnimationFrame(() => { field?.focus(); field?.setSelectionRange(start + text.length, start + text.length); });
-  };
-  const images = usePromptImages({ machineId, insert: insertIntoPrompt });
+  const images = usePromptImages({ machineId });
   const baseMachine = machines.find((machine) => machine.id === machineId) ?? { id: '', name: 'No target', connected: false, session: '', projectPaths: {}, harnesses: [] };
   const catalog = useMachineCatalog(machineId, baseMachine.connected, baseMachine.configVersion, baseMachine.session, projectId);
   const machine = { ...baseMachine, harnesses: baseMachine.connected ? catalog.data?.harnesses ?? [] : [] };
@@ -37,7 +32,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     ...project, path: machine.projectPaths[project.id], iconUrl: machineId === 'local' ? project.iconUrl : undefined,
   }));
   const selectedHarness = machine.harnesses.find((choice) => choice.id === harness);
-  const canSubmit = !!(prompt.trim() && model.trim() && machine.connected && machineProjects.some((project) => project.id === projectId) && selectedHarness?.launchEnabled) && !busy;
+  const canSubmit = !!(prompt.trim() && !images.uploading && model.trim() && machine.connected && machineProjects.some((project) => project.id === projectId) && selectedHarness?.launchEnabled) && !busy;
   useEffect(() => { setWorktree(localStorage.getItem('herdr-new-worktree') !== 'false'); }, []);
   useEffect(() => {
     if (!projectId || !catalog.data) return;
@@ -70,7 +65,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     event.preventDefault();
     if (!canSubmit) return;
     setBusy(true); setError('');
-    const payload = JSON.stringify({ prompt, projectId, machineId, agent: harness, model: model.trim(), worktree });
+    const payload = JSON.stringify({ prompt: promptWithImages(prompt, images.attachments), projectId, machineId, agent: harness, model: model.trim(), worktree });
     if (operation.current?.payload !== payload) operation.current = { payload, key: crypto.randomUUID() };
     try {
       const result = await fetch('/api/threads', {
@@ -95,7 +90,11 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
       {!!machineProjects.length && <button className="workspace-cancel" onClick={() => setCreatingWorkspace(false)}>Cancel</button>}
     </> : <>
     <form className={`thread-composer ${images.dragging ? 'is-dropping' : ''}`} onSubmit={submit} aria-busy={busy} {...images.handlers}>
-      <textarea ref={promptInput} autoFocus required maxLength={8000} value={prompt} onChange={(event) => setPrompt(event.target.value)}
+      {(images.attachments.length > 0 || images.uploading > 0) && <ul className="composer-images" aria-label="Attached images">
+        {images.attachments.map((image) => <li key={image.id}><img src={image.preview} alt={image.name} /><button type="button" aria-label={`Remove ${image.name}`} title="Remove image" onClick={() => images.remove(image.id)}><X size={12} strokeWidth={2.4} /></button></li>)}
+        {Array.from({ length: images.uploading }, (_, index) => <li key={'uploading-' + index} className="is-uploading" aria-label="Uploading image" />)}
+      </ul>}
+      <textarea autoFocus required maxLength={8000} value={prompt} onChange={(event) => setPrompt(event.target.value)}
         onKeyDown={(event) => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
         aria-label="Thread prompt" placeholder="Write a prompt, or drop an image…" />
       <div className="composer-toolbar">
@@ -109,7 +108,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
       </div>
     </form>
     {(selectedHarness?.reason || !machines.length || machine.error || catalog.isError) && <p className="composer-preview-note">{selectedHarness?.reason ?? (!machines.length ? 'No target is configured.' : machine.error ? `Machine is not connected: ${machine.error.replaceAll('_', ' ')}.` : 'The machine catalog is not available.')}</p>}
-    {images.status && <p className={images.status.tone === 'error' ? 'form-error' : 'composer-preview-note'} role={images.status.tone === 'error' ? 'alert' : 'status'}>{images.status.text}</p>}
+    {images.error && <p className="form-error" role="alert">{images.error}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     </>}
   </main>;
