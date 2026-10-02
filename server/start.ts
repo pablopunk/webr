@@ -6,9 +6,10 @@ import { RuntimeManager } from '../src/server/runtime/manager';
 import { loadRegistry } from '../src/server/transport/registry';
 import { HerdrTarget } from '../src/server/transport/herdr-target';
 import { createHost } from '../src/server/host';
+import { serverPort } from './port';
 
 const host = process.env.HOST ?? '127.0.0.1';
-const port = Number(process.env.PORT ?? 4321);
+const port = serverPort();
 const origin = process.env.WEBR_ORIGIN ?? `http://${host}:${port}`;
 if (new URL(origin).origin !== origin || new URL(origin).username || new URL(origin).password) throw new Error('WEBR_ORIGIN must be a normalized HTTP or HTTPS origin without credentials or a path');
 if (!['http:', 'https:'].includes(new URL(origin).protocol)) throw new Error('WEBR_ORIGIN must use HTTP or HTTPS');
