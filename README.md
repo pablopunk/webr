@@ -46,6 +46,17 @@ Pick how devices reach Webr:
 
 A request counts as local only when it comes from the loopback interface, names `localhost` or `127.0.0.1` as its host, and carries no forwarding headers. A proxy must therefore keep the public hostname.
 
+## Add to Home Screen
+
+Webr is installable, so a phone can open it full screen with its own icon.
+
+- **iPhone / iPad (Safari):** open Webr, tap Share, then **Add to Home Screen**.
+- **Android (Chrome):** open the menu, then **Install app** or **Add to Home Screen**.
+
+Connect the device first (see above). Webr has no service worker and caches nothing offline: it shows live terminals and must never serve a stale UI, so the installed app needs a connection like the browser does.
+
+Brand icons are generated from `assets/brand/icon.png` with `mise exec -- pnpm icons`.
+
 ## Develop
 
 ```sh

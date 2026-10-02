@@ -2,7 +2,7 @@ const styles = `
 :root { color-scheme: light dark; --page: #f8f8f7; --surface: #fff; --ink: #1b1c1d; --soft: #5b5d61; --line: #dedfdd; --blue: #345fba; --danger: #c9534d; }
 @media (prefers-color-scheme: dark) { :root { --page: #121313; --surface: #1a1b1c; --ink: #ececea; --soft: #a2a4a7; --line: #2d2f31; --blue: #5b86e0; --danger: #e0716b; } }
 * { box-sizing: border-box; }
-body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: 16px; background: var(--page); color: var(--ink); font: 15px/1.5 'DM Sans', system-ui, sans-serif; }
+body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); background: var(--page); color: var(--ink); font: 15px/1.5 'DM Sans', system-ui, sans-serif; }
 main { width: min(380px, 100%); padding: 28px 24px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); text-align: center; }
 h1 { margin: 0 0 4px; font-size: 20px; }
 p { margin: 0 0 20px; color: var(--soft); }
@@ -64,8 +64,10 @@ if (hashToken) redeem(hashToken).catch(() => say('Could not reach the server.'))
 else if (saved) wait(saved);
 `;
 
+const installableAppHead = `<link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Webr"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8f8f7"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121313">`;
+
 export const pairPage = () => `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Connect · Webr</title><style>${styles}</style></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="robots" content="noindex">${installableAppHead}<title>Connect · Webr</title><style>${styles}</style></head>
 <body><main>
 <h1>Webr</h1>
 <div id="start"><p>This device isn’t connected yet.</p><button id="request" type="button">Request access</button><button id="use-token" class="link" type="button">I have a code</button></div>

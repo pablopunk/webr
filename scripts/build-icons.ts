@@ -19,11 +19,13 @@ magick(resolve(out, 'favicon-16.png'), resolve(out, 'favicon-32.png'), resolve(o
 paddedOnTile(180, 20, resolve(out, 'apple-touch-icon.png'));
 paddedOnTile(192, 22, resolve(out, 'icon-192.png'));
 paddedOnTile(512, 58, resolve(out, 'icon-512.png'));
+paddedOnTile(512, 110, resolve(out, 'icon-maskable-512.png'));
 
 writeFileSync(resolve(out, 'manifest.webmanifest'), `${JSON.stringify({
-  name: 'Webr', short_name: 'Webr', start_url: '/', display: 'standalone', background_color: tile, theme_color: tile,
+  name: 'Webr', short_name: 'Webr', id: '/', start_url: '/', scope: '/', display: 'standalone', background_color: tile, theme_color: tile,
   icons: [
-    { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-    { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+    { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+    { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+    { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
   ],
 }, null, 2)}\n`);

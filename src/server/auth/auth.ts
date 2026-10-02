@@ -15,6 +15,7 @@ const publicRoutes: [method: string, path: RegExp][] = [
   ['POST', /^\/api\/pair\/request$/],
   ['POST', /^\/api\/pair\/request\/[^/]+\/poll$/],
   ['POST', /^\/api\/pair\/redeem$/],
+  ['GET', /^\/[a-z0-9-]+\.(?:png|ico|webmanifest)$/],
 ];
 const idParams = z.object({ id: z.uuid() });
 const emptyBody = z.object({}).strict();
