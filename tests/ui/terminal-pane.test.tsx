@@ -7,9 +7,11 @@ vi.mock('../../src/client/provider', () => ({ useRuntime: () => ({ terminals: fi
 vi.mock('@xterm/xterm', () => ({ Terminal: class {
   options = {}; cols = 80; rows = 24; element?: HTMLElement; onData = fixture.onData;
   parser = { registerOscHandler: () => ({ dispose() {} }) };
+  loadAddon() {}
   open(host: HTMLElement) { this.element = document.createElement('div'); this.element.className = 'xterm-screen'; host.append(this.element); }
   hasSelection() { return false; } getSelection() { return 'selected text'; } dispose() {}
 } }));
+vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { proposeDimensions() { return { cols: 90, rows: 31 }; } } }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 it('keeps terminals free of permanent control bars and exposes explicit controls only in the context menu', async () => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
@@ -27,7 +29,7 @@ it('requests control only for an approved active pane and passes typed keys to t
   const props = { pane, machineId: 'fixture', threadId: 'fixture-thread', canControl: true, onFocus: () => {} };
   const view = render(<TerminalPane {...props} active />);
   await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
-  expect(fixture.mount.mock.calls[0][0].mode).toBe('control');
+  expect(fixture.mount.mock.calls[0][0].mode).toBe('control'); expect(fixture.mount.mock.calls[0][0]).toMatchObject({ cols: 90, rows: 31 });
   await act(async () => fixture.mount.mock.calls[0][0].onState('Input control is active.', true));
   fireEvent.change(screen.getByLabelText('Terminal input'), { target: { value: 'x' } });
   expect(fixture.input).toHaveBeenCalledWith('x', undefined);

@@ -36,7 +36,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     if (!host.current) return;
     let disposed = false;
     let cleanup = () => {};
-    void import('@xterm/xterm').then((xterm) => {
+    void Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit')]).then(([xterm, { FitAddon }]) => {
     if (disposed || !host.current) return;
     const terminal = new xterm.Terminal({
       fontFamily: '"DM Mono", ui-monospace, monospace', fontSize: 12.5,
@@ -49,7 +49,10 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     const clipboard = terminal.parser.registerOscHandler(52, () => true);
     const links = terminal.parser.registerOscHandler(8, () => true);
     if (!pane.terminalId) { terminal.dispose(); return; }
-    const viewport = () => ({ cols: Math.max(2, Math.min(500, Math.floor((host.current?.clientWidth ?? 640) / 8))), rows: Math.max(1, Math.min(300, Math.floor((host.current?.clientHeight ?? 400) / 20))) });
+    const fit = new FitAddon(); terminal.loadAddon(fit);
+    const estimatedViewport = () => ({ cols: Math.floor((host.current?.clientWidth ?? 640) / 8), rows: Math.floor((host.current?.clientHeight ?? 400) / 20) });
+    const measuredViewport = () => { try { return fit.proposeDimensions(); } catch { return undefined; } };
+    const viewport = () => { const { cols, rows } = measuredViewport() ?? estimatedViewport(); return { cols: Math.max(2, Math.min(500, cols)), rows: Math.max(1, Math.min(300, rows)) }; };
     control.current = terminals.mount({ machineId, threadId, terminalId: pane.terminalId, terminal, mode: canControl && active ? 'control' : 'observe', ...viewport(), onState: (message, writable) => { setMessage(message); setWritable(writable); writableRef.current = writable; } });
     const gestures = bindTerminalGestures(host.current, () => ({ element: terminal.element?.querySelector<HTMLElement>('.xterm-screen') ?? undefined, cols: terminal.cols, rows: terminal.rows }), () => control.current, () => writableRef.current);
     let timer: ReturnType<typeof setTimeout>;
