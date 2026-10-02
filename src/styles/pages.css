@@ -17,5 +17,6 @@
 .theme-option { display: flex; align-items: center; gap: 5px; padding: 6px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--ink-soft); text-transform: capitalize; font-size: 11px; }
 .theme-option:hover { color: var(--ink); }
 .theme-option.is-selected { background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); }
+.theme-control--labels .theme-option { text-transform: none; }
 .mobile-menu { display: none; }
 @media (max-width: 760px) { .form-page { margin-top: 35px; } .mobile-menu { display: block; margin-bottom: 30px; padding: 4px 0; border: 0; background: transparent; color: var(--ink-soft); } }
