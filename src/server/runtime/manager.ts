@@ -9,6 +9,8 @@ import type { Bootstrap, Projection } from '../../shared/runtime';
 import type { Machine } from '../../lib/machines';
 import { LaunchJournal } from './launch';
 
+const CATALOG_TTL_MS = 5 * 60_000;
+
 export class RuntimeManager extends EventEmitter {
   readonly supervisors = new Map<string, TargetSupervisor>();
   readonly journal: LaunchJournal;
@@ -38,11 +40,11 @@ export class RuntimeManager extends EventEmitter {
     const supervisor = this.supervisors.get(machineId);
     if (!supervisor?.connected) throw new Error('machine_disconnected');
     if (projectId && !supervisor.target.locations.some((location) => location.projectId === projectId)) throw new Error('unknown_project_location');
-    const key = JSON.stringify([machineId, supervisor.target.fingerprint, supervisor.target.session, supervisor.target.configVersion, projectId]);
+    const key = JSON.stringify([machineId, supervisor.target.fingerprint, supervisor.target.session, supervisor.target.configVersion]);
     const existing = this.catalogs.get(key);
     if (existing && existing.expires > Date.now()) return existing.value;
     const value = supervisor.target.catalog(projectId);
-    this.catalogs.set(key, { expires: Date.now() + 30_000, value });
+    this.catalogs.set(key, { expires: Date.now() + CATALOG_TTL_MS, value });
     try { return await value; } catch (error) { this.catalogs.delete(key); throw error; }
   }
   refreshCatalog(machineId: string) {
