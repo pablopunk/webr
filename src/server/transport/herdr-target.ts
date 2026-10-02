@@ -117,6 +117,13 @@ export class HerdrTarget implements TargetAdapter {
   canLaunch(input: LaunchInput) { return this.compatible && launchableKinds.includes(input.agent) && this.locations.some((location) => location.projectId === input.projectId); }
   async start(input: LaunchInput, paneId: string, threadId: string) { return this.actions().start(input, paneId, threadId); }
   async prompt(paneId: string, prompt: string, terminalId: string, threadId: string, input: LaunchInput) { return this.actions().prompt(paneId, prompt, terminalId, threadId, input.agent, input); }
+  async worktrees(projectId: string) { return this.actions().worktrees(this.workspaceOf(projectId)); }
+  async openWorktree(projectId: string, path: string) { return this.actions().openWorktree(this.workspaceOf(projectId), path); }
+  private workspaceOf(projectId: string) {
+    const location = this.locations.find((location) => location.projectId === projectId);
+    if (!location) throw new Error('unknown_project_location');
+    return location.workspaceId;
+  }
   async focusPane(paneId: string) { return this.actions().focus(paneId); }
   async renameTab(tabId: string, label: string) { return this.actions().renameTab(await this.snapshot(), tabId, label); }
   async splitTerminal(paneId: string, direction: TerminalDirection) { return this.actions().splitTerminal(await this.snapshot(), paneId, direction); }

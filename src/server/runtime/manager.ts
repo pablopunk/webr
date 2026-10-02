@@ -67,6 +67,33 @@ export class RuntimeManager extends EventEmitter {
     if (this.projections.get(machineId)?.threads.some((other) => other.id !== threadId && other.bindingState === 'attached' && other.tabId === tab)) throw new Error('binding_conflict');
     this.database.saveThread({ ...row.metadata, session: supervisor.target.session, tabId: tab, bindingFingerprint: supervisor.target.fingerprint, bindingConfigVersion: supervisor.target.configVersion, semanticSignature: undefined }, terminalIds, tab); this.publish(supervisor);
   }
+  private workspacesWithThreads(machineId: string) {
+    const shownTabs = new Set(this.projections.get(machineId)?.threads.filter((thread) => thread.bindingState === 'attached' && !thread.archivedAt).map((thread) => thread.tabId));
+    return new Set(this.supervisors.get(machineId)?.snapshot?.tabs.filter((tab) => shownTabs.has(tab.tab_id)).map((tab) => tab.workspace_id));
+  }
+  private worktreeSupervisor(machineId: string) {
+    const supervisor = this.supervisors.get(machineId);
+    if (!supervisor?.connected || !supervisor.target.worktrees || !supervisor.target.openWorktree) throw new Error('machine_disconnected');
+    return supervisor;
+  }
+  async worktrees(machineId: string, projectId: string) {
+    const supervisor = this.worktreeSupervisor(machineId);
+    const shown = this.workspacesWithThreads(machineId);
+    const entries = await supervisor.target.worktrees!(projectId);
+    return entries.filter((entry) => !entry.is_bare && !entry.is_prunable && !(entry.open_workspace_id && shown.has(entry.open_workspace_id))).map((entry) => ({ path: entry.path, branch: entry.branch ?? null, label: entry.label }));
+  }
+  async openWorktree(machineId: string, projectId: string, path: string) {
+    const supervisor = this.worktreeSupervisor(machineId);
+    if (!(await this.worktrees(machineId, projectId)).some((worktree) => worktree.path === path)) throw new Error('unknown_worktree');
+    await supervisor.target.openWorktree!(projectId, path);
+    const snapshot = await supervisor.readFresh(); this.publish(supervisor);
+    const workspace = snapshot.workspaces.find((workspace) => workspace.worktree?.checkout_path === path);
+    const tab = snapshot.tabs.find((tab) => tab.workspace_id === workspace?.workspace_id);
+    const thread = this.projections.get(machineId)?.threads.find((thread) => thread.tabId === tab?.tab_id && thread.bindingState === 'attached');
+    if (!thread) throw new Error('worktree_not_opened');
+    if (thread.archivedAt) this.archive(machineId, thread.id, false);
+    return { id: thread.id };
+  }
   async focusPane(machineId: string, threadId: string, paneId: string) {
     const supervisor = this.supervisors.get(machineId);
     const thread = this.projections.get(machineId)?.threads.find((thread) => thread.id === threadId);

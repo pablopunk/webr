@@ -77,3 +77,10 @@ it('splits a terminal from the agent pane in its directory and leaves the agent 
   expect(await actions.splitTerminal(state, 'w1:p1', 'down')).toBe('w1:p2');
   expect(calls).toEqual([['pane.split', { target_pane_id: 'w1:p1', direction: 'down', ratio: 0.5, cwd: '/fixture', focus: false }]]);
 });
+it('lists worktrees of the workspace and opens one by path without focusing it', async () => {
+  const calls: [string, unknown][] = [];
+  const entry = { path: '/fixture/wt', branch: 'feature', label: 'fixture', is_bare: false, is_prunable: false, open_workspace_id: null };
+  const actions = new HerdrActions({ request: async (method, params) => { calls.push([method, params]); return { type: 'worktree_list', worktrees: [entry] }; } }, new FakeTarget().locations, () => {});
+  expect(await actions.worktrees('w1')).toEqual([entry]); await actions.openWorktree('w1', '/fixture/wt');
+  expect(calls).toEqual([['worktree.list', { workspace_id: 'w1' }], ['worktree.open', { workspace_id: 'w1', path: '/fixture/wt', focus: false }]]);
+});

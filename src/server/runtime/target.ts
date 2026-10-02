@@ -2,6 +2,7 @@ import type { Machine } from '../../lib/machines';
 import type { NativeSnapshot } from '../protocol/native';
 import type { TerminalFrame, TerminalStream } from '../terminal/cli';
 import type { LaunchInput } from '../../shared/runtime';
+import type { WorktreeEntry } from './herdr-actions';
 import type { Icon } from '../transport/icons';
 
 export type TerminalDirection = 'right' | 'down';
@@ -19,6 +20,8 @@ export type TargetAdapter = {
   catalog(projectId?: string): Promise<Machine>;
   canLaunch?(input: LaunchInput): boolean;
   icon?(projectId: string): Promise<Icon | undefined>;
+  worktrees?(projectId: string): Promise<WorktreeEntry[]>;
+  openWorktree?(projectId: string, path: string): Promise<void>;
   createWorkspace?(path: string, label: string, requestId: string): Promise<{ workspaceId: string; tabId: string; terminalId: string }>;
   openTerminal(terminalId: string, mode: 'control' | 'observe', cols: number, rows: number, takeover: boolean, onFrame: (frame: TerminalFrame) => void, onClose: (reason: string) => void): TerminalStream;
   create(input: LaunchInput, threadId: string): Promise<{ tabId: string; paneId: string; terminalId: string; workspaceId: string }>;

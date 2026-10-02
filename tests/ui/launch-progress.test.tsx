@@ -1,9 +1,11 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { LaunchProgress } from '../../src/components/LaunchProgress';
 import { Sidebar } from '../../src/components/Sidebar';
 import { isListedThread } from '../../src/lib/launch';
 import type { Thread } from '../../src/lib/models';
+
+vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
 
 afterEach(cleanup);
 const thread = (overrides: Partial<Thread> = {}): Thread => ({ id: 't1', avatarIndex: 0, projectId: 'local:p', machineId: 'local', title: 'Fix the bug', prompt: 'Fix the bug in the parser', agent: 'claude', model: 'Default', status: 'unknown', updatedAt: new Date().toISOString(), branch: '', worktree: true, session: 'default', tabId: '', panes: [], bindingState: 'pending', operation: { id: 'o1', state: 'running', step: 'checkout' }, ...overrides });

@@ -16,9 +16,9 @@ export function requestDeadline(method: string, params: Record<string, unknown>,
   }
   if (method === 'worktree.create') timeout = WORKTREE_TIMEOUT_MS;
   if (method === 'worktree.remove') timeout = WORKTREE_REMOVE_TIMEOUT_MS;
-  if (method === 'tab.create' || method === 'workspace.create') timeout = 30_000;
+  if (['tab.create', 'workspace.create', 'worktree.open'].includes(method)) timeout = 30_000;
   timeout = options?.timeoutMs ?? timeout;
-  const maximum = ['agent.start', 'worktree.create', 'worktree.remove', 'tab.create', 'workspace.create'].includes(method) ? MAX_RPC_TIMEOUT_MS : 5000;
+  const maximum = ['agent.start', 'worktree.create', 'worktree.open', 'worktree.remove', 'tab.create', 'workspace.create'].includes(method) ? MAX_RPC_TIMEOUT_MS : 5000;
   if (!Number.isInteger(timeout) || timeout < 1 || timeout > maximum) throw new Error('invalid_rpc_timeout');
   return timeout;
 }

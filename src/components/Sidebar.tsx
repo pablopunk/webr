@@ -7,6 +7,7 @@ import { avatarForThread } from '../lib/avatars';
 import { isLaunching, launchFailed, launchLabel } from '../lib/launch';
 import type { Machine } from '../lib/machines';
 import { ProjectIcon } from './ProjectIcon';
+import { OpenWorktree } from './OpenWorktree';
 import { ThreadTitleEditor } from './ThreadTitleEditor';
 import { groupProjectLocations } from '../client/project-groups';
 import { alertDialog, confirmDialog } from './dialogs';
@@ -110,6 +111,7 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
         <a className="sidebar-new-thread" href={`/new${currentProjectId ? `?project=${encodeURIComponent(currentProjectId)}` : ''}`} aria-label="New thread" title="New thread">
           <Plus size={16} aria-hidden="true" />{!collapsed && <span>New thread</span>}
         </a>
+        <OpenWorktree projects={projects} currentProjectId={currentProjectId} />
         {!collapsed && <div className="sidebar-view-switch" role="group" aria-label="Sidebar layout">
           <button type="button" aria-label="Show threads" title="Show threads" aria-pressed={mode === 'threads'} onClick={() => onModeChange('threads')}><LayoutList size={16} aria-hidden="true" /></button>
           <button type="button" aria-label="Group by project" title="Group by project" aria-pressed={mode === 'projects'} onClick={() => onModeChange('projects')}><FolderTree size={16} aria-hidden="true" /></button>

@@ -68,6 +68,14 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     return suggestDirectories(prefix);
   });
   app.post('/api/workspaces', async (request, reply) => {
+  app.get('/api/worktrees', async (request) => {
+    const { machineId, projectId } = z.object({ machineId: opaqueId, projectId: opaqueId }).strict().parse(request.query);
+    return manager.worktrees(machineId, projectId);
+  });
+  app.post('/api/worktrees/open', async (request) => {
+    const input = z.object({ machineId: opaqueId, projectId: opaqueId, path: z.string().min(1).max(1000) }).strict().parse(request.body);
+    return manager.openWorktree(input.machineId, input.projectId, input.path);
+  });
     const input = z.object({ machineId: opaqueId, path: z.string().regex(/^(\/|~\/)/).max(1000).refine((path) => !/[\x00-\x1f]/.test(path)), label: z.string().trim().min(1).max(80) }).strict().parse(request.body);
     const key = z.uuid().parse(request.headers['idempotency-key']);
     const supervisor = manager.supervisors.get(input.machineId);

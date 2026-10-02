@@ -9,6 +9,8 @@ const agentShape = { name: z.string(), terminal_id: z.string(), pane_id: z.strin
 const startedAgent = z.object({ ...agentShape, agent: z.string() });
 const detectingAgent = z.object({ ...agentShape, agent: z.string().nullable().optional() });
 const processInfo = z.object({ shell_pid: z.number().int().positive(), foreground_processes: z.array(z.object({ pid: z.number().int().positive() })) });
+const worktreeEntry = z.object({ path: z.string(), branch: z.string().nullable().optional(), label: z.string(), is_bare: z.boolean(), is_prunable: z.boolean(), open_workspace_id: z.string().nullable().optional() });
+export type WorktreeEntry = z.infer<typeof worktreeEntry>;
 const SETTLE_INTERVAL_MS = 350;
 const AGENT_SHARE_OF_TERMINAL_SPLIT = 0.5;
 const SETTLED_READS = 3;
@@ -69,6 +71,8 @@ export class HerdrActions {
     } while (Date.now() < end);
     throw new Error('agent_not_ready');
   }
+  async worktrees(workspaceId: string) { return z.array(worktreeEntry).parse((await this.api.request('worktree.list', { workspace_id: workspaceId })).worktrees); }
+  async openWorktree(workspaceId: string, path: string) { await this.api.request('worktree.open', { workspace_id: workspaceId, path, focus: false }); }
   async focus(paneId: string) { await this.api.request('pane.focus', { pane_id: paneId }); }
   async splitTerminal(snapshot: NativeSnapshot, paneId: string, direction: TerminalDirection) {
     const pane = snapshot.panes.find((pane) => pane.pane_id === paneId);

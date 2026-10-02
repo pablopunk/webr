@@ -3,6 +3,8 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Sidebar } from '../../src/components/Sidebar';
 
+vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
+
 afterEach(cleanup);
 
 it('closes the mobile sidebar when a navigation link is used', async () => {
