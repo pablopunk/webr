@@ -27,7 +27,7 @@ export function ComposerCombobox({ label, value, options, onChange, icon, allowC
     onValueChange={(option) => { if (option && !option.disabled) onChange(option.value); }}>
     <Combobox.Trigger className="composer-select" aria-label={`${label}: ${selected.label}`} title={`${label}: ${selected.label}`}>
       <span className="composer-select-icon" aria-hidden="true">{selected.icon ?? icon}</span>
-      <span className="composer-select-label">{selected.shortLabel ?? selected.label ?? label}</span>
+      <span className="composer-select-label">{selected.shortLabel ?? (selected.label || label)}</span>
       <ChevronDown className="composer-select-caret" size={11} aria-hidden="true" />
     </Combobox.Trigger>
     <Combobox.Portal>

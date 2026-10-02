@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { navigate } from 'astro:transitions/client';
 import { GitBranch, Search } from 'lucide-react';
 import type { Project } from '../lib/models';
+import { ComposerCombobox } from './ComposerCombobox';
 import { ProjectPicker } from './ProjectPicker';
 import { alertDialog } from './dialogs';
 
@@ -32,15 +33,11 @@ function WorktreePicker({ projects, currentProjectId, onOpened }: { projects: Pr
     catch (error) { void alertDialog(error instanceof Error ? error.message : 'Could not open this worktree.'); }
     finally { setOpening(''); }
   };
+  const options = (worktrees.data ?? []).map((worktree) => ({ value: worktree.path, label: worktree.branch ?? worktree.label, icon: <GitBranch size={14} /> }));
   return <>
     <ProjectPicker projects={projects} projectId={project?.id ?? ''} onChange={setProjectId} />
-    <ul className="open-worktree-list" aria-label="Worktrees without a thread" aria-busy={worktrees.isFetching}>
-      {worktrees.data?.map((worktree) => <li key={worktree.path}>
-        <button type="button" disabled={!!opening} onClick={() => void choose(worktree)} title={worktree.path}>
-          <GitBranch size={14} aria-hidden="true" /><span>{worktree.branch ?? worktree.label}</span><small>{opening === worktree.path ? 'Opening…' : worktree.path.split('/').slice(-2).join('/')}</small>
-        </button>
-      </li>)}
-    </ul>
+    <ComposerCombobox key={project?.id} label="Worktree" value={opening} icon={<GitBranch size={14} />} options={options}
+      onChange={(path) => { const worktree = worktrees.data?.find((item) => item.path === path); if (worktree) void choose(worktree); }} />
     {worktrees.isError && <p className="form-error" role="alert">Could not list worktrees.</p>}
     {worktrees.data && !worktrees.data.length && <p className="open-worktree-empty">Every worktree of this project already has a thread.</p>}
   </>;
