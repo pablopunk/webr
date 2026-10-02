@@ -1,7 +1,26 @@
 {
-  "name": "webr",
+  "name": "@pablopunk/webr",
   "version": "0.1.0",
   "description": "Control your Herdr agents from anywhere.",
+  "keywords": [
+    "herdr",
+    "agents",
+    "terminal",
+    "web-ui",
+    "remote",
+    "cli"
+  ],
+  "homepage": "https://github.com/pablopunk/webr#readme",
+  "bugs": {
+    "url": "https://github.com/pablopunk/webr/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pablopunk/webr.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "bin": {
     "webr": "bin/webr.mjs"
