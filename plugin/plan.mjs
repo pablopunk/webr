@@ -5,7 +5,7 @@ export const CONFIG_FILE = 'config.json';
 export const DEV_FILE = 'dev.json';
 export const PID_FILE = 'webr.pid';
 export const LOG_FILE = 'webr.log';
-export const DEFAULT_PORT = 4321;
+export const FIRST_PORT = 4444;
 
 const WILDCARD_HOSTS = ['0.0.0.0', '::'];
 
@@ -21,8 +21,8 @@ export const serverEnv = ({ port, host, origin } = {}) => ({
   ...(origin ? { WEBR_ORIGIN: origin } : {}),
 });
 
-export const probeAddress = ({ port, host } = {}) => ({
-  port: port ?? DEFAULT_PORT,
+export const probeAddress = ({ port, host } = {}, remembered) => ({
+  port: port ?? remembered ?? FIRST_PORT,
   host: !host || WILDCARD_HOSTS.includes(host) ? '127.0.0.1' : host,
 });
 

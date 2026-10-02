@@ -1,10 +1,16 @@
 import { closeSync, existsSync, openSync, readFileSync } from 'node:fs';
 import { createConnection } from 'node:net';
+import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { devTsx } from './plan.mjs';
 
 export function readJson(path) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return undefined; }
+}
+
+export function rememberedPort(env = process.env) {
+  const port = Number(readPid(join(env.WEBR_HOME ?? join(homedir(), '.webr'), 'port')));
+  return Number.isInteger(port) && port > 0 ? port : undefined;
 }
 
 export function isPidAlive(pid) {

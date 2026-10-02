@@ -1,11 +1,11 @@
 import { createConnection } from 'node:net';
+import { FIRST_PORT, storedPort } from '../port';
 import type { PluginConfig } from './config';
 
-const DEFAULT_PORT = 4321;
 const WILDCARD_HOSTS = ['0.0.0.0', '::'];
 
-export const probeAddress = ({ port, host }: PluginConfig) => ({
-  port: port ?? DEFAULT_PORT,
+export const probeAddress = ({ port, host }: PluginConfig, remembered = storedPort()) => ({
+  port: port ?? remembered ?? FIRST_PORT,
   host: !host || WILDCARD_HOSTS.includes(host) ? '127.0.0.1' : host,
 });
 

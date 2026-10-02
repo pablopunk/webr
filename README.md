@@ -19,6 +19,7 @@ Everything is handled automatically via the plugin:
 
 ```sh
 webr plugin install   # start Webr with the Herdr server
+webr open             # open Webr (webr status shows the address)
 ```
 
 AGPL-3.0-or-later

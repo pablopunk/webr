@@ -7,14 +7,14 @@ import { createHost } from '../src/server/host';
 import { publicUrls } from '../src/server/public-urls';
 import { detectTailscaleHost } from '../src/server/tailscale-host';
 import { isLoopbackHost } from '../src/server/auth/access';
-import { serverPort } from './port';
+import { resolvePort } from './port';
 import { builtSsr, devSsr } from './ssr';
 
 const WILDCARD_HOSTS = ['0.0.0.0', '::'];
 
 export async function runServer() {
   const host = process.env.HOST ?? '127.0.0.1';
-  const port = serverPort();
+  const port = await resolvePort();
   const tlsEnabled = !!(process.env.WEBR_TLS_CERT && process.env.WEBR_TLS_KEY);
   const origin = process.env.WEBR_ORIGIN ?? `${tlsEnabled ? 'https' : 'http'}://${WILDCARD_HOSTS.includes(host) ? 'localhost' : host}:${port}`;
   if (new URL(origin).origin !== origin || new URL(origin).username || new URL(origin).password) throw new Error('WEBR_ORIGIN must be a normalized HTTP or HTTPS origin without credentials or a path');

@@ -3,9 +3,10 @@ import { parseArgs } from 'node:util';
 import { renderUnicode } from 'uqr';
 import { webrHome } from './home';
 import { runServer } from './run';
-import { serverPort } from './port';
+import { explicitPort, knownPort } from './port';
 import { defaultDeps, installPlugin, pluginStatus, restartPluginWebr, uninstallWebrPlugin } from './plugin';
 import { checkHerdr } from './herdr-check';
+import { openWebr, statusLines } from './where';
 import { packageInfo } from './package-info';
 import { realUpdateEnvironment, runUpdate } from './update';
 import { refreshLatestVersionCache, updateHint } from './update/hint';
@@ -18,10 +19,12 @@ Usage
   webr plugin uninstall          Remove the Herdr plugin
   webr plugin status             Show whether the plugin is installed and Webr is running
   webr invite [--port <port>]    Print a one-time code and QR to connect a device
+  webr status                    Show whether Webr is running and where
+  webr open                      Open Webr in your browser
   webr update                    Install the latest version and restart the Herdr plugin
 
 Options
-  --port <port>     Port to listen on (default 4321)
+  --port <port>     Port to listen on (default: first free port from 4444, then remembered)
   --lan             Listen on every network interface so devices on your network can connect
   --host <address>  Listen on a specific address (default 127.0.0.1)
   --origin <url>    Public URL when served through a proxy, e.g. https://mac.tailnet.ts.net
@@ -40,7 +43,7 @@ const options = {
 function parseCommand(argv: string[]) { return parseArgs({ args: argv, options, allowPositionals: true }); }
 
 function applyServerFlags(values: ReturnType<typeof parseCommand>['values']) {
-  if (values.port) process.env.PORT = String(serverPort(['--port', values.port], {}));
+  if (values.port) process.env.PORT = String(explicitPort(['--port', values.port], {}));
   if (values.lan) process.env.HOST = '0.0.0.0'; else if (values.host) process.env.HOST = values.host;
   if (values.origin) process.env.WEBR_ORIGIN = values.origin;
   process.env.WEBR_DATABASE ??= join(webrHome(), 'gateway.sqlite');
@@ -68,7 +71,7 @@ async function invite(port: number) {
 }
 
 const pluginSettings = (values: ReturnType<typeof parseCommand>['values']) => ({
-  ...(values.port ? { port: serverPort(['--port', values.port], {}) } : {}),
+  ...(values.port ? { port: explicitPort(['--port', values.port], {}) } : {}),
   ...(values.lan ? { host: '0.0.0.0' } : values.host ? { host: values.host } : {}),
   ...(values.origin ? { origin: values.origin } : {}),
 });
@@ -87,7 +90,9 @@ export async function main(argv: string[]) {
   if (command === 'start') { applyServerFlags(values); await requireHerdr(); return runServer(); }
   if (command === 'update') return void (await runUpdate(realUpdateEnvironment(() => restartPluginWebr(defaultDeps())))).forEach((line) => console.log(line));
   if (command === 'refresh-update-cache') return refreshLatestVersionCache().catch(() => undefined);
-  if (command === 'invite') return invite(serverPort(values.port ? ['--port', values.port] : []));
+  if (command === 'status') return void (await statusLines(knownPort(values.port ? ['--port', values.port] : []))).forEach((line) => console.log(line));
+  if (command === 'open') return void (await openWebr(knownPort(values.port ? ['--port', values.port] : []))).forEach((line) => console.log(line));
+  if (command === 'invite') return invite(knownPort(values.port ? ['--port', values.port] : []));
   if (command === 'plugin' && ['install', 'uninstall', 'status'].includes(subcommand ?? '')) return pluginCommand(subcommand!, values);
   throw new Error(`Unknown command: ${positionals.join(' ')}\n\n${HELP}`);
 }

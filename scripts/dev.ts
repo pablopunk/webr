@@ -1,9 +1,9 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { serverPort } from '../server/port';
+import { resolvePort } from '../server/port';
 import { enterPluginDevMode } from '../server/plugin/dev';
 
-const port = serverPort();
+const port = await resolvePort();
 const STOP_TIMEOUT_MS = 5000;
 
 const output = (command: string, args: string[]) => { try { return execFileSync(command, args, { encoding: 'utf8' }).trim(); } catch { return ''; } };
