@@ -8,29 +8,25 @@ import { launchInput, opaqueId } from '../shared/runtime';
 import { registerWebsockets } from './websockets';
 import { createWorkspace } from './runtime/workspace';
 import { expandHome, suggestDirectories } from './directories';
+import { Auth, type AuthOptions } from './auth/auth';
+import { isTrustedHost } from './auth/access';
 import { MAX_IMAGE_BYTES, UploadStore, uploadContentTypes } from './uploads';
 
 const localOwner = 'local';
 type SsrHandler = (request: FastifyRequest['raw'], response: import('node:http').ServerResponse, next: (error?: unknown) => void, locals: Record<string, unknown>) => void;
 
-export async function createHost(manager: RuntimeManager, origin: string, ssr?: SsrHandler, tls?: { key: Buffer; cert: Buffer }, uploads = new UploadStore()) {
+export async function createHost(manager: RuntimeManager, origin: string, ssr?: SsrHandler, tls?: { key: Buffer; cert: Buffer }, uploads = new UploadStore(), authOptions: AuthOptions = {}) {
   const app = Fastify({ logger: false, bodyLimit: 16 * 1024, ...(tls ? { https: tls } : {}), requestTimeout: 10_000 });
   const configuredOrigin = new URL(origin);
-  const allowedHosts = new Set([configuredOrigin.host]);
-  if (['localhost', '127.0.0.1', '[::1]'].includes(configuredOrigin.hostname)) {
-    for (const hostname of ['localhost', '127.0.0.1', '[::1]']) {
-      const alias = new URL(origin); alias.hostname = hostname;
-      allowedHosts.add(alias.host);
-    }
-  }
+  const auth = new Auth(manager.database, configuredOrigin, authOptions);
   app.addHook('onRequest', async (request, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Cache-Control', 'no-store');
     reply.header('Referrer-Policy', 'no-referrer');
-    if (!request.headers.host || !allowedHosts.has(request.headers.host)) return reply.code(403).send({ error: 'invalid_host' });
+    if (!isTrustedHost(request.headers.host, configuredOrigin.host)) return reply.code(403).send({ error: 'invalid_host' });
     const upgrade = request.headers.upgrade === 'websocket';
-    const requestOrigin = `${configuredOrigin.protocol}//${request.headers.host}`;
-    if ((request.method !== 'GET' && request.method !== 'HEAD' || upgrade) && request.headers.origin !== requestOrigin) return reply.code(403).send({ error: 'invalid_origin' });
+    if ((request.method !== 'GET' && request.method !== 'HEAD' || upgrade) && request.headers.origin !== auth.expectedOrigin(request)) return reply.code(403).send({ error: 'invalid_origin' });
+    return auth.guard(request, reply);
   });
   app.setErrorHandler((error, _request, reply) => {
     const message = error instanceof Error ? error.message : '';
@@ -45,6 +41,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
   });
   await app.register(websocket, { options: { maxPayload: 32 * 1024, perMessageDeflate: false } });
   const hub = registerWebsockets(app, manager);
+  auth.routes(app);
   app.get('/api/catalog/machines', async () => manager.bootstrap().machines);
   app.get('/api/catalog/:machineId', async (request) => {
     const { machineId } = z.object({ machineId: opaqueId }).parse(request.params);
@@ -67,7 +64,6 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     if (!supervisor?.target.acceptsLocalFiles) return reply.code(409).send({ error: 'directories_unsupported_target' });
     return suggestDirectories(prefix);
   });
-  app.post('/api/workspaces', async (request, reply) => {
   app.get('/api/worktrees', async (request) => {
     const { machineId, projectId } = z.object({ machineId: opaqueId, projectId: opaqueId }).strict().parse(request.query);
     return manager.worktrees(machineId, projectId);
@@ -76,6 +72,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     const input = z.object({ machineId: opaqueId, projectId: opaqueId, path: z.string().min(1).max(1000) }).strict().parse(request.body);
     return manager.openWorktree(input.machineId, input.projectId, input.path);
   });
+  app.post('/api/workspaces', async (request, reply) => {
     const input = z.object({ machineId: opaqueId, path: z.string().regex(/^(\/|~\/)/).max(1000).refine((path) => !/[\x00-\x1f]/.test(path)), label: z.string().trim().min(1).max(80) }).strict().parse(request.body);
     const key = z.uuid().parse(request.headers['idempotency-key']);
     const supervisor = manager.supervisors.get(input.machineId);

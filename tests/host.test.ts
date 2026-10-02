@@ -57,17 +57,19 @@ it.each(['localhost:4321', '127.0.0.1:4321', '[::1]:4321'])('accepts the loopbac
   expect(result.statusCode).toBe(202);
   const sockets = await pair(app, headers); expect(sockets.metadata.readyState).toBe(1); expect(sockets.terminal.readyState).toBe(1);
 });
-it('rejects different origins, ports, suffix hosts and nonlocal aliases even when loopback is allowed', async () => {
+it('rejects different origins and untrusted hosts, and keeps unpaired non-loopback hosts out', async () => {
   const { app } = await setup('http://127.0.0.1:4321');
-  for (const host of ['localhost:4322', 'localhost.attacker.invalid:4321', '192.0.2.1:4321']) expect((await app.inject({ url: '/api/runtime', headers: { host } })).statusCode).toBe(403);
+  for (const host of ['localhost.attacker.invalid:4321', 'attacker.invalid:4321']) expect((await app.inject({ url: '/api/runtime', headers: { host } })).statusCode).toBe(403);
+  expect((await app.inject({ url: '/api/runtime', headers: { host: '192.0.2.1:4321' } })).statusCode).toBe(401);
+  expect((await app.inject({ url: '/api/runtime', headers: { host: 'localhost:4322' } })).statusCode).toBe(200);
   for (const origin of ['http://127.0.0.1:4321', 'https://localhost:4321', 'http://localhost:4322']) {
     const headers = { host: 'localhost:4321', origin };
     expect((await app.inject({ method: 'POST', url: '/api/threads', headers, payload: launch })).statusCode).toBe(403);
     await expect(app.injectWS('/api/ws/metadata?instance=' + randomUUID(), { headers })).rejects.toThrow();
   }
   const remote = await setup('https://herdr.example:4321');
-  expect((await remote.app.inject({ url: '/api/runtime', headers: { host: 'localhost:4321' } })).statusCode).toBe(403);
-  expect((await remote.app.inject({ url: '/api/runtime', headers: remote.headers })).statusCode).toBe(200);
+  expect((await remote.app.inject({ url: '/api/runtime', headers: { host: 'localhost:4321' } })).statusCode).toBe(200);
+  expect((await remote.app.inject({ url: '/api/runtime', headers: remote.headers })).statusCode).toBe(401);
 });
 it('runs anonymous start → shared snapshot → binary baseline → ACK → input → release on one host', async () => {
   const { app, target, manager, headers } = await setup();

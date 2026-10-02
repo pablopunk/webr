@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { and, eq, max } from 'drizzle-orm';
+import type { DeviceSession } from '../auth/sessions';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { mkdirSync, chmodSync } from 'node:fs';
@@ -71,4 +72,9 @@ export class MetadataDatabase {
     });
     return configVersion;
   }
+  addDeviceSession(session: DeviceSession & { tokenHash: string }) { this.db.insert(schema.deviceSessions).values(session).run(); }
+  deviceSessionByTokenHash(tokenHash: string) { return this.db.select().from(schema.deviceSessions).where(eq(schema.deviceSessions.tokenHash, tokenHash)).get(); }
+  deviceSessions() { return this.db.select({ id: schema.deviceSessions.id, name: schema.deviceSessions.name, createdAt: schema.deviceSessions.createdAt, lastSeenAt: schema.deviceSessions.lastSeenAt }).from(schema.deviceSessions).all(); }
+  touchDeviceSession(id: string, lastSeenAt: number) { this.db.update(schema.deviceSessions).set({ lastSeenAt }).where(eq(schema.deviceSessions.id, id)).run(); }
+  deleteDeviceSession(id: string) { return this.db.delete(schema.deviceSessions).where(eq(schema.deviceSessions.id, id)).run().changes > 0; }
 }

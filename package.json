@@ -1,14 +1,31 @@
 {
   "name": "webr",
-  "private": true,
+  "version": "0.1.0",
+  "description": "Control your Herdr agents from anywhere.",
   "type": "module",
+  "bin": {
+    "webr": "bin/webr.mjs"
+  },
+  "files": [
+    "bin",
+    "server",
+    "src/server",
+    "src/shared",
+    "src/lib",
+    "drizzle",
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "tsx scripts/dev.ts",
     "build": "astro build",
     "start": "tsx server/start.ts",
     "check": "astro check && tsc --noEmit",
     "test": "vitest run",
-    "validate:offline": "tsx scripts/validate-protocol.ts"
+    "validate:offline": "tsx scripts/validate-protocol.ts",
+    "prepack": "astro build"
   },
   "dependencies": {
     "@astrojs/node": "11.1.6",
@@ -28,6 +45,8 @@
     "lucide-react": "0.468.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "tsx": "4.23.15",
+    "uqr": "0.1.3",
     "zod": "4.6.5",
     "zustand": "5.0.15"
   },
@@ -41,7 +60,6 @@
     "@types/react-dom": "19.3.0",
     "@types/ws": "8.18.2",
     "jsdom": "30.1.1",
-    "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vitest": "5.0.3"
   }

@@ -15,3 +15,7 @@ export const operations = sqliteTable('launch_operations', {
 export const settings = sqliteTable('app_settings', { key: text('key').primaryKey(), value: text('value').notNull() });
 export const profiles = sqliteTable('machine_profiles', { id: text('id').primaryKey(), session: text('session').notNull(), configVersion: integer('config_version').notNull(), metadata: text('metadata').notNull() });
 export const projectLocations = sqliteTable('project_locations', { id: text('id').primaryKey(), machineId: text('machine_id').notNull(), projectId: text('project_id').notNull(), path: text('path').notNull() });
+export const deviceSessions = sqliteTable('device_sessions', {
+  id: text('id').primaryKey(), tokenHash: text('token_hash').notNull(), name: text('name').notNull(),
+  createdAt: integer('created_at').notNull(), lastSeenAt: integer('last_seen_at').notNull(),
+}, (table) => [uniqueIndex('device_session_token').on(table.tokenHash)]);

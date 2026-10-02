@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PanelLeft, Search } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
+import { PairingPrompt } from './PairingPrompt';
 import { NewThreadView } from './NewThreadView';
 import { SettingsView } from './SettingsView';
 import { Sidebar, type SidebarMode } from './Sidebar';
@@ -145,6 +146,7 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
       {page === 'missing' && <main className="not-found"><h1>Thread not found</h1><a href="/">Open a thread</a></main>}
     </div>
     {page === 'thread' && <div className="mobile-controls"><button aria-label="Open sidebar" onClick={toggleSidebar}><PanelLeft size={16} /></button><button aria-label="Open command palette" onClick={() => setPaletteOpen(true)}><Search size={16} /></button></div>}
+    <PairingPrompt />
     <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projects={projects} threads={threads} thread={thread} focusedPane={focusedPane}
       mode={mode} onModeChange={changeMode} onToggleSidebar={toggleSidebar} onFocusPane={focusPane} onTerminalAction={(action) => { const pane = thread?.panes.find((pane) => pane.id === focusedPane); if (thread && pane?.terminalId) terminals.command(thread.machineId, thread.id, pane.terminalId, action); }}
       onToggleTerminal={toggleTerminal} onCloseTerminal={closeTerminal} />

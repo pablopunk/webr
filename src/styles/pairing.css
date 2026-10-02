@@ -1,0 +1,9 @@
+.pairing-title { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+.pairing-code { margin: 0 0 16px; font: 700 40px/1 var(--font-mono); letter-spacing: .18em; text-align: center; text-indent: .18em; }
+.pairing-invite .dialog-message code { font-family: var(--font-mono); }
+.qr-code { display: block; width: min(240px, 100%); aspect-ratio: 1; margin: 0 auto 14px; border-radius: 8px; }
+.pairing-token { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 6px; }
+.pairing-token code { font: 600 14px var(--font-mono); letter-spacing: .08em; user-select: all; }
+.pairing-token .dialog-button { display: inline-grid; place-items: center; min-width: 32px; padding: 0; }
+.device-tag { margin-left: 8px; padding: 1px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-style: normal; }
+.device-meta { display: block; color: var(--ink-muted); font-size: 11px; }

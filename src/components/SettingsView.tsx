@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ThemeControl } from './ThemeControl';
+import { RemoteAccess } from './RemoteAccess';
 import { newSessionBehaviorLabels, readNewSessionBehavior, writeNewSessionBehavior, type NewSessionBehavior } from '../client/new-session-behavior';
 import { defaultShortcuts, getShortcuts, isReservedShortcut, keyCombo, shortcutKeys, shortcutLabels, type ShortcutAction } from './shortcuts';
 
@@ -34,6 +35,7 @@ export function SettingsView({ onOpenSidebar }: {
     <h1>Settings</h1>
     <section><h2>Appearance</h2><div className="settings-row"><span>Theme</span><ThemeControl expanded /></div></section>
     <section><h2>New threads</h2><div className="settings-row"><span>New session behavior</span><div className="theme-control theme-control--labels" role="group" aria-label="New session behavior">{(Object.keys(newSessionBehaviorLabels) as NewSessionBehavior[]).map((choice) => <button key={choice} type="button" aria-pressed={behavior === choice} className={behavior === choice ? 'theme-option is-selected' : 'theme-option'} onClick={() => { setBehavior(choice); writeNewSessionBehavior(choice); }}>{newSessionBehaviorLabels[choice]}</button>)}</div></div></section>
+    <RemoteAccess />
     <section id="shortcuts"><div className="settings-section-title"><h2>Keyboard shortcuts</h2><button onClick={() => { setShortcuts(defaultShortcuts); localStorage.removeItem('webr-shortcuts'); setRecording(null); setError(''); }}>Reset</button></div>
       <p className="settings-note">Press ⌘K for all actions and threads.</p>
       {(Object.keys(shortcutLabels) as ShortcutAction[]).map((action) => <div className="settings-row" key={action}><span>{shortcutLabels[action]}</span><button className="shortcut-key" data-recording={recording === action} onClick={() => { setRecording(action); setError(''); }} onKeyDown={(event) => recording === action && recordKey(event, action)} aria-label={`Change ${shortcutLabels[action]} shortcut`}>{recording === action ? 'Press keys…' : shortcutKeys(shortcuts[action]).map((key, index) => <kbd key={index}>{key}</kbd>)}</button></div>)}
