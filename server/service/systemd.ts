@@ -20,8 +20,6 @@ ${Object.entries(spec.env).map(([key, value]) => `Environment=${quote(`${key}=${
 WorkingDirectory=${spec.userHome}
 Restart=always
 RestartSec=5
-StandardOutput=append:${spec.logPath}
-StandardError=append:${spec.logPath}
 
 [Install]
 WantedBy=default.target
@@ -40,6 +38,11 @@ export const systemd: ServicePlatform = {
     if (!enabled.ok) throw new Error(`systemctl could not start the service: ${enabled.output.trim()}`);
     const linger = run('loginctl', ['enable-linger', process.env.USER ?? '']);
     return [`Installed ${path}`, linger.ok ? 'Webr starts at boot and restarts if it stops.' : `Webr starts at login. To start it at boot, run: sudo loginctl enable-linger ${process.env.USER ?? '$USER'}`];
+  },
+  restart(_spec, run) {
+    const restarted = run('systemctl', ['--user', 'restart', unitName]);
+    if (!restarted.ok) throw new Error(`systemctl could not restart the service: ${restarted.output.trim()}`);
+    return ['Restarted the service.'];
   },
   uninstall(spec, run) {
     const path = unitPath(spec.userHome);

@@ -9,7 +9,7 @@ const literal = (value: string) => `'${value.replace(/'/g, "''")}'`;
 
 export function launcher(spec: ServiceSpec) {
   const environment = Object.entries(spec.env).map(([key, value]) => `$env:${key} = ${literal(value)}`);
-  const command = ['&', literal(spec.nodePath), literal(spec.entry), 'start', ...spec.args.map(literal), '*>>', literal(spec.logPath)].join(' ');
+  const command = ['&', literal(spec.nodePath), literal(spec.entry), 'start', ...spec.args.map(literal)].join(' ');
   return [...environment, command, ''].join('\r\n');
 }
 
@@ -24,6 +24,12 @@ export const windows: ServicePlatform = {
     if (!created.ok) throw new Error(`Task Scheduler refused the task. Try again from an elevated terminal. ${created.output.trim()}`);
     run('schtasks', ['/Run', '/TN', taskName]);
     return [`Installed the "${taskName}" scheduled task`, 'Webr starts at login and runs in the background.'];
+  },
+  restart(_spec, run) {
+    run('schtasks', ['/End', '/TN', taskName]);
+    const started = run('schtasks', ['/Run', '/TN', taskName]);
+    if (!started.ok) throw new Error(`Task Scheduler could not restart the task: ${started.output.trim()}`);
+    return ['Restarted the service.'];
   },
   uninstall(spec, run) {
     run('schtasks', ['/End', '/TN', taskName]);

@@ -32,10 +32,6 @@ ${entries(spec.env)}
   <true/>
   <key>ThrottleInterval</key>
   <integer>10</integer>
-  <key>StandardOutPath</key>
-  <string>${xml(spec.logPath)}</string>
-  <key>StandardErrorPath</key>
-  <string>${xml(spec.logPath)}</string>
 </dict>
 </plist>
 `;
@@ -55,6 +51,11 @@ export const launchd: ServicePlatform = {
     const loaded = run('launchctl', ['bootstrap', domain(), path]);
     if (!loaded.ok) throw new Error(`launchctl could not load the service: ${loaded.output.trim()}`);
     return [`Installed ${path}`, 'Webr starts at login and restarts if it stops.'];
+  },
+  restart(_spec, run) {
+    const restarted = run('launchctl', ['kickstart', '-k', target()]);
+    if (!restarted.ok) throw new Error(`launchctl could not restart the service: ${restarted.output.trim()}`);
+    return ['Restarted the service.'];
   },
   uninstall(spec, run) {
     const path = plistPath(spec.userHome);

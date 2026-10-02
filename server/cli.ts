@@ -1,14 +1,16 @@
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { fileURLToPath } from 'node:url';
 import { renderUnicode } from 'uqr';
 import { webrHome } from './home';
 import { runServer } from './run';
-import { platformFor, runServiceAction, type ServiceAction } from './service';
+import { isServiceInstalled, platformFor, runServiceAction, type ServiceAction } from './service';
 import { serverPort } from './port';
 import { defaultDeps, installPlugin, pluginStatus, uninstallWebrPlugin } from './plugin';
 import { confirmOnTerminal } from './plugin/confirm';
+import { checkHerdr } from './herdr-check';
+import { packageInfo } from './package-info';
+import { realUpdateEnvironment, runUpdate } from './update';
+import { refreshLatestVersionCache, updateHint } from './update/hint';
 
 const HELP = `Webr — control your Herdr agents from anywhere.
 
@@ -20,7 +22,9 @@ Usage
   webr plugin install [options]  Start Webr whenever the Herdr server starts
   webr plugin uninstall          Remove the Herdr plugin
   webr plugin status             Show whether the plugin is installed and Webr is running
+  webr service restart           Restart the background service
   webr invite [--port <port>]    Print a one-time code and QR to connect a device
+  webr update                    Install the latest version and restart the service
 
 Options
   --port <port>     Port to listen on (default 4321)
@@ -30,6 +34,7 @@ Options
   -v, --version     Print the version
   -h, --help        Print this help
 
+Set WEBR_NO_UPDATE_CHECK=1 to stop Webr from checking for new versions.
 Localhost never needs a token. Any other device asks for access and you approve it in Webr on this computer.
 `;
 
@@ -53,8 +58,24 @@ function applyServerFlags(values: ReturnType<typeof parseCommand>['values']) {
   process.env.WEBR_DATABASE ??= join(webrHome(), 'gateway.sqlite');
 }
 
-function readVersion() {
-  return (JSON.parse(readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8')) as { version: string }).version;
+function printUpdateHint() {
+  const hint = updateHint();
+  if (hint) console.error(hint);
+}
+
+async function requireHerdr() {
+  const status = await checkHerdr();
+  if (!status.ok) throw new Error(status.problem);
+  if (status.note) console.log(status.note);
+}
+
+async function warnIfHerdrIsUnreachable() {
+  const status = await checkHerdr();
+  if (!status.ok) console.warn(`Warning: ${status.problem}\nThe service is installed, but Webr will not show any agents until Herdr is reachable.`);
+}
+
+function restartInstalledService() {
+  return isServiceInstalled() ? runServiceAction('restart', []) : undefined;
 }
 
 async function invite(port: number) {
@@ -83,12 +104,16 @@ export async function main(argv: string[]) {
   const { values, positionals } = parseCommand(argv);
   const [command = 'start', subcommand] = positionals;
   if (values.help || command === 'help') return void console.log(HELP);
-  if (values.version) return void console.log(readVersion());
-  if (command === 'start') { applyServerFlags(values); return runServer(); }
+  if (values.version) { console.log(packageInfo().version); return printUpdateHint(); }
+  if (command === 'start') { applyServerFlags(values); await requireHerdr(); return runServer(); }
+  if (command === 'update') return void (await runUpdate(realUpdateEnvironment(restartInstalledService))).forEach((line) => console.log(line));
+  if (command === 'refresh-update-cache') return refreshLatestVersionCache().catch(() => undefined);
   if (command === 'invite') return invite(serverPort(values.port ? ['--port', values.port] : []));
-  if (command === 'service' && ['install', 'uninstall', 'status'].includes(subcommand ?? '')) {
+  if (command === 'service' && ['install', 'restart', 'uninstall', 'status'].includes(subcommand ?? '')) {
     platformFor();
     for (const line of runServiceAction(subcommand as ServiceAction, serverFlags(values))) console.log(line);
+    if (subcommand === 'install') await warnIfHerdrIsUnreachable();
+    if (subcommand === 'status') printUpdateHint();
     return;
   }
   if (command === 'plugin' && ['install', 'uninstall', 'status'].includes(subcommand ?? '')) return pluginCommand(subcommand!, values);

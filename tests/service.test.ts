@@ -6,7 +6,8 @@ import { launchd, launchdLabel, plist, plistPath } from '../server/service/launc
 import { systemd, unit, unitPath } from '../server/service/systemd';
 import { launcher, windows } from '../server/service/windows';
 import { platformFor, runServiceAction, serviceSpec } from '../server/service';
-import type { RunCommand, ServiceSpec } from '../server/service/types';
+import { stableEntryPath } from '../server/service/entry';
+import type { RunCommand, ServicePlatform, ServiceSpec } from '../server/service/types';
 import { publicUrls } from '../src/server/public-urls';
 
 const homes: string[] = [];
@@ -28,6 +29,8 @@ it('describes a launchd agent that starts at login and restarts', () => {
   expect(text).toContain('<string>/a&amp;b:/usr/bin</string>');
   expect(text).toMatch(/<key>RunAtLoad<\/key>\s*<true\/>/);
   expect(text).toMatch(/<key>KeepAlive<\/key>\s*<true\/>/);
+  expect(text).not.toContain('StandardOutPath');
+  expect(text).not.toContain('StandardErrorPath');
 });
 
 it('installs and removes the launchd agent through launchctl', () => {
@@ -50,6 +53,7 @@ it('quotes systemd arguments and escapes specifiers', () => {
   expect(text).toContain('ExecStart="/opt/node/bin/node" "/opt/webr/bin/webr.mjs" "start" "--origin" "https://a.example/$$x%%y"');
   expect(text).toContain('Environment="PATH=/usr/bin"');
   expect(text).toMatch(/Restart=always/);
+  expect(text).not.toMatch(/Standard(Output|Error)=append/);
   expect(text).toMatch(/WantedBy=default.target/);
 });
 
@@ -63,10 +67,11 @@ it('enables the systemd user unit, falling back when lingering is refused', () =
   expect(existsSync(unitPath(value.userHome))).toBe(false);
 });
 
-it('writes a hidden Task Scheduler launcher that logs to a file', () => {
+it('writes a hidden Task Scheduler launcher that leaves logging to the app', () => {
   const value = spec({ env: { PATH: "C:\\it's" } });
   expect(launcher(value)).toContain("$env:PATH = 'C:\\it''s'");
   expect(launcher(value)).toContain("& '/opt/node/bin/node' '/opt/webr/bin/webr.mjs' start '--port' '4321'");
+  expect(launcher(value)).not.toContain('>>');
   const { calls, run } = recorder();
   windows.install(value, run);
   expect(calls[0]).toMatch(/^schtasks \/Create \/TN Webr \/SC ONLOGON .* -WindowStyle Hidden .*webr-service.ps1"$/);
@@ -81,8 +86,32 @@ it('picks the service manager from the platform and rejects the rest', () => {
 it('keeps the environment Herdr needs and the server flags in the service spec', () => {
   const value = serviceSpec(['--port', '5000'], { PATH: '/p', HERDR_CONFIG_PATH: '/h/config.toml', SECRET: 'x', HOME: '/home/me' });
   expect(value.args).toEqual(['--port', '5000']);
-  expect(value.env).toEqual({ PATH: '/p', HERDR_CONFIG_PATH: '/h/config.toml', HOME: '/home/me' });
+  expect(value.env).toEqual({ PATH: '/p', HERDR_CONFIG_PATH: '/h/config.toml', HOME: '/home/me', WEBR_LOG_FILE: value.logPath });
   expect(readFileSync(value.entry, 'utf8')).toContain('#!/usr/bin/env node');
+});
+
+it('tells every service manager where the app writes its own rotating log', () => {
+  const value = serviceSpec([], { HOME: '/home/me', WEBR_HOME: '/data/webr' });
+  expect(value.env.WEBR_LOG_FILE).toBe(join('/data/webr', 'logs', 'webr.log'));
+  expect(plist(value)).toContain(`<key>WEBR_LOG_FILE</key>\n    <string>${value.logPath}</string>`);
+  expect(unit(value)).toContain(`Environment="WEBR_LOG_FILE=${value.logPath}"`);
+  expect(launcher(value)).toContain(`$env:WEBR_LOG_FILE = '${value.logPath}'`);
+});
+
+it('restarts the service through each service manager', () => {
+  const value = spec();
+  const restart = (platform: ServicePlatform) => { const { calls, run } = recorder(); platform.restart(value, run); return calls; };
+  expect(restart(launchd)[0]).toMatch(/^launchctl kickstart -k gui\/\d+\/com\.webr\.server$/);
+  expect(restart(systemd)).toEqual(['systemctl --user restart webr.service']);
+  expect(restart(windows)).toEqual(['schtasks /End /TN Webr', 'schtasks /Run /TN Webr']);
+  expect(() => launchd.restart(value, recorder(['launchctl kickstart']).run)).toThrow('could not restart');
+  expect(() => systemd.restart(value, recorder(['systemctl --user']).run)).toThrow('could not restart');
+  expect(() => windows.restart(value, recorder(['schtasks /Run']).run)).toThrow('could not restart');
+});
+
+it('points pnpm installs at the path that survives updates', () => {
+  expect(stableEntryPath('/h/.local/share/pnpm/global/5/node_modules/.pnpm/@pablopunk+webr@0.2.0/node_modules/@pablopunk/webr/bin/webr.mjs')).toBe('/h/.local/share/pnpm/global/5/node_modules/@pablopunk/webr/bin/webr.mjs');
+  expect(stableEntryPath('/usr/lib/node_modules/webr/bin/webr.mjs')).toBe('/usr/lib/node_modules/webr/bin/webr.mjs');
 });
 
 it('summarises the service status for the user', () => {
