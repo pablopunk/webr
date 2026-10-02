@@ -38,7 +38,7 @@ export function ComposerCombobox({ label, value, options, onChange, icon, allowC
           <Combobox.Empty className="composer-select-empty">No matches</Combobox.Empty>
           <Combobox.List className="composer-select-list">
             {(option: ComposerOption) => <Combobox.Item key={option.value} value={option} disabled={option.disabled} className="composer-select-option">
-              {option.icon && <span aria-hidden="true">{option.icon}</span>}<span className="composer-select-option-label">{option.label}</span>
+              {option.icon && <span className="composer-select-option-icon" aria-hidden="true">{option.icon}</span>}<span className="composer-select-option-label">{option.label}</span>
               <Combobox.ItemIndicator className="composer-select-check"><Check size={14} /></Combobox.ItemIndicator>
             </Combobox.Item>}
           </Combobox.List>
