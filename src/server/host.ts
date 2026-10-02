@@ -31,6 +31,17 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     const requestOrigin = `${configuredOrigin.protocol}//${request.headers.host}`;
     if ((request.method !== 'GET' && request.method !== 'HEAD' || upgrade) && request.headers.origin !== requestOrigin) return reply.code(403).send({ error: 'invalid_origin' });
   });
+  app.setErrorHandler((error, _request, reply) => {
+    const message = error instanceof Error ? error.message : '';
+    if (error instanceof z.ZodError) return reply.code(400).send({ error: 'invalid_request' });
+    const status = (error as { statusCode?: number }).statusCode;
+    if (status === 413) return reply.code(413).send({ error: 'image_too_large' });
+    if (status === 415 || message === 'unsupported_image') return reply.code(415).send({ error: 'unsupported_image' });
+    if (status && status >= 400 && status < 500) return reply.code(status).send({ error: 'invalid_request' });
+    if (message === 'thread_not_found') return reply.code(404).send({ error: message });
+    if (message === 'launch_in_progress') return reply.code(409).send({ error: message });
+    return reply.code(['idempotency_conflict', 'binding_conflict', 'invalid_adoption'].includes(message) ? 409 : 503).send({ error: ['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected'].includes(message) ? message : 'request_failed' });
+  });
   await app.register(websocket, { options: { maxPayload: 32 * 1024, perMessageDeflate: false } });
   const hub = registerWebsockets(app, manager);
   app.get('/api/catalog/machines', async () => manager.bootstrap().machines);
@@ -91,6 +102,11 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     const input = z.object({ machineId: opaqueId, archived: z.boolean() }).strict().parse(request.body);
     manager.archive(input.machineId, id, input.archived); return { archived: input.archived };
   });
+  app.post('/api/threads/:id/rename', async (request) => {
+    const { id } = z.object({ id: z.uuid() }).parse(request.params);
+    const input = z.object({ machineId: opaqueId, title: z.string().trim().min(1).max(90).refine((title) => !/[\x00-\x1f\x7f]/.test(title)) }).strict().parse(request.body);
+    await manager.renameThread(input.machineId, id, input.title); return { title: input.title };
+  });
   app.post('/api/threads/:id/delete', async (request) => {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
     const input = z.object({ machineId: opaqueId }).strict().parse(request.body);
@@ -118,17 +134,6 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
       ssr(request.raw, reply.raw, () => { if (!reply.raw.headersSent) { reply.raw.statusCode = 404; reply.raw.end('Not found'); } }, { runtime: manager, accountId: localOwner });
     });
   }
-  app.setErrorHandler((error, _request, reply) => {
-    const message = error instanceof Error ? error.message : '';
-    if (error instanceof z.ZodError) return reply.code(400).send({ error: 'invalid_request' });
-    const status = (error as { statusCode?: number }).statusCode;
-    if (status === 413) return reply.code(413).send({ error: 'image_too_large' });
-    if (status === 415 || message === 'unsupported_image') return reply.code(415).send({ error: 'unsupported_image' });
-    if (status && status >= 400 && status < 500) return reply.code(status).send({ error: 'invalid_request' });
-    if (message === 'thread_not_found') return reply.code(404).send({ error: message });
-    if (message === 'launch_in_progress') return reply.code(409).send({ error: message });
-    return reply.code(['idempotency_conflict', 'binding_conflict', 'invalid_adoption'].includes(message) ? 409 : 503).send({ error: ['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected'].includes(message) ? message : 'request_failed' });
-  });
   app.addHook('onClose', async () => manager.close());
   return app;
 }

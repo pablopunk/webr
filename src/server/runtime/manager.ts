@@ -78,6 +78,19 @@ export class RuntimeManager extends EventEmitter {
     this.database.saveThread({ ...row.metadata, archivedAt: archived ? new Date().toISOString() : undefined }, row.anchors, row.alias);
     this.publish(supervisor);
   }
+  async renameThread(machineId: string, threadId: string, title: string) {
+    const supervisor = this.supervisors.get(machineId);
+    const thread = this.projections.get(machineId)?.threads.find((thread) => thread.id === threadId);
+    if (!supervisor || !thread) throw new Error('thread_not_found');
+    if (thread.bindingState === 'attached') {
+      if (!supervisor.connected || !supervisor.target.renameTab) throw new Error('machine_disconnected');
+      await supervisor.target.renameTab(thread.tabId, title);
+    }
+    const row = this.database.threadRows(machineId).find((row) => row.id === threadId);
+    if (row) this.database.saveThread({ ...row.metadata, title }, row.anchors, row.alias);
+    if (thread.bindingState === 'attached') await supervisor.readFresh();
+    this.publish(supervisor);
+  }
   async deleteThread(machineId: string, threadId: string) {
     const supervisor = this.supervisors.get(machineId);
     const thread = this.projections.get(machineId)?.threads.find((thread) => thread.id === threadId);

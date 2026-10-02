@@ -25,5 +25,6 @@ export type TargetAdapter = {
   prompt(paneId: string, prompt: string, terminalId: string, threadId: string, input: LaunchInput): Promise<void>;
   focusPane?(paneId: string): Promise<void>;
   discardTab?(tabId: string): Promise<void>;
+  renameTab?(tabId: string, label: string): Promise<void>;
   close(): void;
 };

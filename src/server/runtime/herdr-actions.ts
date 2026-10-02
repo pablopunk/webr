@@ -69,6 +69,13 @@ export class HerdrActions {
     throw new Error('agent_not_ready');
   }
   async focus(paneId: string) { await this.api.request('pane.focus', { pane_id: paneId }); }
+  async renameTab(snapshot: NativeSnapshot, tabId: string, label: string) {
+    const tab = snapshot.tabs.find((tab) => tab.tab_id === tabId);
+    if (!tab) throw new Error('thread_not_found');
+    await this.api.request('tab.rename', { tab_id: tabId, label });
+    const ownsWorkspace = snapshot.tabs.filter((other) => other.workspace_id === tab.workspace_id).length === 1;
+    if (ownsWorkspace) await this.api.request('workspace.rename', { workspace_id: tab.workspace_id, label });
+  }
   async discardTab(snapshot: NativeSnapshot, tabId: string) {
     const tab = snapshot.tabs.find((tab) => tab.tab_id === tabId);
     if (!tab) return;
