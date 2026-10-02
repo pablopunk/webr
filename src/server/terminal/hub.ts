@@ -4,8 +4,11 @@ import { encodeFrame, FrameSequence } from '../../shared/frame';
 import type { TerminalAction } from '../../shared/runtime';
 import type { TerminalFrame, TerminalStream } from './cli';
 import { encodeUserInput } from './writer';
+import { perfLog } from '../perf-log';
 
-type Lease = { id: number; generation: number; terminalId: string; machineId: string; threadId: string; mode: string; stream?: TerminalStream; outstanding: Map<number, number>; bytes: number; sequence: FrameSequence; baselineReady: boolean; outputSeq: number; started: boolean; baselineSeq?: number; expectedSize?: [number, number]; timer?: ReturnType<typeof setTimeout> };
+type Lease = { id: number; generation: number; terminalId: string; machineId: string; threadId: string; mode: string; stream?: TerminalStream; outstanding: Map<number, number>; bytes: number; sequence: FrameSequence; baselineReady: boolean; outputSeq: number; started: boolean; baselineSeq?: number; expectedSize?: [number, number]; timer?: ReturnType<typeof setTimeout>; scrollAt?: number; scrollMode?: { value: 'scrollback' | 'app'; checkedAt: number } };
+const MAX_WHEEL_TICKS = 30;
+const SCROLL_MODE_CHECK_MS = 1000;
 type SharedControl = { stream: TerminalStream; sequence: FrameSequence; members: Map<Lease, string>; closed: boolean };
 export class TerminalHub {
   private viewers = new Map<string, { socket: WebSocket; leases: Map<number, Lease>; bytes: number }>();
@@ -55,7 +58,8 @@ export class TerminalHub {
     if (action.type !== 'resize' && !lease.baselineReady) throw new Error('baseline_not_acknowledged');
     if (action.type === 'input') lease.stream?.send({ type: 'terminal.input', text: encodeUserInput(action.text, action.paste) });
     if (action.type === 'resize') { lease.baselineReady = false; lease.baselineSeq = undefined; lease.expectedSize = [action.cols, action.rows]; lease.stream?.send({ type: 'terminal.resize', cols: action.cols, rows: action.rows }); }
-    if (action.type === 'scroll') lease.stream?.send({ type: 'terminal.scroll', direction: action.direction, lines: action.lines });
+    if (action.type === 'scroll') lease.scrollAt ??= performance.now();
+    if (action.type === 'scroll') this.scroll(lease, target, action);
     if (action.type === 'mouse') lease.stream?.send({ type: 'terminal.mouse', action: action.action, button: action.button, column: action.column, row: action.row, modifiers: action.modifiers });
   }
   private joinControl(key: string, owner: string, lease: Lease, action: Extract<TerminalAction, { type: 'open' }>, target: ReturnType<RuntimeManager['binding']>): TerminalStream {
@@ -103,7 +107,25 @@ export class TerminalHub {
       if (frame.full && !lease.baselineReady && (!lease.expectedSize || frame.width === lease.expectedSize[0] && frame.height === lease.expectedSize[1])) lease.baselineSeq = frame.seq;
       lease.timer ??= setTimeout(() => this.release(owner, lease.id, 'ack_timeout'), 5000);
       viewer.socket.send(packet, { binary: true });
+      this.logScrollReply(lease, frame.full, packet.length, viewer.socket.bufferedAmount);
     } catch { this.release(owner, lease.id, 'stream_resync_required'); }
+  }
+  /** Herdr always puts wheel ticks of full-screen apps at the top-left cell, so those get SGR wheel reports at the pointer instead. */
+  private scroll(lease: Lease, target: ReturnType<RuntimeManager['binding']>, action: { direction: 'up' | 'down'; lines: number; column?: number; row?: number }) {
+    this.refreshScrollMode(lease, target);
+    if (lease.scrollMode?.value !== 'app') { lease.stream?.send({ type: 'terminal.scroll', direction: action.direction, lines: action.lines }); return; }
+    const report = `\x1b[<${action.direction === 'up' ? 64 : 65};${action.column ?? 1};${action.row ?? 1}M`;
+    lease.stream?.send({ type: 'terminal.input', text: report.repeat(Math.min(action.lines, MAX_WHEEL_TICKS)) });
+  }
+  private refreshScrollMode(lease: Lease, target: ReturnType<RuntimeManager['binding']>) {
+    if (!target.scrollMode || lease.scrollMode && Date.now() - lease.scrollMode.checkedAt < SCROLL_MODE_CHECK_MS) return;
+    lease.scrollMode = { value: lease.scrollMode?.value ?? 'scrollback', checkedAt: Date.now() };
+    void target.scrollMode(lease.terminalId).then((value) => { lease.scrollMode = { value, checkedAt: Date.now() }; }, () => undefined);
+  }
+  private logScrollReply(lease: Lease, full: boolean, bytes: number, buffered: number) {
+    if (lease.scrollAt === undefined) return;
+    perfLog('server', { event: 'scroll.reply', herdrRoundTripMs: performance.now() - lease.scrollAt, full, bytes, socketBufferedBytes: buffered });
+    lease.scrollAt = undefined;
   }
   stats() { return { viewers: this.viewers.size, controllers: this.controllers.size, bytes: [...this.viewers.values()].reduce((total, viewer) => total + viewer.bytes, 0) }; }
   private release(owner: string, id: number, reason: string) {
