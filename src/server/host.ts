@@ -7,6 +7,7 @@ import type { RuntimeManager } from './runtime/manager';
 import { launchInput, opaqueId } from '../shared/runtime';
 import { registerWebsockets } from './websockets';
 import { createWorkspace } from './runtime/workspace';
+import { expandHome, suggestDirectories } from './directories';
 import { MAX_IMAGE_BYTES, UploadStore, uploadContentTypes } from './uploads';
 
 const localOwner = 'local';
@@ -60,12 +61,18 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     if (!Buffer.isBuffer(request.body)) return reply.code(415).send({ error: 'unsupported_image' });
     return { path: await uploads.save(request.headers['content-type'], request.body) };
   });
+  app.get('/api/directories', async (request, reply) => {
+    const { machineId, prefix } = z.object({ machineId: opaqueId, prefix: z.string().max(1000).refine((path) => !/[\x00-\x1f]/.test(path)) }).strict().parse(request.query);
+    const supervisor = manager.supervisors.get(machineId);
+    if (!supervisor?.target.acceptsLocalFiles) return reply.code(409).send({ error: 'directories_unsupported_target' });
+    return suggestDirectories(prefix);
+  });
   app.post('/api/workspaces', async (request, reply) => {
-    const input = z.object({ machineId: opaqueId, path: z.string().startsWith('/').max(1000).refine((path) => !/[\x00-\x1f]/.test(path)), label: z.string().trim().min(1).max(80) }).strict().parse(request.body);
+    const input = z.object({ machineId: opaqueId, path: z.string().regex(/^(\/|~\/)/).max(1000).refine((path) => !/[\x00-\x1f]/.test(path)), label: z.string().trim().min(1).max(80) }).strict().parse(request.body);
     const key = z.uuid().parse(request.headers['idempotency-key']);
     const supervisor = manager.supervisors.get(input.machineId);
     if (!supervisor?.connected) return reply.code(409).send({ error: 'machine_disconnected' });
-    const result = await createWorkspace(manager.database, supervisor.target, key, input.path, input.label);
+    const result = await createWorkspace(manager.database, supervisor.target, key, expandHome(input.path), input.label);
     supervisor.invalidate();
     return reply.code(result.state === 'unknown' ? 202 : 201).send(result);
   });
