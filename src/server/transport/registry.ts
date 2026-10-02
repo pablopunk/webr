@@ -13,7 +13,7 @@ export const profileSchema = z.object({
 }).strict().superRefine((value, context) => { if (value.transport === 'ssh' && (!value.host || !value.socket)) context.addIssue({ code: 'custom', message: 'SSH requires a host and a verified absolute socket' }); });
 export type TargetProfile = z.infer<typeof profileSchema>;
 export async function loadRegistry(path?: string): Promise<TargetProfile[]> {
-  if (!path) return [await (await import('./local-session')).discoverLocalSession()];
+  if (!path) return [await (await import('./local-session')).discoverLocalSession(), ...await (await import('./saved-machines')).discoverSavedMachines()];
   const profiles = z.array(profileSchema).max(32).parse(JSON.parse(await readFile(path, 'utf8')));
   if (new Set(profiles.map((profile) => profile.id)).size !== profiles.length) throw new Error('duplicate_target');
   if (profiles.some((profile) => new Set(profile.locations.map((location) => location.projectId)).size !== profile.locations.length)) throw new Error('duplicate_project_location');

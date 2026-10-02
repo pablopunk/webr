@@ -50,7 +50,7 @@ export class HerdrTarget implements TargetAdapter {
     if (this.connecting) return this.connecting;
     if (this.api) return this.api;
     this.connecting ??= (async () => {
-      if (!this.profile.enabled || !(this.profile.automatic && this.profile.transport === 'local') && process.env.WEBR_CONNECT !== '1') throw new Error('connection_not_approved');
+      if (!this.profile.enabled || !this.profile.automatic && process.env.WEBR_CONNECT !== '1') throw new Error('connection_not_approved');
       if (this.profile.automatic && this.profile.transport === 'local') await ensureLocalSession(this.profile);
       if (this.profile.transport === 'ssh') {
         this.forwarding = new SshForward(this.profile.host!, this.profile.socket!);
@@ -77,7 +77,7 @@ export class HerdrTarget implements TargetAdapter {
   async snapshot() {
     const snapshot = nativeSnapshot.parse((await (await this.connect()).request('session.snapshot')).snapshot);
     if (snapshot.version !== '0.9.3') { this.compatible = false; throw new Error('unsupported_herdr_version'); }
-    if (this.profile.automatic && this.profile.transport === 'local') this.locations.splice(0, this.locations.length, ...nativeLocations(this.id, snapshot));
+    if (this.profile.automatic) this.locations.splice(0, this.locations.length, ...nativeLocations(this.id, snapshot));
     return snapshot;
   }
   async createWorkspace(path: string, label: string, requestId: string) {
