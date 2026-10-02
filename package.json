@@ -24,6 +24,7 @@
     "start": "tsx server/start.ts",
     "check": "astro check && tsc --noEmit",
     "test": "vitest run",
+    "icons": "tsx scripts/build-icons.ts",
     "validate:offline": "tsx scripts/validate-protocol.ts",
     "prepack": "astro build"
   },

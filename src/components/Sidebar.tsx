@@ -108,7 +108,7 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
     <aside className={`sidebar ${collapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'is-mobile-open' : ''}`} aria-label="Threads"
       onClick={(event) => { if (mobileOpen && (event.target as Element).closest('a[href]')) onCloseMobile(); }}>
       <div className="sidebar-header">
-        {!collapsed && <span className="brand">webr</span>}
+        {!collapsed && <span className="brand"><img src="/brand-mark.png" alt="" width={20} height={20} />webr</span>}
         <button className="icon-button sidebar-collapse" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={onCollapse}>{collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}</button>
         <button className="icon-button mobile-close" aria-label="Close sidebar" onClick={onCloseMobile}><X size={16} /></button>
       </div>
