@@ -35,9 +35,8 @@ it('requests control only for an approved active pane and passes typed keys to t
   fireEvent.change(screen.getByLabelText('Terminal input'), { target: { value: 'x' } });
   expect(fixture.input).toHaveBeenCalledWith('x', undefined);
   view.rerender(<TerminalPane {...props} active={false} />);
-  expect(fixture.observe).toHaveBeenCalledTimes(1);
   view.rerender(<TerminalPane {...props} active />);
-  expect(fixture.control).toHaveBeenCalledTimes(1);
+  expect(fixture.observe).not.toHaveBeenCalled(); expect(fixture.control).not.toHaveBeenCalled();
 });
 it('requests control by itself when a read-only pane is clicked, with no menu', async () => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
@@ -135,12 +134,18 @@ it('ignores OSC 52 clipboard writes on a read-only pane', async () => {
   await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
   fixture.osc.get(52)!('c;' + btoa('secret')); await Promise.resolve(); expect(writeText).not.toHaveBeenCalled();
 });
-it('opens with control when the pane becomes active while the terminal is still loading', async () => {
+it('keeps an unfocused split pane in control so it keeps its own size', async () => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
   const props = { pane: { id: 'w1:p2', terminalId: 'term_shell', title: 'Shell', kind: 'shell' as const }, machineId: 'fixture', threadId: 'fixture-thread', canControl: true, onFocus: () => {} };
-  const view = render(<TerminalPane {...props} active={false} />);
-  view.rerender(<TerminalPane {...props} active />);
+  render(<TerminalPane {...props} active={false} />);
   await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
-  expect(fixture.mount.mock.calls[0][0].mode).toBe('control');
+  expect(fixture.mount.mock.calls[0][0]).toMatchObject({ mode: 'control', cols: 90, rows: 31 });
+});
+it('takes focus on pointer down even when the terminal swallows the click', async () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
+  const onFocus = vi.fn();
+  render(<TerminalPane pane={{ id: 'w1:p2', terminalId: 'term_shell', title: 'Shell', kind: 'shell' }} machineId="fixture" threadId="fixture-thread" active={false} canControl onFocus={onFocus} />);
+  fireEvent.pointerDown(screen.getByLabelText('Shell terminal')); expect(onFocus).toHaveBeenCalledOnce();
 });

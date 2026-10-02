@@ -44,7 +44,6 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
   const [message, setMessage] = useState('Connecting…');
   const [writable, setWritable] = useState(false);
   const writableRef = useRef(false);
-  const activeRef = useRef(active); activeRef.current = active;
   const { notice, show } = useTerminalNotice();
   const images = useImageAttachments({ machineId, active, writable: writableRef, show, send: (text) => { control.current?.input(text, true); } });
   const showCopyResult = useRef((copied: boolean) => {}); showCopyResult.current = (copied) => copied ? show('Copied to clipboard', 'info', 1200) : show('The browser blocked clipboard access.', 'error', 4000);
@@ -72,7 +71,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     const estimatedViewport = () => ({ cols: Math.floor((host.current?.clientWidth ?? 640) / 8), rows: Math.floor((host.current?.clientHeight ?? 400) / 20) });
     const measuredViewport = () => { try { return fit.proposeDimensions(); } catch { return undefined; } };
     const viewport = () => { const { cols, rows } = measuredViewport() ?? estimatedViewport(); return { cols: Math.max(2, Math.min(500, cols)), rows: Math.max(1, Math.min(300, rows)) }; };
-    control.current = terminals.mount({ machineId, threadId, terminalId: pane.terminalId, terminal, mode: canControl && activeRef.current ? 'control' : 'observe', ...viewport(), onState: (message, writable) => { setMessage(message); setWritable(writable); writableRef.current = writable; } });
+    control.current = terminals.mount({ machineId, threadId, terminalId: pane.terminalId, terminal, mode: canControl ? 'control' : 'observe', ...viewport(), onState: (message, writable) => { setMessage(message); setWritable(writable); writableRef.current = writable; } });
     const gestures = bindTerminalGestures(host.current, () => ({ element: terminal.element?.querySelector<HTMLElement>('.xterm-screen') ?? undefined, cols: terminal.cols, rows: terminal.rows }), () => control.current, () => writableRef.current);
     let timer: ReturnType<typeof setTimeout>;
     const resize = new ResizeObserver(() => {
@@ -96,7 +95,6 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     return () => { disposed = true; cleanup(); };
   }, [pane.id, pane.terminalId, machineId, threadId, terminals, canControl]);
 
-  useEffect(() => { if (canControl) { if (active) control.current?.control(); else control.current?.observe(); } }, [active, canControl]);
 
   const focusInput = () => { if (writable && !term.current?.hasSelection()) host.current?.parentElement?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus(); };
   useEffect(() => { if (active) focusInput(); }, [active, writable]);
@@ -122,7 +120,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
   }, [active, writable, images.attach]);
   useEffect(() => { const refocus = () => { if (active) focusInput(); }; window.addEventListener('focus', refocus); return () => window.removeEventListener('focus', refocus); }, [active, writable]);
 
-  return <section ref={section} className={`terminal-pane ${active ? 'is-active' : ''}`} aria-label={`${pane.title} terminal`} onClick={() => { onFocus(); if (canControl && !writableRef.current) control.current?.control(); focusInput(); }}>
+  return <section ref={section} className={`terminal-pane ${active ? 'is-active' : ''}`} aria-label={`${pane.title} terminal`} onPointerDownCapture={() => { if (!active) onFocus(); }} onFocusCapture={() => { if (!active) onFocus(); }} onClick={() => { if (canControl && !writableRef.current) control.current?.control(); focusInput(); }}>
     <span className="terminal-status" role="status">{message}</span>
     {message === conflictMessage && <div className="terminal-control-conflict">Another Herdr client controls this terminal.<button type="button" onClick={(event) => { event.stopPropagation(); void confirmDialog('Replace the other Herdr client that controls this terminal? Its input stops working.', { confirmLabel: 'Take over' }).then((accepted) => { if (accepted) control.current?.control(true); }); }}>Take over</button></div>}
     <div ref={host} className="terminal-host" />
