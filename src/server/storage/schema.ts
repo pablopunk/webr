@@ -19,3 +19,7 @@ export const deviceSessions = sqliteTable('device_sessions', {
   id: text('id').primaryKey(), tokenHash: text('token_hash').notNull(), name: text('name').notNull(),
   createdAt: integer('created_at').notNull(), lastSeenAt: integer('last_seen_at').notNull(),
 }, (table) => [uniqueIndex('device_session_token').on(table.tokenHash)]);
+export const auditEvents = sqliteTable('audit_events', {
+  id: integer('id').primaryKey({ autoIncrement: true }), at: integer('at').notNull(), kind: text('kind').notNull(),
+  source: text('source'), deviceName: text('device_name'),
+});

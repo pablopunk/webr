@@ -10,6 +10,8 @@ button { width: 100%; min-height: 44px; border: 0; border-radius: 10px; backgrou
 button.link { width: auto; min-height: 0; margin-top: 16px; padding: 4px; background: none; color: var(--soft); font-weight: 400; text-decoration: underline; }
 input { width: 100%; min-height: 44px; margin-bottom: 10px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--ink); font: 600 16px ui-monospace, Menlo, monospace; letter-spacing: .12em; text-align: center; text-transform: uppercase; }
 .code { margin: 8px 0 16px; font: 700 44px/1 ui-monospace, Menlo, monospace; letter-spacing: .18em; text-indent: .18em; }
+.hint { margin: 0 0 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; text-align: left; }
+.hint code { font-family: ui-monospace, Menlo, monospace; color: var(--ink); }
 .error { margin-top: 12px; color: var(--danger); }
 [hidden] { display: none !important; }
 `;
@@ -27,18 +29,24 @@ const reset = (message) => { stop(); sessionStorage.removeItem('webr-pairing'); 
 
 async function poll(request) {
   const response = await post('/api/pair/request/' + request.id + '/poll', { secret: request.secret });
-  const { status } = await response.json().catch(() => ({ status: 'expired' }));
+  const { status, approverOnline } = await response.json().catch(() => ({ status: 'expired' }));
   if (status === 'approved') return enter();
   if (status === 'denied') return reset('The request was declined.');
   if (status === 'expired') return reset('The request expired. Try again.');
+  $('hint').hidden = approverOnline !== false;
   timer = setTimeout(() => poll(request).catch(() => { timer = setTimeout(() => poll(request), 3000); }), 1500);
 }
-function wait(request) { $('code').textContent = request.code; show('waiting'); say(''); stop(); poll(request).catch(() => reset('Could not reach the server.')); }
+function wait(request) { $('code').textContent = request.code; $('hint').hidden = true; show('waiting'); say(''); stop(); poll(request).catch(() => reset('Could not reach the server.')); }
+
+async function tooManyRequestsMessage(response) {
+  const { error } = await response.json().catch(() => ({}));
+  return error === 'cooling_down' ? 'That request was declined. Wait a minute before asking again.' : 'Too many requests. Wait a minute and try again.';
+}
 
 async function requestAccess() {
   say('');
   const response = await post('/api/pair/request');
-  if (response.status === 429) return say('Too many requests. Wait a minute and try again.');
+  if (response.status === 429) return say(await tooManyRequestsMessage(response));
   if (!response.ok) return say('Could not send the request.');
   const request = await response.json();
   sessionStorage.setItem('webr-pairing', JSON.stringify(request));
@@ -71,7 +79,7 @@ export const pairPage = () => `<!doctype html>
 <body><main>
 <h1>Webr</h1>
 <div id="start"><p>This device isn’t connected yet.</p><button id="request" type="button">Request access</button><button id="use-token" class="link" type="button">I have a code</button></div>
-<div id="waiting" hidden><p>Approve this request in Webr on your computer. Make sure the code matches.</p><div class="code" id="code" aria-live="polite"></div><button id="cancel" class="link" type="button">Cancel</button></div>
+<div id="waiting" hidden><p>Approve this request in Webr on your computer. Make sure the code matches.</p><div class="code" id="code" aria-live="polite"></div><p class="hint" id="hint" hidden>Nobody has Webr open on your computer right now. Open Webr there to approve, or run <code>webr invite</code> in a terminal there and enter the code instead.</p><button id="cancel" class="link" type="button">Cancel</button></div>
 <div id="token-view" hidden><p>Enter the code shown in Webr’s settings.</p><form id="token-form"><input id="token" name="token" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX" required><button type="submit">Connect</button></form><button id="back" class="link" type="button">Back</button></div>
 <p class="error" id="error" role="alert"></p>
 </main><script>${script}</script></body></html>`;

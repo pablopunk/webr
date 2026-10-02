@@ -1,7 +1,8 @@
 import { NodeSqliteClient } from './node-sqlite-client';
 import { openMigratedDrizzle } from './drizzle-node-sqlite';
-import { and, eq, max } from 'drizzle-orm';
+import { and, desc, eq, lte, max } from 'drizzle-orm';
 import type { DeviceSession } from '../auth/sessions';
+import type { AuditEvent } from '../auth/audit';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { mkdirSync, chmodSync } from 'node:fs';
@@ -9,6 +10,8 @@ import { dirname } from 'node:path';
 import * as schema from './schema';
 import type { Thread } from '../../lib/models';
 import type { LaunchInput } from '../../shared/runtime';
+
+const AUDIT_RETENTION = 200;
 
 export class MetadataDatabase {
   readonly sqlite: NodeSqliteClient;
@@ -74,4 +77,12 @@ export class MetadataDatabase {
   deviceSessions() { return this.db.select({ id: schema.deviceSessions.id, name: schema.deviceSessions.name, createdAt: schema.deviceSessions.createdAt, lastSeenAt: schema.deviceSessions.lastSeenAt }).from(schema.deviceSessions).all(); }
   touchDeviceSession(id: string, lastSeenAt: number) { this.db.update(schema.deviceSessions).set({ lastSeenAt }).where(eq(schema.deviceSessions.id, id)).run(); }
   deleteDeviceSession(id: string) { return this.db.delete(schema.deviceSessions).where(eq(schema.deviceSessions.id, id)).run().changes > 0; }
+  addAuditEvent(event: Omit<AuditEvent, 'id'>) {
+    this.db.transaction(() => {
+      this.db.insert(schema.auditEvents).values(event).run();
+      const oldest = this.db.select({ id: schema.auditEvents.id }).from(schema.auditEvents).orderBy(desc(schema.auditEvents.id)).limit(1).offset(AUDIT_RETENTION).get();
+      if (oldest) this.db.delete(schema.auditEvents).where(lte(schema.auditEvents.id, oldest.id)).run();
+    });
+  }
+  auditEvents(limit: number): AuditEvent[] { return this.db.select().from(schema.auditEvents).orderBy(desc(schema.auditEvents.id)).limit(limit).all() as AuditEvent[]; }
 }

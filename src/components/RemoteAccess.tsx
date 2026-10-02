@@ -4,7 +4,9 @@ import { Check, Copy } from 'lucide-react';
 import { writeClipboardText } from '../client/terminal-clipboard';
 import { QrCode } from './QrCode';
 import { confirmDialog } from './dialogs';
-import { createInvite, listDevices, relativeTime, revokeDevice, type Device, type Invite } from '../client/pairing';
+import { NotificationSetting } from './NotificationSetting';
+import { RemoteActivity } from './RemoteActivity';
+import { createInvite, listDevices, relativeFuture, relativeTime, revokeDevice, type Device, type Invite } from '../client/pairing';
 
 function InviteDialog({ invite, onClose }: { invite: Invite; onClose: () => void }) {
   const [urlIndex, setUrlIndex] = useState(0);
@@ -47,11 +49,13 @@ export function RemoteAccess() {
     <div className="settings-section-title"><h2>Remote access</h2></div>
     <p className="settings-note">Other devices ask to connect and you approve them here. This computer never needs a code.</p>
     <div className="settings-row"><span>Connect a device</span><button type="button" className="dialog-button" onClick={() => void showInvite()}>Show code</button></div>
+    <NotificationSetting />
     {error && <p role="alert" className="form-error">{error}</p>}
     {devices.map((device) => <div className="settings-row" key={device.id}>
-      <span>{device.name}{device.current && <em className="device-tag">This device</em>}<small className="device-meta">Active {relativeTime(device.lastSeenAt)}</small></span>
+      <span>{device.name}{device.current && <em className="device-tag">This device</em>}<small className="device-meta">Active {relativeTime(device.lastSeenAt)} · Signs out {relativeFuture(device.expiresAt)} if unused</small></span>
       <button type="button" className="dialog-button" onClick={() => void revoke(device)}>Disconnect</button>
     </div>)}
+    <RemoteActivity refreshKey={devices} />
     {invite && <InviteDialog invite={invite} onClose={() => setInvite(undefined)} />}
   </section>;
 }

@@ -9,6 +9,7 @@ const isForwarded = (headers: IncomingHttpHeaders) => FORWARDING_HEADERS.some((n
 const isIpLiteral = (hostname: string) => hostname.startsWith('[') || /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
 const isNameControlledByNetwork = (hostname: string) => hostname.endsWith('.local') || hostname.endsWith('.ts.net');
 
+export const sourceAddress = (address: string) => address.replace(/^::ffff:/, '');
 export const isLoopbackHost = (host: string | undefined) => LOOPBACK_HOSTNAMES.has(hostnameOf(host) ?? '');
 
 export function isLocalRequest(request: { headers: IncomingHttpHeaders; socket: { remoteAddress?: string } }) {

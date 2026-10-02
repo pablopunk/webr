@@ -10,7 +10,7 @@ export function PairingPrompt() {
       <AlertDialog.Popup className="dialog pairing-prompt">
         {request && <>
           <AlertDialog.Title className="pairing-title">Allow {request.deviceName} to connect?</AlertDialog.Title>
-          <AlertDialog.Description className="dialog-message">Only approve if this code matches the one shown on that device.</AlertDialog.Description>
+          <AlertDialog.Description className="dialog-message">Requested from {request.source}. Only approve if this code matches the one shown on that device.</AlertDialog.Description>
           <div className="pairing-code" aria-label={`Code ${request.code}`}>{request.code}</div>
           {pending.length > 1 && <p className="settings-note">{pending.length - 1} more waiting</p>}
           <div className="dialog-actions">
