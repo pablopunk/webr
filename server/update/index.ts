@@ -8,16 +8,16 @@ export type UpdateEnvironment = {
   installPath: () => string;
   latestVersion: (packageName: string) => Promise<string>;
   install: (command: InstallCommand) => boolean;
-  restartService: () => string[] | undefined;
+  restartPlugin: () => Promise<string[] | undefined>;
 };
 
 const installInTerminal = ({ command, args }: InstallCommand) => spawnSync(command, args, { stdio: 'inherit', shell: process.platform === 'win32' }).status === 0;
 
-export const realUpdateEnvironment = (restartService: UpdateEnvironment['restartService']): UpdateEnvironment => ({
+export const realUpdateEnvironment = (restartPlugin: UpdateEnvironment['restartPlugin']): UpdateEnvironment => ({
   installPath: installedPackagePath,
   latestVersion: fetchLatestVersion,
   install: installInTerminal,
-  restartService,
+  restartPlugin,
 });
 
 export async function runUpdate(environment: UpdateEnvironment) {
@@ -29,5 +29,5 @@ export async function runUpdate(environment: UpdateEnvironment) {
   if (!isNewerVersion(latest, version)) return [`Webr ${version} is the latest version.`];
   const command = globalInstallCommand(manager, name);
   if (!environment.install(command)) throw new Error(`${manager} could not install ${name}@${latest}. Run it yourself to see why: ${command.command} ${command.args.join(' ')}`);
-  return [`Updated Webr ${version} → ${latest}.`, ...(environment.restartService() ?? ['Restart Webr to use the new version.'])];
+  return [`Updated Webr ${version} → ${latest}.`, ...((await environment.restartPlugin()) ?? ['Restart Herdr to use the new version.'])];
 }

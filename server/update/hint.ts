@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { installedEntry } from '../service/entry';
+import { installedEntry } from '../entry';
 import { packageInfo } from '../package-info';
 import { fetchLatestVersion, isCacheFresh, readCachedLatest, writeCachedLatest } from './latest';
 import { isNewerVersion } from './versions';

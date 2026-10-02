@@ -49,6 +49,15 @@ it('starts the webr found on PATH with the flags from the plugin config', async 
   expect(readFileSync(join(box.state, 'webr.pid'), 'utf8')).toMatch(/^\d+$/);
 });
 
+it('points the started Webr at a rotating log file in the plugin state folder', async () => {
+  const box = await sandbox();
+  mkdirSync(box.bin, { recursive: true });
+  writeFileSync(join(box.bin, 'webr'), `#!/bin/sh\necho "$WEBR_LOG_FILE" >> "${box.record}"\nexec sleep 30\n`);
+  chmodSync(join(box.bin, 'webr'), 0o755);
+  box.launch();
+  expect((await box.recordsAfterStart())[0]).toBe(join(box.state, 'webr.log'));
+});
+
 it('falls back to npx when webr is not on PATH', async () => {
   const box = await sandbox();
   fakeProgram(join(box.bin, 'npx'), box.record, 'npx');

@@ -1,7 +1,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { realRun } from '../service';
-import type { RunCommand } from '../service/types';
+import { realRun } from '../command';
+import type { RunCommand } from '../command';
 import { DEV_FILE, pluginStateDir } from './files';
 import { installFromGithub, installedPlugin, linkLocalPlugin } from './herdr';
 

@@ -1,4 +1,4 @@
-import type { CommandResult, RunCommand } from '../service/types';
+import type { CommandResult, RunCommand } from '../command';
 
 export const PLUGIN_ID = 'pablopunk.webr';
 export const PLUGIN_SOURCE = 'pablopunk/webr/plugin';

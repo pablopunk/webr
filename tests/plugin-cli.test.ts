@@ -1,10 +1,13 @@
 import { afterEach, expect, it } from 'vitest';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { realRun } from '../server/service';
+import { realRun } from '../server/command';
 import { enterPluginDevMode } from '../server/plugin/dev';
-import { installPlugin, pluginStatus, uninstallWebrPlugin, type PluginDeps } from '../server/plugin';
+import { installPlugin, pluginStatus, restartPluginWebr, uninstallWebrPlugin, type PluginDeps } from '../server/plugin';
+import { isPortOpen } from '../server/plugin/probe';
 import { PLUGIN_ID, PLUGIN_SOURCE } from '../server/plugin/herdr';
 
 const roots: string[] = [];
@@ -31,7 +34,7 @@ esac
   mkdirSync(join(root, 'bin'));
   writeFileSync(join(root, 'bin', 'herdr'), script); chmodSync(join(root, 'bin', 'herdr'), 0o755);
   const run: PluginDeps['run'] = (command, args, env) => realRun(command === 'herdr' ? join(root, 'bin', 'herdr') : command, args, env);
-  const deps = (overrides: Partial<PluginDeps> = {}): PluginDeps => ({ run, serviceInstalled: () => false, confirm: async () => false, stateDir: join(root, 'state'), ...overrides });
+  const deps = (overrides: Partial<PluginDeps> = {}): PluginDeps => ({ run, stateDir: join(root, 'state'), ...overrides });
   return { root, deps, run, config: join(root, 'config'), state: join(root, 'state'), calls: () => readFileSync(calls, 'utf8').trim().split('\n'), registry };
 }
 
@@ -43,35 +46,70 @@ it('installs from GitHub, writes the settings and starts Webr now', async () => 
   expect(lines.join('\n')).toContain(`launched with ${herdr.config}`);
 });
 
-it('warns about the background service and keeps it unless the user agrees to remove it', async () => {
-  const herdr = fakeHerdr();
-  const lines = await installPlugin({}, herdr.deps({ serviceInstalled: () => true }));
-  expect(lines.join('\n')).toContain('Two supervisors');
-  expect(lines.join('\n')).toContain('webr service uninstall');
-});
-
 it('refuses to install without herdr', async () => {
   const herdr = fakeHerdr();
   await expect(installPlugin({}, herdr.deps({ run: () => ({ ok: false, output: '' }) }))).rejects.toThrow('Herdr is not installed');
 });
 
-it('uninstalls a GitHub plugin and unlinks a linked one', () => {
+it('uninstalls a GitHub plugin and unlinks a linked one', async () => {
   const github = fakeHerdr('github');
-  uninstallWebrPlugin(github.deps());
+  await uninstallWebrPlugin(github.deps());
   expect(github.calls()).toContain(`plugin uninstall ${PLUGIN_ID}`);
   const local = fakeHerdr('local');
-  uninstallWebrPlugin(local.deps());
+  await uninstallWebrPlugin(local.deps());
   expect(local.calls()).toContain(`plugin unlink ${PLUGIN_ID}`);
-  expect(uninstallWebrPlugin(fakeHerdr().deps())).toEqual(['The Webr plugin is not installed.']);
+  expect(await uninstallWebrPlugin(fakeHerdr().deps())).toEqual(['The Webr plugin is not installed.']);
 });
 
-it('reports status and the double-supervisor warning', async () => {
+const freePort = () => new Promise<number>((done) => {
+  const probe = createServer().listen(0, '127.0.0.1', () => { const { port } = probe.address() as { port: number }; probe.close(() => done(port)); });
+});
+
+async function startFakeWebr(herdr: ReturnType<typeof fakeHerdr>) {
+  const port = await freePort();
+  writeFileSync(join(herdr.config, 'config.json'), JSON.stringify({ port }));
+  const child = spawn(process.execPath, ['-e', `require('net').createServer().listen(${port}, '127.0.0.1')`], { stdio: 'ignore' });
+  writeFileSync(join(herdr.state, 'webr.pid'), String(child.pid));
+  for (let attempt = 0; attempt < 50 && !(await isPortOpen({ host: '127.0.0.1', port })); attempt++) await new Promise((done) => setTimeout(done, 50));
+  const exited = new Promise<void>((done) => child.once('exit', () => done()));
+  return { port, child, exited };
+}
+
+it('stops the running Webr when the plugin is uninstalled', async () => {
+  const herdr = fakeHerdr('github');
+  const webr = await startFakeWebr(herdr);
+  expect(await uninstallWebrPlugin(herdr.deps())).toContain('Stopped the running Webr.');
+  await webr.exited;
+  expect(existsSync(join(herdr.state, 'webr.pid'))).toBe(false);
+});
+
+it('restarts the plugin by stopping the running Webr and launching again', async () => {
+  const herdr = fakeHerdr('github');
+  const webr = await startFakeWebr(herdr);
+  expect((await restartPluginWebr(herdr.deps()))?.join('\n')).toContain(`launched with ${herdr.config}`);
+  await webr.exited;
+});
+
+it('leaves a Webr the plugin did not start alone and says how to proceed', async () => {
+  const herdr = fakeHerdr('github');
+  const webr = await startFakeWebr(herdr);
+  rmSync(join(herdr.state, 'webr.pid'));
+  expect((await restartPluginWebr(herdr.deps()))?.join('\n')).toContain('the plugin did not start it');
+  expect(webr.child.exitCode).toBeNull();
+  webr.child.kill();
+});
+
+it('has nothing to restart without herdr or the plugin', async () => {
+  expect(await restartPluginWebr(fakeHerdr().deps())).toBeUndefined();
+  expect(await restartPluginWebr(fakeHerdr('github').deps({ run: () => ({ ok: false, output: '' }) }))).toBeUndefined();
+});
+
+it('reports status', async () => {
   const herdr = fakeHerdr('github');
   writeFileSync(join(herdr.config, 'config.json'), JSON.stringify({ port: 1 }));
-  const text = (await pluginStatus(herdr.deps({ serviceInstalled: () => true }))).join('\n');
+  const text = (await pluginStatus(herdr.deps())).join('\n');
   expect(text).toContain('Installed (from GitHub)');
   expect(text).toContain('not running on port 1');
-  expect(text).toContain('background service');
   expect((await pluginStatus(fakeHerdr().deps()))[0]).toContain('not installed');
 });
 

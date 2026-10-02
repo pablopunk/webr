@@ -86,28 +86,28 @@ const environment = (overrides: Partial<UpdateEnvironment> = {}): UpdateEnvironm
   installPath: () => '/usr/local/lib/node_modules/webr/package.json',
   latestVersion: async () => newer,
   install: () => true,
-  restartService: () => ['Restarted the service.'],
+  restartPlugin: async () => ['Restarted the plugin.'],
   ...overrides,
 });
 
-it('installs a newer version and restarts the service', async () => {
+it('installs a newer version and restarts the plugin', async () => {
   process.env.WEBR_HOME = env().WEBR_HOME;
   const install = vi.fn(() => true);
   const lines = await runUpdate(environment({ install }));
   expect(install).toHaveBeenCalledWith({ command: 'npm', args: ['install', '-g', `${packageInfo().name}@latest`] });
-  expect(lines).toEqual([`Updated Webr ${version} → ${newer}.`, 'Restarted the service.']);
+  expect(lines).toEqual([`Updated Webr ${version} → ${newer}.`, 'Restarted the plugin.']);
 });
 
-it('says to restart by hand when no service is installed', async () => {
+it('says to restart Herdr when the plugin is not installed', async () => {
   process.env.WEBR_HOME = env().WEBR_HOME;
-  expect((await runUpdate(environment({ restartService: () => undefined }))).at(-1)).toContain('Restart Webr');
+  expect((await runUpdate(environment({ restartPlugin: async () => undefined }))).at(-1)).toContain('Restart Herdr');
 });
 
 it('leaves everything alone when already up to date', async () => {
   process.env.WEBR_HOME = env().WEBR_HOME;
-  const install = vi.fn(() => true); const restartService = vi.fn();
-  expect(await runUpdate(environment({ latestVersion: async () => version, install, restartService }))).toEqual([`Webr ${version} is the latest version.`]);
-  expect(install).not.toHaveBeenCalled(); expect(restartService).not.toHaveBeenCalled();
+  const install = vi.fn(() => true); const restartPlugin = vi.fn();
+  expect(await runUpdate(environment({ latestVersion: async () => version, install, restartPlugin }))).toEqual([`Webr ${version} is the latest version.`]);
+  expect(install).not.toHaveBeenCalled(); expect(restartPlugin).not.toHaveBeenCalled();
 });
 
 it('fails clearly when the install fails or the copy is not a global install', async () => {

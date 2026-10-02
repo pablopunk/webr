@@ -20,8 +20,9 @@ const plan = launchPlan({ config, devCheckout: usableCheckout(readJson(join(stat
 if (plan.action === 'skip') {
   console.log('Webr is already running.');
 } else {
-  const log = openAppendLog(join(stateDir, LOG_FILE));
-  const child = spawn(plan.command, plan.args, { cwd: plan.cwd, env: { ...process.env, ...plan.env }, detached: true, stdio: ['ignore', log, log] });
+  const logPath = join(stateDir, LOG_FILE);
+  const log = openAppendLog(logPath);
+  const child = spawn(plan.command, plan.args, { cwd: plan.cwd, env: { ...process.env, WEBR_LOG_FILE: logPath, ...plan.env }, detached: true, stdio: ['ignore', log, log] });
   child.once('error', (error) => { console.error(`Could not start Webr: ${error.message}`); process.exitCode = 1; });
   child.unref();
   closeLog(log);
