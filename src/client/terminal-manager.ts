@@ -1,6 +1,6 @@
 import type { Terminal } from '@xterm/xterm';
 import type { Projection, TerminalAction } from '../shared/runtime';
-import { decodeFrame, FrameSequence } from '../shared/frame';
+import { decodeFrame, FrameSequence, type Frame } from '../shared/frame';
 import { TerminalRenderer } from './terminal-renderer';
 import { retryDelay } from '../shared/retry';
 
@@ -13,6 +13,7 @@ export class BrowserTerminalManager {
   private epoch = 0;
   private nextId = 1;
   private panes = new Map<number, VisiblePane>();
+  private lastScreens = new Map<string, { width: number; height: number; bytes: Uint8Array }>();
   private reconnect?: ReturnType<typeof setTimeout>;
   private instance = '';
   private failures = 0;
@@ -23,6 +24,7 @@ export class BrowserTerminalManager {
   mount(pane: Omit<VisiblePane, 'generation' | 'sequence' | 'writable' | 'attempts' | 'accepted' | 'baseline' | 'pending' | 'resizing'>) {
     const id = this.nextId++;
     this.panes.set(id, { ...pane, generation: 1, sequence: new FrameSequence(), writable: false, accepted: false, baseline: false, pending: 0, resizing: false, attempts: 0 });
+    this.showLastScreen(pane);
     this.open(id);
     return {
       close: () => { const current = this.panes.get(id); if (current) { this.send({ type: 'release', streamId: id, generation: current.generation }); current.renderer?.close(); } this.panes.delete(id); },
@@ -39,6 +41,18 @@ export class BrowserTerminalManager {
       scroll: (direction: 'up' | 'down', lines: number) => { const current = this.panes.get(id); if (current?.writable) this.send({ type: 'scroll', streamId: id, generation: current.generation, direction, lines }); },
       mouse: (action: 'down' | 'up' | 'drag' | 'move', button: 'left' | 'right' | 'middle', column: number, row: number, modifiers: number) => { const current = this.panes.get(id); if (current?.writable) this.send({ type: 'mouse', streamId: id, generation: current.generation, action, button, column, row, modifiers }); },
     };
+  }
+  private screenKey = (pane: Pick<VisiblePane, 'machineId' | 'terminalId'>) => pane.machineId + '\0' + pane.terminalId;
+  private rememberScreen(pane: VisiblePane, frame: Frame) {
+    const key = this.screenKey(pane);
+    this.lastScreens.delete(key); this.lastScreens.set(key, { width: frame.width, height: frame.height, bytes: new Uint8Array(frame.bytes) });
+    if (this.lastScreens.size > 16) this.lastScreens.delete(this.lastScreens.keys().next().value!);
+  }
+  private showLastScreen(pane: Pick<VisiblePane, 'machineId' | 'terminalId' | 'terminal'>) {
+    const screen = this.lastScreens.get(this.screenKey(pane));
+    if (!screen) return;
+    const bytes = new Uint8Array(screen.bytes.length + 2); bytes.set([27, 99]); bytes.set(screen.bytes, 2);
+    pane.terminal.resize(screen.width, screen.height); pane.terminal.write(bytes);
   }
   command(machineId: string, threadId: string, terminalId: string, action: 'control' | 'takeover' | 'release') {
     const entry = [...this.panes.entries()].find(([, pane]) => pane.machineId === machineId && pane.threadId === threadId && pane.terminalId === terminalId);
@@ -62,6 +76,7 @@ export class BrowserTerminalManager {
       if (this.panes.get(id) !== pane || pane.generation !== frame.generation) return;
       if (!this.send({ type: 'ack', streamId: id, generation: frame.generation, seq: frame.seq })) return;
       --pane.pending;
+      if (frame.full) this.rememberScreen(pane, frame);
       if (frame.full && (!pane.resizing || frame.width === pane.cols && frame.height === pane.rows)) { pane.baseline = true; pane.resizing = false; }
       const ready = pane.mode === 'control' && pane.accepted && pane.baseline;
       pane.writable = ready;
