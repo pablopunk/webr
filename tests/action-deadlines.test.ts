@@ -20,6 +20,7 @@ vi.mock('node:net', async () => {
       write(raw: string) {
         const record = JSON.parse(raw) as RequestRecord; fixture.calls.push(record);
         let result: Record<string, unknown> = { type: 'pong', version: '0.9.3', protocol: 22 };
+        if (record.method === 'pane.process_info') result = { type: 'process_info', process_info: { pane_id: 'w1:p1', shell_pid: 10, foreground_processes: [{ pid: 10, name: 'zsh' }] } };
         if (record.method === 'worktree.create') result = { type: 'worktree_created', root_pane: snapshot().panes[0], tab: snapshot().tabs[0] };
         if (record.method === 'agent.start') { fixture.startAt = Date.now(); result = { type: 'agent_started', agent: { name: record.params.name, pane_id: record.params.pane_id, terminal_id: 'term_fixture', agent: record.params.kind, agent_status: 'idle' } }; }
         const respond = () => { if (!this.destroyed) this.emit('data', Buffer.from(JSON.stringify({ id: record.id, result }) + '\n')); };

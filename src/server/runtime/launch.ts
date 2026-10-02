@@ -46,7 +46,8 @@ export class LaunchJournal {
       step = 'prompt'; this.database.updateOperation(id, 'running', step, result); this.publish();
       await target.prompt(created.paneId, input.prompt, created.terminalId, thread.id, input);
       this.database.updateOperation(id, 'ready', 'ready', result);
-    } catch {
+    } catch (error) {
+      console.error(`launch ${id} stopped at ${step}:`, error instanceof Error ? error.message : error);
       this.database.updateOperation(id, step === 'validate' ? 'failed' : 'unknown', step, result);
     }
     this.publish();

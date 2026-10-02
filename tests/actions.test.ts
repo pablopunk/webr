@@ -29,8 +29,14 @@ it('checks the capability before any effect', async () => {
 it('waits for agent detection after agent.start answers before the agent is known, and refuses another occupant', async () => {
   const id = randomUUID(); const base = { name: agentName(id), terminal_id: 'term_1', pane_id: 'w1:p1' }; const calls: string[] = [];
   const detected = [{ ...base, agent: null, agent_status: 'unknown' }, { ...base, agent: 'claude', agent_status: 'idle' }];
-  const actions = new HerdrActions({ request: async (method) => { calls.push(method); return method === 'agent.start' ? { type: 'agent_started', agent: { ...base, agent: null, agent_status: 'unknown' } } : { type: 'agent_info', agent: detected.shift() }; } }, new FakeTarget().locations, () => {});
-  await actions.start(launch, 'w1:p1', id); expect(calls).toEqual(['agent.start', 'agent.get', 'agent.get']);
-  const other = new HerdrActions({ request: async (method) => method === 'agent.start' ? { type: 'agent_started', agent: { ...base, name: 'other', agent: null, agent_status: 'unknown' } } : { type: 'agent_info', agent: {} } }, new FakeTarget().locations, () => {});
+  const actions = new HerdrActions({ request: async (method) => { calls.push(method); return method === 'pane.process_info' ? { process_info: { pane_id: 'w1:p1', shell_pid: 10, foreground_processes: [{ pid: 10, name: 'zsh' }] } } : method === 'agent.start' ? { type: 'agent_started', agent: { ...base, agent: null, agent_status: 'unknown' } } : { type: 'agent_info', agent: detected.shift() }; } }, new FakeTarget().locations, () => {});
+  await actions.start(launch, 'w1:p1', id); expect(calls).toEqual(['pane.process_info', 'agent.start', 'agent.get', 'agent.get']);
+  const other = new HerdrActions({ request: async (method) => method === 'pane.process_info' ? { process_info: { pane_id: 'w1:p1', shell_pid: 10, foreground_processes: [{ pid: 10, name: 'zsh' }] } } : method === 'agent.start' ? { type: 'agent_started', agent: { ...base, name: 'other', agent: null, agent_status: 'unknown' } } : { type: 'agent_info', agent: {} } }, new FakeTarget().locations, () => {});
   await expect(other.start(launch, 'w1:p1', id)).rejects.toThrow('agent_not_ready');
+});
+it('does not start the agent while the new pane still runs something other than its shell', async () => {
+  const id = randomUUID(); const base = { name: agentName(id), terminal_id: 'term_1', pane_id: 'w1:p1', agent: 'claude', agent_status: 'idle' }; const calls: string[] = [];
+  const busy = [[{ pid: 10, name: 'zsh' }, { pid: 11, name: 'mise' }], [{ pid: 10, name: 'zsh' }]];
+  const actions = new HerdrActions({ request: async (method) => { calls.push(method); return method === 'pane.process_info' ? { process_info: { pane_id: 'w1:p1', shell_pid: 10, foreground_processes: busy.shift() } } : { type: 'agent_started', agent: base }; } }, new FakeTarget().locations, () => {});
+  await actions.start(launch, 'w1:p1', id); expect(calls).toEqual(['pane.process_info', 'pane.process_info', 'agent.start']);
 });

@@ -2,12 +2,13 @@ import { z } from 'zod';
 import type { LaunchInput } from '../../shared/runtime';
 import type { LaunchLocation } from './target';
 import { nativePane, nativeTab } from '../protocol/native';
-import { AGENT_READY_TIMEOUT_MS, requestDeadline, type RpcOptions } from '../protocol/deadlines';
+import { AGENT_READY_TIMEOUT_MS, SHELL_READY_TIMEOUT_MS, requestDeadline, type RpcOptions } from '../protocol/deadlines';
 
 type Api = { request(method: string, params?: Record<string, unknown>, options?: RpcOptions): Promise<Record<string, unknown>> };
 const agentShape = { name: z.string(), terminal_id: z.string(), pane_id: z.string(), agent_status: z.enum(['idle', 'done', 'working', 'blocked', 'unknown']) };
 const startedAgent = z.object({ ...agentShape, agent: z.string() });
 const detectingAgent = z.object({ ...agentShape, agent: z.string().nullable().optional() });
+const processInfo = z.object({ shell_pid: z.number().int().positive(), foreground_processes: z.array(z.object({ pid: z.number().int().positive() })) });
 const pause = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
 export function modelArguments(kind: string, model: string): string[] {
   if (!['claude', 'codex', 'opencode'].includes(kind) || !/^[A-Za-z0-9_/.:+-]{1,120}$/.test(model)) throw new Error('unsupported_launch_adapter');
@@ -31,6 +32,7 @@ export class HerdrActions {
   }
   async start(input: LaunchInput, paneId: string, threadId: string) {
     this.requireCapability(input);
+    await this.untilShellReady(paneId);
     const params = { name: agentName(threadId), kind: input.agent, pane_id: paneId, args: modelArguments(input.agent, input.model), timeout_ms: AGENT_READY_TIMEOUT_MS };
     const result = await this.api.request('agent.start', params, { timeoutMs: requestDeadline('agent.start', params) });
     if (result.type !== 'agent_started') throw new Error('agent_not_ready');
@@ -38,6 +40,15 @@ export class HerdrActions {
     const started = detectingAgent.parse(result.agent);
     if (started.name !== params.name || started.pane_id !== paneId) throw new Error('agent_not_ready');
     if (!isReady(started)) await this.untilReady(params.name, isReady);
+  }
+  private async untilShellReady(paneId: string) {
+    const end = Date.now() + SHELL_READY_TIMEOUT_MS;
+    do {
+      const info = processInfo.safeParse((await this.api.request('pane.process_info', { pane_id: paneId })).process_info);
+      if (info.success && info.data.foreground_processes.length && info.data.foreground_processes.every((process) => process.pid === info.data.shell_pid)) return;
+      await pause(250);
+    } while (Date.now() < end);
+    throw new Error('shell_not_ready');
   }
   private async untilReady(name: string, isReady: (agent: z.infer<typeof detectingAgent>) => boolean) {
     const end = Date.now() + AGENT_READY_TIMEOUT_MS;
