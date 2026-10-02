@@ -3,6 +3,7 @@ import type { Projection, TerminalAction } from '../shared/runtime';
 import { decodeFrame, FrameSequence } from '../shared/frame';
 import { TerminalRenderer } from './terminal-renderer';
 import { retryDelay } from '../shared/retry';
+import { count, gauge, perfNow, time } from './perf';
 
 type VisiblePane = { machineId: string; threadId: string; terminalId: string; terminal: Terminal; mode: 'observe' | 'control'; generation: number; sequence: FrameSequence; renderer?: TerminalRenderer; writable: boolean; accepted: boolean; baseline: boolean; pending: number; resizing: boolean; reason?: string; cols: number; rows: number; onState: (message: string, writable: boolean) => void; attempts: number };
 export const conflictMessage = 'Another controller owns this terminal.';
@@ -17,6 +18,9 @@ export class BrowserTerminalManager {
   private instance = '';
   private failures = 0;
   private connectedAt = 0;
+  private scrollSentAt = new Map<number, number>();
+  private inputSentAt = new Map<number, number>();
+  private openedAt = new Map<number, number>();
   constructor(private install: (projection: Projection) => void, private onConnection: (connected: boolean) => void) {}
   start() { this.stopped = false; this.connect(); }
   stop() { this.stopped = true; clearTimeout(this.reconnect); this.disconnect(); }
@@ -26,7 +30,7 @@ export class BrowserTerminalManager {
     this.open(id);
     return {
       close: () => { const current = this.panes.get(id); if (current) { this.send({ type: 'release', streamId: id, generation: current.generation }); current.renderer?.close(); } this.panes.delete(id); },
-      input: (text: string, paste = false) => { const current = this.panes.get(id); if (current?.writable) this.send({ type: 'input', streamId: id, generation: current.generation, text, paste }); },
+      input: (text: string, paste = false) => { const current = this.panes.get(id); if (current?.writable) { count('inputMessages'); this.inputSentAt.set(id, perfNow()); this.send({ type: 'input', streamId: id, generation: current.generation, text, paste }); } },
       control: (takeover = false) => { const current = this.panes.get(id); if (current && (current.mode !== 'control' || takeover)) { this.send({ type: 'release', streamId: id, generation: current.generation }); current.reason = undefined; current.mode = 'control'; ++current.generation; current.sequence = new FrameSequence(); this.open(id, takeover); } },
       observe: () => { const current = this.panes.get(id); if (current && current.mode !== 'observe') { this.send({ type: 'release', streamId: id, generation: current.generation }); current.mode = 'observe'; ++current.generation; current.sequence = new FrameSequence(); this.open(id); } },
       resize: (cols: number, rows: number, claim = false) => {
@@ -36,7 +40,7 @@ export class BrowserTerminalManager {
         if (current.mode === 'control' && current.accepted) { current.writable = false; current.baseline = false; current.resizing = true; current.onState('Waiting for the resized full baseline.', false); this.send({ type: 'resize', streamId: id, generation: current.generation, cols, rows }); }
         else { this.send({ type: 'release', streamId: id, generation: current.generation }); ++current.generation; current.sequence = new FrameSequence(); this.open(id); }
       },
-      scroll: (direction: 'up' | 'down', lines: number) => { const current = this.panes.get(id); if (current?.writable) this.send({ type: 'scroll', streamId: id, generation: current.generation, direction, lines }); },
+      scroll: (direction: 'up' | 'down', lines: number, column?: number, row?: number) => { const current = this.panes.get(id); if (current?.writable) { count('scrollMessages'); this.scrollSentAt.set(id, perfNow()); this.send({ type: 'scroll', streamId: id, generation: current.generation, direction, lines, column, row }); } },
       mouse: (action: 'down' | 'up' | 'drag' | 'move', button: 'left' | 'right' | 'middle', column: number, row: number, modifiers: number) => { const current = this.panes.get(id); if (current?.writable) this.send({ type: 'mouse', streamId: id, generation: current.generation, action, button, column, row, modifiers }); },
     };
   }
@@ -62,12 +66,13 @@ export class BrowserTerminalManager {
       if (this.panes.get(id) !== pane || pane.generation !== frame.generation) return;
       if (!this.send({ type: 'ack', streamId: id, generation: frame.generation, seq: frame.seq })) return;
       --pane.pending;
-      if (frame.full && (!pane.resizing || frame.width === pane.cols && frame.height === pane.rows)) { pane.baseline = true; pane.resizing = false; }
+      if (frame.full && (!pane.resizing || frame.width === pane.cols && frame.height === pane.rows)) { pane.baseline = true; pane.resizing = false; const openedAt = this.openedAt.get(id); if (openedAt !== undefined) { time('openToBaselineMs', perfNow() - openedAt); this.openedAt.delete(id); } }
       const ready = pane.mode === 'control' && pane.accepted && pane.baseline;
       pane.writable = ready;
       if (frame.full) pane.onState(ready ? 'Input control is active.' : pane.reason ?? 'Read-only', ready);
     });
     pane.onState(pane.mode === 'control' ? 'Waiting for terminal control.' : pane.reason ?? 'Read-only', false);
+    this.openedAt.set(id, perfNow());
     this.send({ type: 'open', streamId: id, generation: pane.generation, machineId: pane.machineId, threadId: pane.threadId, terminalId: pane.terminalId, mode: pane.mode, cols: pane.cols, rows: pane.rows, takeover });
   }
   private connect() {
@@ -96,11 +101,17 @@ export class BrowserTerminalManager {
           }
           return;
         }
+        const decodeStart = perfNow();
         const frame = decodeFrame(new Uint8Array(event.data));
+        count('framesIn'); count('bytesIn', event.data.byteLength); time('decodeMs', perfNow() - decodeStart);
+        const typedAt = this.inputSentAt.get(frame.streamId);
+        if (typedAt !== undefined) { time('inputToFrameMs', perfNow() - typedAt); this.inputSentAt.delete(frame.streamId); }
+        const scrolledAt = this.scrollSentAt.get(frame.streamId);
+        if (scrolledAt !== undefined) { time('scrollToFrameMs', perfNow() - scrolledAt); this.scrollSentAt.delete(frame.streamId); }
         const pane = this.panes.get(frame.streamId);
         if (!pane || pane.generation !== frame.generation) return;
         pane.sequence.accept(frame);
-        ++pane.pending;
+        ++pane.pending; gauge('unackedFrames', pane.pending);
         pane.renderer?.push(frame);
       } catch { this.disconnect(); }
     };

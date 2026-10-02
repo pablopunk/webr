@@ -3,6 +3,7 @@ import { useStore } from 'zustand';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRuntimeStore, createUiStore } from './store';
 import { BrowserTerminalManager } from './terminal-manager';
+import { span } from './perf';
 import type { Bootstrap } from '../shared/runtime';
 
 const Context = createContext<{ runtime: ReturnType<typeof createRuntimeStore>; ui: ReturnType<typeof createUiStore>; terminals: BrowserTerminalManager } | null>(null);
@@ -10,7 +11,7 @@ export function RuntimeProvider({ bootstrap, children }: { bootstrap: Bootstrap;
   const [value] = useState(() => {
     const runtime = createRuntimeStore(bootstrap);
     const ui = createUiStore();
-    return { runtime, ui, terminals: new BrowserTerminalManager((projection) => runtime.getState().install(projection), (connected) => runtime.getState().connection(connected)) };
+    return { runtime, ui, terminals: new BrowserTerminalManager((projection) => { const done = span('projectionInstallMs'); runtime.getState().install(projection); done(); }, (connected) => runtime.getState().connection(connected)) };
   });
   const [query] = useState(() => new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, retry: false } } }));
   useEffect(() => { value.terminals.start(); return () => value.terminals.stop(); }, [value]);

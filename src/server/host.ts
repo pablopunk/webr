@@ -9,6 +9,7 @@ import { launchInput, opaqueId } from '../shared/runtime';
 import { registerWebsockets } from './websockets';
 import { createWorkspace } from './runtime/workspace';
 import { expandHome, suggestDirectories } from './directories';
+import { perfLog, perfLogEnabled } from './perf-log';
 import { Auth, type AuthOptions } from './auth/auth';
 import { isTrustedHost } from './auth/access';
 import { MAX_IMAGE_BYTES, UploadStore, uploadContentTypes } from './uploads';
@@ -143,6 +144,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     return { id: operation.id, state: operation.state, step: operation.step, threadId: operation.threadId };
   });
   app.get('/api/stats', async () => hub.stats());
+  if (perfLogEnabled) app.post('/api/dev/perf', { bodyLimit: 256 * 1024 }, async (request) => { for (const record of z.object({ records: z.array(z.record(z.string(), z.unknown())).max(100) }).parse(request.body).records) perfLog('client', record); return { ok: true }; });
   if (ssr) {
     const clientRoot = resolve(distRoot(), 'client');
     await app.register(staticFiles, { root: clientRoot, serve: false });
@@ -154,6 +156,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     });
     app.get('/*', async (request, reply) => {
       reply.hijack();
+      if (perfLogEnabled) reply.raw.setHeader('Document-Policy', 'js-profiling');
       ssr(request.raw, reply.raw, () => { if (!reply.raw.headersSent) { reply.raw.statusCode = 404; reply.raw.end('Not found'); } }, { runtime: manager, accountId: localOwner });
     });
   }
