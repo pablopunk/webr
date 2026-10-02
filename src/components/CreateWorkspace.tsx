@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useDirectorySuggestions } from '../client/directory-suggestions';
+import { uuid } from '../lib/uuid';
 
 const isAbsoluteOrHome = (path: string) => path.startsWith('/') || path.startsWith('~/');
 
@@ -21,7 +22,7 @@ export function CreateWorkspace({ machineId, onCreated }: { machineId: string; o
   const submit = async (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault(); setBusy(true); setError('');
     const payload = JSON.stringify({ machineId, path, label });
-    if (operation.current?.payload !== payload) operation.current = { payload, key: crypto.randomUUID() };
+    if (operation.current?.payload !== payload) operation.current = { payload, key: uuid() };
     try {
       const response = await fetch('/api/workspaces', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operation.current.key }, body: payload });
       const result = await response.json();

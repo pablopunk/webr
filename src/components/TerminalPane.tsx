@@ -4,7 +4,9 @@ import type { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import type { Pane } from '../lib/models';
 import { useRuntime } from '../client/provider';
-import { TerminalInput, terminalKeyBytes } from './TerminalInput';
+import { TerminalInput, controlCharacter, terminalKeyBytes } from './TerminalInput';
+import { TerminalKeyBar } from './TerminalKeyBar';
+import { matchesCoarsePointer } from '../client/visual-viewport';
 import { bindTerminalGestures } from '../client/terminal-gestures';
 import { conflictMessage } from '../client/terminal-manager';
 import { ImagePlus } from 'lucide-react';
@@ -44,6 +46,10 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
   const [message, setMessage] = useState('Connecting…');
   const [writable, setWritable] = useState(false);
   const writableRef = useRef(false);
+  const [inputFocused, setInputFocused] = useState(false);
+  const [ctrl, setCtrl] = useState(false);
+  const [touch, setTouch] = useState(false);
+  useEffect(() => setTouch(matchesCoarsePointer()), []);
   const { notice, show } = useTerminalNotice();
   const images = useImageAttachments({ machineId, active, writable: writableRef, show, send: (text) => { control.current?.input(text, true); } });
   const showCopyResult = useRef((copied: boolean) => {}); showCopyResult.current = (copied) => copied ? show('Copied to clipboard', 'info', 1200) : show('The browser blocked clipboard access.', 'error', 4000);
@@ -97,6 +103,12 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
   }, [pane.id, pane.terminalId, machineId, threadId, terminals, canControl]);
 
 
+  const sendInput = (text: string, paste?: boolean) => {
+    if (!writableRef.current) return;
+    if (!ctrl || paste) { control.current?.input(text, paste); return; }
+    setCtrl(false);
+    control.current?.input(controlCharacter(text) ?? text);
+  };
   const showCursorAsFocused = () => term.current?.focus();
   const focusInput = () => { if (!writable || term.current?.hasSelection()) return; showCursorAsFocused(); host.current?.parentElement?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus(); };
   useEffect(() => { if (active) focusInput(); }, [active, writable]);
@@ -129,6 +141,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     <div ref={host} className="terminal-host" />
     {images.dragging && <div className="terminal-drop-overlay" aria-hidden="true"><ImagePlus size={22} strokeWidth={1.6} /><span>Drop image to attach</span></div>}
     {notice && <div className={`terminal-attach-notice is-${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.text}</div>}
-    {writable && <TerminalInput onInput={(text, paste) => control.current?.input(text, paste)} onFocusChange={(focused) => { if (term.current?.modes.sendFocusMode) control.current?.input(focused ? FOCUS_IN : FOCUS_OUT); }} />}
+    {(canControl || writable) && <TerminalInput onInput={sendInput} onFocusChange={(focused) => { setInputFocused(focused); if (term.current?.modes.sendFocusMode) control.current?.input(focused ? FOCUS_IN : FOCUS_OUT); }} />}
+    {canControl && active && touch && inputFocused && <TerminalKeyBar ctrl={ctrl} onToggleCtrl={() => setCtrl((armed) => !armed)} onBytes={(bytes) => control.current?.input(bytes)} />}
   </section>;
 }

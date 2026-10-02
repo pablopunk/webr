@@ -7,3 +7,6 @@
 .pairing-token .dialog-button { display: inline-grid; place-items: center; min-width: 32px; padding: 0; }
 .device-tag { margin-left: 8px; padding: 1px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-style: normal; }
 .device-meta { display: block; color: var(--ink-muted); font-size: 11px; }
+.crash-report { position: fixed; z-index: 100; inset: 0 0 auto; max-height: 60dvh; margin: 0; padding: 12px 16px; overflow: auto; background: #fff0ef; color: #7a1f1a; font: 11px/1.4 var(--font-mono); white-space: pre-wrap; word-break: break-word; }
+.pairing-invite .theme-control { flex-wrap: wrap; justify-content: center; margin: 0 0 12px; }
+.pairing-invite .theme-option { white-space: nowrap; }

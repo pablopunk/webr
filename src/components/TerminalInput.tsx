@@ -5,6 +5,7 @@ export function terminalKeyBytes(event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 
   const newlineInsteadOfSubmit = event.key === 'Enter' && event.shiftKey;
   return bytes && (event.altKey || newlineInsteadOfSubmit ? '\x1b' + bytes : bytes);
 }
+export const controlCharacter = (text: string) => /^[a-z@\[\\\]^_]$/i.test(text) ? String.fromCharCode(text.toUpperCase().charCodeAt(0) & 0x1f) : undefined;
 export function TerminalInput({ onInput, onFocusChange }: { onInput: (text: string, paste?: boolean) => void; onFocusChange?: (focused: boolean) => void }) {
   const [draft, setDraft] = useState('');
   const composing = useRef(false);

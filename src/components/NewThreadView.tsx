@@ -11,6 +11,7 @@ import { CreateWorkspace } from './CreateWorkspace';
 import { initialWorktreeChoice, recordWorktreeChoice } from '../client/new-session-behavior';
 import { clearNewThreadDraft, readNewThreadDraft, writeNewThreadDraft } from '../client/new-thread-draft';
 import { Tooltip } from './Tooltip';
+import { uuid } from '../lib/uuid';
 
 const harnessPreference = (machineId: string, projectId: string) => `webr-last-harness:${machineId}:${projectId}`;
 
@@ -78,7 +79,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     if (!canSubmit) return;
     setBusy(true); setError('');
     const payload = JSON.stringify({ prompt: promptWithImages(prompt, images.attachments), projectId, machineId, agent: harness, model: model.trim(), worktree });
-    if (operation.current?.payload !== payload) operation.current = { payload, key: crypto.randomUUID() };
+    if (operation.current?.payload !== payload) operation.current = { payload, key: uuid() };
     try {
       const result = await fetch('/api/threads', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operation.current.key },

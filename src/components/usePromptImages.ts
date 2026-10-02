@@ -1,5 +1,6 @@
 import { useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
 import { carriesFiles, escapePathForTerminal, imageFilesFrom, thumbnailDataUrl, uploadImage } from '../client/image-attach';
+import { uuid } from '../lib/uuid';
 
 export type PromptImage = { id: string; name: string; preview: string; path: string };
 const ONLY_IMAGES = 'Only PNG, JPEG, GIF and WebP images can be attached.';
@@ -18,7 +19,7 @@ export function usePromptImages({ machineId }: { machineId: string }) {
     for (const file of files) {
       try {
         const path = await uploadImage(machineId, file); const preview = await thumbnailDataUrl(file);
-        setAttachments((current) => [...current, { id: crypto.randomUUID(), name: file.name || 'image', preview, path }]);
+        setAttachments((current) => [...current, { id: uuid(), name: file.name || 'image', preview, path }]);
       } catch (cause) { setError(cause instanceof Error ? cause.message : 'The image could not be attached.'); }
       finally { setUploading((count) => count - 1); }
     }

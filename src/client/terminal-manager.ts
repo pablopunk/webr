@@ -4,6 +4,7 @@ import { decodeFrame, FrameSequence } from '../shared/frame';
 import { TerminalRenderer } from './terminal-renderer';
 import { retryDelay } from '../shared/retry';
 import { count, gauge, perfNow, time } from './perf';
+import { uuid } from '../lib/uuid';
 
 type VisiblePane = { machineId: string; threadId: string; terminalId: string; terminal: Terminal; mode: 'observe' | 'control'; generation: number; sequence: FrameSequence; renderer?: TerminalRenderer; writable: boolean; accepted: boolean; baseline: boolean; pending: number; resizing: boolean; reason?: string; cols: number; rows: number; onState: (message: string, writable: boolean) => void; attempts: number };
 export const conflictMessage = 'Another controller owns this terminal.';
@@ -77,7 +78,7 @@ export class BrowserTerminalManager {
   }
   private connect() {
     if (this.stopped) return;
-    this.instance = crypto.randomUUID();
+    this.instance = uuid();
     const epoch = ++this.epoch;
     const base = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
     const metadata = new WebSocket(base + '/api/ws/metadata?instance=' + this.instance);

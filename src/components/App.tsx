@@ -3,6 +3,7 @@ import { PanelLeft, Search } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
 import { PerfOverlay } from './PerfOverlay';
 import { PairingPrompt } from './PairingPrompt';
+import { CrashReport } from './CrashReport';
 import { NewThreadView } from './NewThreadView';
 import { SettingsView } from './SettingsView';
 import { Sidebar, type SidebarMode } from './Sidebar';
@@ -22,6 +23,7 @@ import { alertDialog } from './dialogs';
 import { useClearDoneOnVisit } from '../client/clear-done-on-visit';
 import { isListedThread } from '../lib/launch';
 import { carriesFiles } from '../client/image-attach';
+import { trackVisualViewport } from '../client/visual-viewport';
 
 type Props = {
   page: 'thread' | 'new' | 'settings' | 'missing';
@@ -31,7 +33,7 @@ type Props = {
 };
 
 export default function App(props: Props) {
-  return <RuntimeProvider bootstrap={props.bootstrap}><RuntimeApp {...props} /></RuntimeProvider>;
+  return <CrashReport><RuntimeProvider bootstrap={props.bootstrap}><RuntimeApp {...props} /></RuntimeProvider></CrashReport>;
 }
 
 function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
@@ -47,6 +49,7 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   useEffect(startPerf, []);
+  useEffect(trackVisualViewport, []);
   const [mode, setMode] = useState<SidebarMode>('threads');
   const scope = `${thread?.machineId ?? ''}:${thread?.id ?? ''}`;
   const storedFocus = useStore(ui, (state) => state.focusedPanes[scope]);
@@ -139,7 +142,7 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [thread, threads, paletteOpen, toggleSidebar, toggleTerminal, focusPane, focusedPane, setFocusedPane]);
 
-  return <div className="app-shell">
+  return <div className={`app-shell ${page === 'thread' ? 'is-thread' : ''}`}>
     <Sidebar projects={projects} threads={threads} archived={archived} machines={machines} currentId={thread?.id} mode={mode} onModeChange={changeMode} collapsed={collapsed}
       mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} />
     <div className="main-panel">

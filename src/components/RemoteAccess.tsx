@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Dialog } from '@base-ui/react/dialog';
 import { Check, Copy } from 'lucide-react';
+import { writeClipboardText } from '../client/terminal-clipboard';
 import { QrCode } from './QrCode';
 import { confirmDialog } from './dialogs';
 import { createInvite, listDevices, relativeTime, revokeDevice, type Device, type Invite } from '../client/pairing';
@@ -9,7 +10,7 @@ function InviteDialog({ invite, onClose }: { invite: Invite; onClose: () => void
   const [urlIndex, setUrlIndex] = useState(0);
   const [copied, setCopied] = useState(false);
   const url = invite.urls[urlIndex];
-  const copy = () => navigator.clipboard.writeText(invite.token).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }, () => undefined);
+  const copy = () => writeClipboardText(invite.token).then((ok) => { if (!ok) return; setCopied(true); setTimeout(() => setCopied(false), 1500); });
   return <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
     <Dialog.Portal>
       <Dialog.Backdrop className="dialog-backdrop" />
