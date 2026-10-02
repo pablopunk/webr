@@ -39,7 +39,7 @@ it('explains how to enable remote access when the server has no reachable addres
   vi.stubGlobal('fetch', vi.fn((path: string, init?: RequestInit) => path === '/api/devices' ? json([]) : init?.method === 'POST' ? json({ token: 'ABCD-EFGH-JKMN-PQRS', expiresAt: 0, urls: [] }) : json([])));
   render(<RemoteAccess />);
   await userEvent.setup().click(await screen.findByRole('button', { name: 'Show code' }));
-  expect(await screen.findByText(/only listens on this computer/)).toBeTruthy();
+  expect(await screen.findByText(/No network address was found/)).toBeTruthy();
 });
 
 it('describes recent activity in plain words', () => {

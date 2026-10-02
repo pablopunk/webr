@@ -13,7 +13,7 @@ import { builtSsr, devSsr } from './ssr';
 const WILDCARD_HOSTS = ['0.0.0.0', '::'];
 
 export async function runServer() {
-  const host = process.env.HOST ?? '127.0.0.1';
+  const host = process.env.HOST ?? '0.0.0.0';
   const port = await resolvePort();
   const tlsEnabled = !!(process.env.WEBR_TLS_CERT && process.env.WEBR_TLS_KEY);
   const origin = process.env.WEBR_ORIGIN ?? `${tlsEnabled ? 'https' : 'http'}://${WILDCARD_HOSTS.includes(host) ? 'localhost' : host}:${port}`;

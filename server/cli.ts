@@ -25,8 +25,7 @@ Usage
 
 Options
   --port <port>     Port to listen on (default: first free port from 4444, then remembered)
-  --lan             Listen on every network interface so devices on your network can connect
-  --host <address>  Listen on a specific address (default 127.0.0.1)
+  --host <address>  Listen on a specific address (default 0.0.0.0, every interface)
   --origin <url>    Public URL when served through a proxy, e.g. https://mac.tailnet.ts.net
   -v, --version     Print the version
   -h, --help        Print this help
@@ -36,7 +35,7 @@ Localhost never needs a token. Any other device asks for access and you approve 
 `;
 
 const options = {
-  port: { type: 'string' }, host: { type: 'string' }, origin: { type: 'string' }, lan: { type: 'boolean' },
+  port: { type: 'string' }, host: { type: 'string' }, origin: { type: 'string' },
   help: { type: 'boolean', short: 'h' }, version: { type: 'boolean', short: 'v' },
 } as const;
 
@@ -44,7 +43,7 @@ function parseCommand(argv: string[]) { return parseArgs({ args: argv, options, 
 
 function applyServerFlags(values: ReturnType<typeof parseCommand>['values']) {
   if (values.port) process.env.PORT = String(explicitPort(['--port', values.port], {}));
-  if (values.lan) process.env.HOST = '0.0.0.0'; else if (values.host) process.env.HOST = values.host;
+  if (values.host) process.env.HOST = values.host;
   if (values.origin) process.env.WEBR_ORIGIN = values.origin;
   process.env.WEBR_DATABASE ??= join(webrHome(), 'gateway.sqlite');
 }
@@ -67,12 +66,12 @@ async function invite(port: number) {
   const { token, urls } = await response.json() as { token: string; urls: string[] };
   if (urls[0]) console.log(`${renderUnicode(urls[0], { border: 1, invert: true })}\n${urls[0]}\n`);
   console.log(`Code: ${token}\nExpires in 5 minutes. Works once.`);
-  if (!urls.length) console.log('Webr is only reachable from this computer. Restart it with --lan or --origin to connect other devices.');
+  if (!urls.length) console.log('Webr is only reachable from this computer. It was started with --host set to a local address, or no network interface was found.');
 }
 
 const pluginSettings = (values: ReturnType<typeof parseCommand>['values']) => ({
   ...(values.port ? { port: explicitPort(['--port', values.port], {}) } : {}),
-  ...(values.lan ? { host: '0.0.0.0' } : values.host ? { host: values.host } : {}),
+  ...(values.host ? { host: values.host } : {}),
   ...(values.origin ? { origin: values.origin } : {}),
 });
 

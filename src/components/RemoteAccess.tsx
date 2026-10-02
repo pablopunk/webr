@@ -22,7 +22,7 @@ function InviteDialog({ invite, onClose }: { invite: Invite; onClose: () => void
           ? <><Dialog.Description className="dialog-message">Scan with the device’s camera, or open Webr there and enter the code.</Dialog.Description>
             <QrCode value={url} label="QR code to connect a device" />
             {invite.urls.length > 1 && <div className="theme-control theme-control--labels" role="group" aria-label="Address">{invite.urls.map((address, index) => <button key={address} type="button" aria-pressed={index === urlIndex} className={index === urlIndex ? 'theme-option is-selected' : 'theme-option'} onClick={() => setUrlIndex(index)}>{new URL(address).host}</button>)}</div>}</>
-          : <Dialog.Description className="dialog-message">Webr only listens on this computer. Restart it with <code>--lan</code> or <code>--origin &lt;url&gt;</code> so other devices can reach it.</Dialog.Description>}
+          : <Dialog.Description className="dialog-message">No network address was found for other devices. Start Webr with <code>--origin &lt;url&gt;</code> if you reach it through a proxy.</Dialog.Description>}
         <div className="pairing-token"><code>{invite.token}</code><button type="button" className="dialog-button" onClick={() => void copy()} aria-label="Copy code">{copied ? <Check size={14} /> : <Copy size={14} />}</button></div>
         <p className="settings-note">Works once and expires in 5 minutes.</p>
         <div className="dialog-actions"><Dialog.Close className="dialog-button is-primary">Done</Dialog.Close></div>
