@@ -49,6 +49,21 @@ it('keeps same-tab terminal lineage when a pane ID changes but never guesses col
   const detached = reconcile(db, target, target.state).threads.find((thread) => thread.id === original.id)!;
   expect(detached.bindingState).toBe('detached'); expect(detached.panes).toEqual([]);
 });
+it('uses the agent pane title instead of a numeric tab label and updates an existing thread', () => {
+  const target = new FakeTarget(); const db = database();
+  target.state.tabs[0].label = '1';
+  target.state.panes[0].agent = 'claude';
+  target.state.panes[0].terminal_title_stripped = 'Adobe issue';
+  const first = reconcile(db, target, target.state).threads[0];
+  expect(first.title).toBe('Adobe issue');
+
+  db.saveThread({ ...first, title: '1', panes: [] }, [target.state.panes[0].terminal_id], target.state.tabs[0].tab_id);
+  expect(reconcile(db, target, target.state).threads[0]).toMatchObject({ id: first.id, title: 'Adobe issue' });
+  target.state.panes[0].terminal_title_stripped = 'Another issue';
+  expect(reconcile(db, target, target.state).threads[0].title).toBe('Another issue');
+  target.state.tabs[0].label = 'My custom tab';
+  expect(reconcile(db, target, target.state).threads[0].title).toBe('My custom tab');
+});
 it('keeps machine-scoped identical native IDs separate and handles deletion and stale generations', () => {
   const db = database(); const first = new FakeTarget(); const second = new FakeTarget(); second.id = 'second';
   const a = reconcile(db, first, first.state); const b = reconcile(db, second, second.state);
