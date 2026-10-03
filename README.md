@@ -28,12 +28,13 @@ Zero config, PWA, with Tailscale automation out of the box.
 
 <table>
   <tr>
-    <td colspan="2"><img src="./assets/brand/tailscale.jpg" /></td>
+    <td colspan="3"><img src="./assets/brand/tailscale.jpg" /></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="./assets/brand/dock.jpg" /></td>
+    <td colspan="3"><img src="./assets/brand/dock.jpg" /></td>
   </tr>
   <tr>
+    <td><img src="./assets/brand/sidebar.jpg" /></td>
     <td><img src="./assets/brand/typing.jpg" /></td>
     <td><img src="./assets/brand/cmdk.jpg" /></td>
   </tr>
