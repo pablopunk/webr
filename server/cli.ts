@@ -1,7 +1,5 @@
-import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { renderUnicode } from 'uqr';
-import { webrHome } from './home';
 import { runServer } from './run';
 import { explicitPort, knownPort } from './port';
 import { defaultDeps, installPlugin, pluginStatus, uninstallWebrPlugin, updatePlugin } from './plugin';
@@ -48,7 +46,6 @@ function applyServerFlags(values: ReturnType<typeof parseCommand>['values']) {
   if (values.port) process.env.PORT = String(explicitPort(['--port', values.port], {}));
   if (values.host) process.env.HOST = values.host;
   if (values.origin) process.env.WEBR_ORIGIN = values.origin;
-  process.env.WEBR_DATABASE ??= join(webrHome(), 'gateway.sqlite');
 }
 
 function printUpdateHint() {

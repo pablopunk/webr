@@ -8,6 +8,8 @@ import { publicUrls } from '../src/server/public-urls';
 import { detectTailscaleHost } from '../src/server/tailscale-host';
 import { isLoopbackHost } from '../src/server/auth/access';
 import { resolvePort } from './port';
+import { webrHome } from './home';
+import { join } from 'node:path';
 import { builtSsr, devSsr } from './ssr';
 
 const WILDCARD_HOSTS = ['0.0.0.0', '::'];
@@ -20,7 +22,7 @@ export async function runServer() {
   if (new URL(origin).origin !== origin || new URL(origin).username || new URL(origin).password) throw new Error('WEBR_ORIGIN must be a normalized HTTP or HTTPS origin without credentials or a path');
   if (!['http:', 'https:'].includes(new URL(origin).protocol)) throw new Error('WEBR_ORIGIN must use HTTP or HTTPS');
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid port');
-  const database = new MetadataDatabase(process.env.WEBR_DATABASE ?? '.data/gateway.sqlite');
+  const database = new MetadataDatabase(process.env.WEBR_DATABASE ?? join(webrHome(), 'gateway.sqlite'));
   const profiles = await loadRegistry(process.env.WEBR_TARGETS);
   const manager = new RuntimeManager(database, profiles.map((profile) => new HerdrTarget(profile)));
   const ssr = process.env.WEBR_DEV === '1' ? await devSsr(port, host) : await builtSsr();
