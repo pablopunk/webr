@@ -11,12 +11,13 @@ import { createWorkspace } from './runtime/workspace';
 import { perfLog, perfLogEnabled } from './perf-log';
 import { Auth, type AuthOptions } from './auth/auth';
 import { isTrustedHost } from './auth/access';
+import { registerDevHmrProxy } from './dev-hmr-proxy';
 import { MAX_IMAGE_BYTES, UploadStore, uploadContentTypes } from './uploads';
 
 const localOwner = 'local';
 type SsrHandler = (request: FastifyRequest['raw'], response: import('node:http').ServerResponse, next: (error?: unknown) => void, locals: Record<string, unknown>) => void;
 
-export async function createHost(manager: RuntimeManager, origin: string, ssr?: SsrHandler, tls?: { key: Buffer; cert: Buffer }, uploads = new UploadStore(), authOptions: AuthOptions = {}) {
+export async function createHost(manager: RuntimeManager, origin: string, ssr?: SsrHandler, tls?: { key: Buffer; cert: Buffer }, uploads = new UploadStore(), authOptions: AuthOptions = {}, devHmrPort?: number) {
   const app = Fastify({ logger: false, bodyLimit: 16 * 1024, ...(tls ? { https: tls } : {}), requestTimeout: 10_000 });
   const configuredOrigin = new URL(origin);
   const auth = new Auth(manager.database, configuredOrigin, authOptions);
@@ -43,6 +44,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
   await app.register(websocket, { options: { maxPayload: 32 * 1024, perMessageDeflate: false } });
   const hub = registerWebsockets(app, manager);
   auth.routes(app);
+  if (devHmrPort) registerDevHmrProxy(app, devHmrPort);
   app.get('/api/catalog/machines', async () => manager.bootstrap().machines);
   app.get('/api/catalog/:machineId', async (request) => {
     const { machineId } = z.object({ machineId: opaqueId }).parse(request.params);

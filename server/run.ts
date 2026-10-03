@@ -31,7 +31,7 @@ export async function runServer() {
   const managesTailscale = !process.env.WEBR_ORIGIN && [...WILDCARD_HOSTS, '127.0.0.1'].includes(host);
   const tailscale = managesTailscale ? await ensureTailscaleHttps(port) : undefined;
   const urls = [...(tailscale?.status === 'ready' ? [tailscale.url] : []), ...publicUrls(origin, host, port, undefined, await detectTailscaleHost())];
-  const app = await createHost(manager, origin, ssr.handler, tls, undefined, { publicUrls: urls, tailscale: tailscale?.status });
+  const app = await createHost(manager, origin, ssr.handler, tls, undefined, { publicUrls: urls, tailscale: tailscale?.status }, ssr.hmrPort);
   await app.listen({ host, port });
   manager.start();
   console.log(`Webr listening at ${origin}`);
