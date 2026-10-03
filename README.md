@@ -46,6 +46,7 @@ Zero config, PWA, with Tailscale automation out of the box.
 Everything is handled automatically via the plugin:
 
 ```sh
+npm i -g @pablopunk/webr
 webr plugin install
 ```
 
