@@ -47,3 +47,5 @@
 :root[data-keyboard-open] .terminal-key-bar { padding-bottom: 6px; }
 .terminal-key-bar button { display: inline-grid; place-items: center; flex: 1; min-height: 38px; border: 0; border-radius: 8px; background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); font-size: 13px; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
 .terminal-key-bar button.is-armed { background: var(--action-blue); color: #fff; }
+.terminal-key-bar .terminal-voice.is-recording { background: var(--danger); color: #fff; }
+.terminal-key-bar .terminal-voice .is-spinning { animation: launch-spin 1s linear infinite; }

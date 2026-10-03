@@ -15,6 +15,7 @@ import { imageFilesFrom } from '../client/image-attach';
 import { openLinkOnModifierClick } from '../client/terminal-links';
 import { bindTerminalClipboard } from '../client/terminal-clipboard';
 import { useTerminalNotice } from './useTerminalNotice';
+import { useVoiceInput } from './useVoiceInput';
 
 function themeColors() {
   const styles = getComputedStyle(document.documentElement);
@@ -53,6 +54,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
   useEffect(() => setTouch(matchesCoarsePointer()), []);
   const { notice, show } = useTerminalNotice();
   const images = useImageAttachments({ machineId, active, writable: writableRef, show, send: (text) => { control.current?.input(text, true); } });
+  const voice = useVoiceInput({ show, send: (text) => { control.current?.input(text, true); } });
   const showCopyResult = useRef((copied: boolean) => {}); showCopyResult.current = (copied) => copied ? show('Copied to clipboard', 'info', 1200) : show('The browser blocked clipboard access.', 'error', 4000);
 
   useEffect(() => {
@@ -144,6 +146,6 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     {images.dragging && <div className="terminal-drop-overlay" aria-hidden="true"><ImagePlus size={22} strokeWidth={1.6} /><span>Drop image to attach</span></div>}
     {notice && <div className={`terminal-attach-notice is-${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.text}</div>}
     {(canControl || writable) && <TerminalInput onInput={sendInput} onFocusChange={(focused) => { setInputFocused(focused); if (term.current?.modes.sendFocusMode) control.current?.input(focused ? FOCUS_IN : FOCUS_OUT); }} />}
-    {canControl && active && touch && inputFocused && <TerminalKeyBar ctrl={ctrl} onToggleCtrl={() => setCtrl((armed) => !armed)} onBytes={(bytes) => control.current?.input(bytes)} />}
+    {canControl && active && touch && inputFocused && <TerminalKeyBar ctrl={ctrl} onToggleCtrl={() => setCtrl((armed) => !armed)} onBytes={(bytes) => control.current?.input(bytes)} voice={voice} />}
   </section>;
 }

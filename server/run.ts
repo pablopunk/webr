@@ -10,6 +10,8 @@ import { ensureTailscaleHttps } from '../src/server/tailscale-serve';
 import { isLoopbackHost } from '../src/server/auth/access';
 import { resolvePort } from './port';
 import { webrHome } from './home';
+import { Transcriber } from '../src/server/voice/transcriber';
+import { modelDirectory } from '../src/server/voice/model';
 import { join } from 'node:path';
 import { builtSsr, devSsr } from './ssr';
 
@@ -31,7 +33,7 @@ export async function runServer() {
   const managesTailscale = !process.env.WEBR_ORIGIN && [...WILDCARD_HOSTS, '127.0.0.1'].includes(host);
   const tailscale = managesTailscale ? await ensureTailscaleHttps(port) : undefined;
   const urls = [...(tailscale?.status === 'ready' ? [tailscale.url] : []), ...publicUrls(origin, host, port, undefined, await detectTailscaleHost())];
-  const app = await createHost(manager, origin, ssr.handler, tls, undefined, { publicUrls: urls, tailscale: tailscale?.status }, ssr.hmrPort);
+  const app = await createHost(manager, origin, ssr.handler, tls, undefined, { publicUrls: urls, tailscale: tailscale?.status }, { devHmrPort: ssr.hmrPort, transcriber: new Transcriber(modelDirectory(webrHome())) });
   await app.listen({ host, port });
   manager.start();
   console.log(`Webr listening at ${origin}`);

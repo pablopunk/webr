@@ -12,12 +12,14 @@ import { perfLog, perfLogEnabled } from './perf-log';
 import { Auth, type AuthOptions } from './auth/auth';
 import { isTrustedHost } from './auth/access';
 import { registerDevHmrProxy } from './dev-hmr-proxy';
+import { registerVoiceRoutes } from './voice/routes';
+import type { Transcriber } from './voice/transcriber';
 import { MAX_IMAGE_BYTES, UploadStore, uploadContentTypes } from './uploads';
 
 const localOwner = 'local';
 type SsrHandler = (request: FastifyRequest['raw'], response: import('node:http').ServerResponse, next: (error?: unknown) => void, locals: Record<string, unknown>) => void;
 
-export async function createHost(manager: RuntimeManager, origin: string, ssr?: SsrHandler, tls?: { key: Buffer; cert: Buffer }, uploads = new UploadStore(), authOptions: AuthOptions = {}, devHmrPort?: number) {
+export async function createHost(manager: RuntimeManager, origin: string, ssr?: SsrHandler, tls?: { key: Buffer; cert: Buffer }, uploads = new UploadStore(), authOptions: AuthOptions = {}, { devHmrPort, transcriber }: { devHmrPort?: number; transcriber?: Transcriber } = {}) {
   const app = Fastify({ logger: false, bodyLimit: 16 * 1024, ...(tls ? { https: tls } : {}), requestTimeout: 10_000 });
   const configuredOrigin = new URL(origin);
   const auth = new Auth(manager.database, configuredOrigin, authOptions);
@@ -45,6 +47,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
   const hub = registerWebsockets(app, manager);
   auth.routes(app);
   if (devHmrPort) registerDevHmrProxy(app, devHmrPort);
+  if (transcriber) registerVoiceRoutes(app, transcriber);
   app.get('/api/catalog/machines', async () => manager.bootstrap().machines);
   app.get('/api/catalog/:machineId', async (request) => {
     const { machineId } = z.object({ machineId: opaqueId }).parse(request.params);
@@ -166,6 +169,6 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
       ssr(request.raw, reply.raw, () => { if (!reply.raw.headersSent) { reply.raw.statusCode = 404; reply.raw.end('Not found'); } }, { runtime: manager, accountId: localOwner });
     });
   }
-  app.addHook('onClose', async () => manager.close());
+  app.addHook('onClose', async () => { transcriber?.close(); return manager.close(); });
   return app;
 }
