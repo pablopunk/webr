@@ -88,6 +88,8 @@
   .sidebar.is-collapsed .thread-navigation, .sidebar.is-collapsed .sidebar-footer { display: flex; }
   .mobile-close { display: inline-flex; }
   .sidebar-collapse { display: none; }
+  .sidebar-footer { padding: 6px 12px calc(14px + env(safe-area-inset-bottom)) 8px; }
+  .sidebar-settings { min-height: 44px; font-size: 15px; }
   .sidebar-scrim { display: block; position: fixed; inset: 0; z-index: 10; border: 0; background: rgb(0 0 0 / 45%); }
 }
 .thread-worktree { flex: none; opacity: .7; }

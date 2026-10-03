@@ -12,7 +12,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .not-found { max-width: 680px; margin: 14vh auto 0; padding: 25px; }
 .not-found h1 { font-size: 26px; font-weight: 600; }.not-found p { color: var(--ink-muted); }
 .mobile-controls { display: none; }
-@media (max-width: 760px) { .mobile-controls { position: fixed; z-index: 8; top: max(6px, env(safe-area-inset-top)); right: max(6px, env(safe-area-inset-right)); display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--sidebar); } .mobile-controls button { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 4px; background: transparent; color: var(--ink-soft); } .mobile-controls button:hover { background: var(--surface-hover); } }
+@media (max-width: 760px) {
+  .mobile-controls { position: fixed; z-index: 8; top: max(10px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); display: flex; justify-content: space-between; pointer-events: none; }
+  .mobile-controls button { display: grid; place-items: center; width: 48px; height: 48px; border: 1px solid var(--line); border-radius: 50%; background: var(--sidebar); box-shadow: var(--card-shadow); color: var(--ink-soft); pointer-events: auto; touch-action: manipulation; }
+  .mobile-controls button:active { background: var(--surface-hover); }
+}
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 @media (pointer: coarse) {
   .app-shell.is-thread { position: fixed; top: var(--app-top, 0px); right: 0; left: 0; height: var(--app-height, 100dvh); min-height: 0; overflow: hidden; }
