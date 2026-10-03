@@ -11,7 +11,7 @@ const STOP_TIMEOUT_MS = 5000;
 const output = (command: string, args: string[]) => { try { return execFileSync(command, args, { encoding: 'utf8' }).trim(); } catch { return ''; } };
 const listeningPids = () => output('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t']).split('\n').filter(Boolean).map(Number);
 const commandOf = (pid: number) => output('ps', ['-o', 'command=', '-p', String(pid)]);
-const isWebrServer = (pid: number) => commandOf(pid).includes('server/start.ts');
+const isWebrServer = (pid: number) => /server\/start\.ts|webr(\.mjs)? start/.test(commandOf(pid));
 const isAlive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
 async function stopGently(pid: number) {

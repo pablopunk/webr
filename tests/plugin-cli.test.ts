@@ -160,6 +160,17 @@ it('stops the production Webr for dev and starts it again when dev stops', async
   expect(readFileSync(join(herdr.state, 'launches'), 'utf8')).toBe('x');
 });
 
+it('stops a production Webr that is still starting up', async () => {
+  const herdr = fakeHerdr('github');
+  const port = await freePort();
+  writeFileSync(join(herdr.config, 'config.json'), JSON.stringify({ port }));
+  const child = spawn(process.execPath, ['-e', `setTimeout(() => require('net').createServer().listen(${port}, '127.0.0.1'), 500)`], { stdio: 'ignore' });
+  writeFileSync(join(herdr.state, 'webr.pid'), String(child.pid));
+  const exited = new Promise<void>((done) => child.once('exit', () => done()));
+  expect(await stopProductionWebr(herdr.run, herdr.state)).toBe(true);
+  await exited;
+});
+
 it('leaves the production Webr alone when it is not running', async () => {
   const herdr = fakeHerdr('github');
   expect(await stopProductionWebr(herdr.run, herdr.state)).toBe(false);

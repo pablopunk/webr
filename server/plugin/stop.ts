@@ -7,6 +7,7 @@ type Address = Parameters<typeof isPortOpen>[0];
 
 const STOP_ATTEMPTS = 50;
 const STOP_POLL_MS = 100;
+const START_ATTEMPTS = 100;
 
 const pidPath = (stateDir: string) => join(stateDir, PID_FILE);
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
@@ -30,10 +31,18 @@ async function waitUntilClosed(address: Address) {
   return false;
 }
 
+async function waitUntilListeningWhileAlive(pid: number, address: Address) {
+  for (let attempt = 0; attempt < START_ATTEMPTS && isAlive(pid); attempt++) {
+    if (await isPortOpen(address)) return true;
+    await sleep(STOP_POLL_MS);
+  }
+  return false;
+}
+
 export async function stopPluginWebr(stateDir: string, address: Address) {
   const pid = recordedPid(stateDir);
   rmSync(pidPath(stateDir), { force: true });
-  if (!pid || !isAlive(pid) || !(await isPortOpen(address))) return false;
+  if (!pid || !isAlive(pid) || !(await waitUntilListeningWhileAlive(pid, address))) return false;
   process.kill(pid, 'SIGTERM');
   return waitUntilClosed(address);
 }
