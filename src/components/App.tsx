@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PanelLeft, Search } from 'lucide-react';
+import { Command, PanelLeft } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
 import { PerfOverlay } from './PerfOverlay';
 import { PairingPrompt } from './PairingPrompt';
@@ -31,6 +31,8 @@ type Props = {
   threadId?: string;
   projectId?: string;
 };
+
+const keepTerminalFocus = (event: React.PointerEvent) => event.preventDefault();
 
 export default function App(props: Props) {
   return <CrashReport><RuntimeProvider bootstrap={props.bootstrap}><RuntimeApp {...props} /></RuntimeProvider></CrashReport>;
@@ -151,7 +153,7 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
       {page === 'settings' && <SettingsView onOpenSidebar={toggleSidebar} />}
       {page === 'missing' && <main className="not-found"><h1>Thread not found</h1><a href="/">Open a thread</a></main>}
     </div>
-    {page === 'thread' && <div className="mobile-controls"><button aria-label="Open sidebar" onClick={toggleSidebar}><PanelLeft size={22} /></button><button aria-label="Open command palette" onClick={() => setPaletteOpen(true)}><Search size={22} /></button></div>}
+    {page === 'thread' && <div className="mobile-controls"><button aria-label="Open sidebar" onPointerDown={keepTerminalFocus} onClick={toggleSidebar}><PanelLeft size={22} /></button><button aria-label="Open command palette" onPointerDown={keepTerminalFocus} onClick={() => setPaletteOpen(true)}><Command size={22} /></button></div>}
     {perfAvailable && <PerfOverlay />}
     <PairingPrompt />
     <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projects={projects} threads={threads} thread={thread} focusedPane={focusedPane}
