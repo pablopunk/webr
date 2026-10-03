@@ -27,6 +27,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [creatingWorkspace, setCreatingWorkspace] = useState(false);
+  const projectIdsBeforeCreate = useRef<Set<string> | null>(null);
   const operation = useRef<{ payload: string; key: string } | null>(null);
   const images = usePromptImages({ machineId });
   const baseMachine = machines.find((machine) => machine.id === machineId) ?? { id: '', name: 'No target', connected: false, session: '', projectPaths: {}, harnesses: [] };
@@ -54,6 +55,11 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     setHarness(choices.find((choice) => choice.id === previous)?.id ?? choices.find((choice) => choice.launchEnabled)?.id ?? choices[0]?.id ?? '');
     setModel('Default');
   }, [machineId, projectId, catalog.data]);
+  useEffect(() => {
+    const known = projectIdsBeforeCreate.current;
+    const added = known && machineProjects.find((project) => !known.has(project.id));
+    if (added) { projectIdsBeforeCreate.current = null; changeProject(added.id); }
+  }, [machineProjects]);
   useEffect(() => {
     if (!machineId && machines.length) setMachineId(machines.find((machine) => machine.id === 'local')?.id ?? machines[0].id);
     if (!projectId && machineProjects.length) setProjectId(machineProjects[0].id);
@@ -101,7 +107,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     <h1>What do you want to build today?</h1>
     {machine.connected && machine.writable && (!machineProjects.length || creatingWorkspace) ? <>
       <p>{!machineProjects.length ? 'This Herdr session has no projects yet.' : 'Add a project to this Herdr session.'}</p>
-      <CreateWorkspace machineId={machine.id} onCreated={() => setCreatingWorkspace(false)} />
+      <CreateWorkspace machineId={machine.id} onCreated={() => { projectIdsBeforeCreate.current = new Set(machineProjects.map((project) => project.id)); setCreatingWorkspace(false); }} />
       {!!machineProjects.length && <button className="workspace-cancel" onClick={() => setCreatingWorkspace(false)}>Cancel</button>}
     </> : <>
     <form className={`thread-composer ${images.dragging ? 'is-dropping' : ''}`} onSubmit={submit} aria-busy={busy} {...images.handlers}>
