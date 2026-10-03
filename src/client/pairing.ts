@@ -27,6 +27,13 @@ export async function listAuditEvents(): Promise<AuditEvent[]> {
   return response.json();
 }
 
+export type TailscaleStatus = 'ready' | 'https-disabled' | 'unavailable';
+
+export async function tailscaleStatus(): Promise<TailscaleStatus> {
+  const response = await fetch('/api/remote/tailscale');
+  return response.ok ? (await response.json()).status : 'unavailable';
+}
+
 export const revokeDevice = (id: string) => post(`/api/devices/${encodeURIComponent(id)}/revoke`);
 export const decidePairRequest = (id: string, decision: 'approve' | 'deny') => post(`/api/pair/${encodeURIComponent(id)}/${decision}`);
 

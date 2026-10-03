@@ -28,9 +28,10 @@ export async function runServer() {
   const manager = new RuntimeManager(database, profiles.map((profile) => new HerdrTarget(profile)));
   const ssr = process.env.WEBR_DEV === '1' ? await devSsr(port, host) : await builtSsr();
   const tls = tlsEnabled ? { cert: await readFile(process.env.WEBR_TLS_CERT!), key: await readFile(process.env.WEBR_TLS_KEY!) } : undefined;
-  const secureUrl = !process.env.WEBR_ORIGIN && [...WILDCARD_HOSTS, '127.0.0.1'].includes(host) ? await ensureTailscaleHttps(port) : undefined;
-  const urls = [...(secureUrl ? [secureUrl] : []), ...publicUrls(origin, host, port, undefined, await detectTailscaleHost())];
-  const app = await createHost(manager, origin, ssr.handler, tls, undefined, { publicUrls: urls });
+  const managesTailscale = !process.env.WEBR_ORIGIN && [...WILDCARD_HOSTS, '127.0.0.1'].includes(host);
+  const tailscale = managesTailscale ? await ensureTailscaleHttps(port) : undefined;
+  const urls = [...(tailscale?.status === 'ready' ? [tailscale.url] : []), ...publicUrls(origin, host, port, undefined, await detectTailscaleHost())];
+  const app = await createHost(manager, origin, ssr.handler, tls, undefined, { publicUrls: urls, tailscale: tailscale?.status });
   await app.listen({ host, port });
   manager.start();
   console.log(`Webr listening at ${origin}`);

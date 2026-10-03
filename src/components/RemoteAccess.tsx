@@ -6,7 +6,7 @@ import { QrCode } from './QrCode';
 import { confirmDialog } from './dialogs';
 import { NotificationSetting } from './NotificationSetting';
 import { RemoteActivity } from './RemoteActivity';
-import { createInvite, listDevices, relativeFuture, relativeTime, revokeDevice, type Device, type Invite } from '../client/pairing';
+import { createInvite, listDevices, relativeFuture, relativeTime, revokeDevice, tailscaleStatus, type Device, type Invite, type TailscaleStatus } from '../client/pairing';
 
 function InviteDialog({ invite, onClose }: { invite: Invite; onClose: () => void }) {
   const [urlIndex, setUrlIndex] = useState(0);
@@ -33,6 +33,17 @@ function InviteDialog({ invite, onClose }: { invite: Invite; onClose: () => void
   </Dialog.Root>;
 }
 
+const TAILSCALE_CALLOUTS: Record<Exclude<TailscaleStatus, 'ready'>, string> = {
+  unavailable: 'Install Tailscale on this computer and your other devices to get a private, secure HTTPS address for Webr. HTTPS unlocks features browsers only allow on secure pages, such as the microphone.',
+  'https-disabled': 'Tailscale is installed, but HTTPS certificates are off. Turn them on in the Tailscale admin console under DNS, then restart Webr to unlock features that need a secure address, such as the microphone.',
+};
+
+function TailscaleCallout() {
+  const [status, setStatus] = useState<TailscaleStatus>('ready');
+  useEffect(() => { void tailscaleStatus().then(setStatus, () => undefined); }, []);
+  return status === 'ready' ? null : <p className="tailscale-callout" role="note">{TAILSCALE_CALLOUTS[status]}</p>;
+}
+
 export function RemoteAccess() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [invite, setInvite] = useState<Invite>();
@@ -50,6 +61,7 @@ export function RemoteAccess() {
   return <section id="remote-access">
     <div className="settings-section-title"><h2>Remote access</h2></div>
     <p className="settings-note">Other devices ask to connect and you approve them here. This computer never needs a code.</p>
+    <TailscaleCallout />
     <div className="settings-row"><span>Connect a device</span><button type="button" className="dialog-button" onClick={() => void showInvite()}>Show code</button></div>
     <NotificationSetting />
     {error && <p role="alert" className="form-error">{error}</p>}

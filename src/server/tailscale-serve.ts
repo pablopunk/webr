@@ -26,14 +26,17 @@ async function tailscale(args: string[]) {
   throw new Error('tailscale unavailable');
 }
 
-export async function ensureTailscaleHttps(webrPort: number) {
+export type TailscaleHttps = { status: 'ready'; url: string } | { status: 'https-disabled' | 'unavailable' };
+
+export async function ensureTailscaleHttps(webrPort: number): Promise<TailscaleHttps> {
   try {
     const { Self, CertDomains } = JSON.parse(await tailscale(['status', '--json'])) as TailscaleStatus;
     const name = Self?.DNSName && withoutTrailingDot(Self.DNSName);
-    if (!name || !CertDomains?.includes(name)) return undefined;
+    if (!name) return { status: 'unavailable' };
+    if (!CertDomains?.includes(name)) return { status: 'https-disabled' };
     const { port, exists } = choosePort(JSON.parse(await tailscale(['serve', 'status', '--json'])) as ServeStatus, name, webrPort);
-    if (port === undefined) return undefined;
+    if (port === undefined) return { status: 'unavailable' };
     if (!exists) await tailscale(['serve', '--bg', `--https=${port}`, `http://127.0.0.1:${webrPort}`]);
-    return urlFor(name, port);
-  } catch { return undefined; }
+    return { status: 'ready', url: urlFor(name, port) };
+  } catch { return { status: 'unavailable' }; }
 }

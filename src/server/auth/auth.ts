@@ -9,7 +9,7 @@ import { pairPage } from './pair-page';
 import { PairingService, RateLimiter, formatInviteToken } from './pairing';
 import { SessionStore, clearedSessionCookie, deviceNameFrom, sessionCookie, type DeviceSession } from './sessions';
 
-export type AuthOptions = { publicUrls?: string[] };
+export type AuthOptions = { publicUrls?: string[]; tailscale?: 'ready' | 'https-disabled' | 'unavailable' };
 export type Access = { local: boolean; session?: DeviceSession };
 
 const publicRoutes: [method: string, path: RegExp][] = [
@@ -104,6 +104,7 @@ export class Auth {
       this.audit.record('invite_created', { source: sourceOf(request) });
       return { token: formatInviteToken(invite.token), expiresAt: invite.expiresAt, urls: (this.options.publicUrls ?? []).map((base) => `${base}/#token=${invite.token}`) };
     });
+    app.get('/api/remote/tailscale', async () => ({ status: this.options.tailscale ?? 'ready' }));
     app.get('/api/audit', async () => this.audit.recent());
     app.get('/api/devices', async (request) => this.sessions.list().map((device) => ({ ...device, current: device.id === this.access(request).session?.id })));
     app.post('/api/devices/:id/revoke', async (request, reply) => {
