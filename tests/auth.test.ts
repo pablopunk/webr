@@ -241,3 +241,15 @@ it('explains on the pair page what to do when nobody is watching', async () => {
   expect(page).toContain('webr invite');
   expect(page).toContain('approverOnline');
 });
+
+it('accepts HTTPS origins and sets secure cookies behind a local Tailscale proxy', async () => {
+  const { app, local } = await setup();
+  const host = 'm4pro.pangolin-frog.ts.net';
+  const proxied = { host, origin: 'https://' + host, 'x-forwarded-proto': 'https', 'tailscale-user-login': 'a@b.c', 'user-agent': phone['user-agent'] };
+  const asProxy = (method: 'GET' | 'POST', url: string, payload?: object) => app.inject({ method, url, headers: proxied, remoteAddress: '127.0.0.1', payload });
+  const request = (await asProxy('POST', '/api/pair/request', {})).json();
+  await local('POST', `/api/pair/${request.id}/approve`, {});
+  const claimed = await asProxy('POST', `/api/pair/request/${request.id}/poll`, { secret: request.secret });
+  expect(claimed.json()).toEqual({ status: 'approved' });
+  expect(String(claimed.headers['set-cookie'])).toMatch(/Secure/);
+});

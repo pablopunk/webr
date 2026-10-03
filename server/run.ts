@@ -6,6 +6,7 @@ import { HerdrTarget } from '../src/server/transport/herdr-target';
 import { createHost } from '../src/server/host';
 import { publicUrls } from '../src/server/public-urls';
 import { detectTailscaleHost } from '../src/server/tailscale-host';
+import { ensureTailscaleHttps } from '../src/server/tailscale-serve';
 import { isLoopbackHost } from '../src/server/auth/access';
 import { resolvePort } from './port';
 import { webrHome } from './home';
@@ -27,7 +28,8 @@ export async function runServer() {
   const manager = new RuntimeManager(database, profiles.map((profile) => new HerdrTarget(profile)));
   const ssr = process.env.WEBR_DEV === '1' ? await devSsr(port, host) : await builtSsr();
   const tls = tlsEnabled ? { cert: await readFile(process.env.WEBR_TLS_CERT!), key: await readFile(process.env.WEBR_TLS_KEY!) } : undefined;
-  const urls = publicUrls(origin, host, port, undefined, await detectTailscaleHost());
+  const secureUrl = !process.env.WEBR_ORIGIN && [...WILDCARD_HOSTS, '127.0.0.1'].includes(host) ? await ensureTailscaleHttps(port) : undefined;
+  const urls = [...(secureUrl ? [secureUrl] : []), ...publicUrls(origin, host, port, undefined, await detectTailscaleHost())];
   const app = await createHost(manager, origin, ssr.handler, tls, undefined, { publicUrls: urls });
   await app.listen({ host, port });
   manager.start();

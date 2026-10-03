@@ -12,7 +12,9 @@ function InviteDialog({ invite, onClose }: { invite: Invite; onClose: () => void
   const [urlIndex, setUrlIndex] = useState(0);
   const [copied, setCopied] = useState(false);
   const url = invite.urls[urlIndex];
-  const copy = () => writeClipboardText(invite.token).then((ok) => { if (!ok) return; setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  const copyText = (text: string) => writeClipboardText(text).then((ok) => { if (!ok) return; setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  const copy = () => copyText(invite.token);
+  const selectAndCopyAddress = (index: number) => { setUrlIndex(index); void copyText(invite.urls[index]); };
   return <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
     <Dialog.Portal>
       <Dialog.Backdrop className="dialog-backdrop" />
@@ -21,7 +23,7 @@ function InviteDialog({ invite, onClose }: { invite: Invite; onClose: () => void
         {url
           ? <><Dialog.Description className="dialog-message">Scan with the device’s camera, or open Webr there and enter the code.</Dialog.Description>
             <QrCode value={url} label="QR code to connect a device" />
-            {invite.urls.length > 1 && <div className="theme-control theme-control--labels" role="group" aria-label="Address">{invite.urls.map((address, index) => <button key={address} type="button" aria-pressed={index === urlIndex} className={index === urlIndex ? 'theme-option is-selected' : 'theme-option'} onClick={() => setUrlIndex(index)}>{new URL(address).host}</button>)}</div>}</>
+            {invite.urls.length > 1 && <div className="theme-control theme-control--labels" role="group" aria-label="Address">{invite.urls.map((address, index) => <button key={address} type="button" aria-pressed={index === urlIndex} className={index === urlIndex ? 'theme-option is-selected' : 'theme-option'} onClick={() => selectAndCopyAddress(index)}>{new URL(address).host}</button>)}</div>}</>
           : <Dialog.Description className="dialog-message">No network address was found for other devices. Start Webr with <code>--origin &lt;url&gt;</code> if you reach it through a proxy.</Dialog.Description>}
         <div className="pairing-token"><code>{invite.token}</code><button type="button" className="dialog-button" onClick={() => void copy()} aria-label="Copy code">{copied ? <Check size={14} /> : <Copy size={14} />}</button></div>
         <p className="settings-note">Works once and expires in 5 minutes.</p>

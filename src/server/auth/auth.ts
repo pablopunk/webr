@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { WebSocket } from 'ws';
 import { z } from 'zod';
 import type { MetadataDatabase } from '../storage/database';
-import { isLocalRequest, sourceAddress } from './access';
+import { isLocalRequest, isLoopbackAddress, sourceAddress } from './access';
 import { AuditLog } from './audit';
 import { ApproverPresence } from './presence';
 import { pairPage } from './pair-page';
@@ -47,8 +47,15 @@ export class Auth {
     return reply.code(401).send({ error: 'unauthorized' });
   }
 
+  private isHttpsThroughLocalProxy(request: FastifyRequest) { return request.headers['x-forwarded-proto'] === 'https' && isLoopbackAddress(request.socket.remoteAddress); }
+
+  private protocolOf(request: FastifyRequest) {
+    if (request.headers.host === this.origin.host) return this.origin.protocol;
+    return this.isHttpsThroughLocalProxy(request) ? 'https:' : `${request.protocol}:`;
+  }
+
   expectedOrigin(request: FastifyRequest) {
-    return `${request.headers.host === this.origin.host ? this.origin.protocol : `${request.protocol}:`}//${request.headers.host}`;
+    return `${this.protocolOf(request)}//${request.headers.host}`;
   }
 
   routes(app: FastifyInstance) {
@@ -120,7 +127,7 @@ export class Auth {
     return publicRoutes.some(([method, pattern]) => method === request.method && pattern.test(path));
   }
 
-  private isSecure(request: FastifyRequest) { return this.origin.protocol === 'https:' && request.headers.host === this.origin.host; }
+  private isSecure(request: FastifyRequest) { return this.protocolOf(request) === 'https:'; }
 
   private grant(request: FastifyRequest, reply: FastifyReply, deviceName: string) {
     reply.header('Set-Cookie', sessionCookie(this.sessions.create(deviceName).token, this.isSecure(request)));
