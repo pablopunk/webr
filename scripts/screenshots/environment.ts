@@ -4,6 +4,7 @@ import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { demoThreads } from './demo';
 import { startFakeHerdr } from './fake-herdr';
 import { demoSnapshot } from './snapshot';
 import { seedDatabase } from './seed';
@@ -19,11 +20,13 @@ const freePort = () => listenOn(PREFERRED_PORT).catch(() => listenOn(0));
 const close = (server: Server) => new Promise<void>((resolve) => server.close(() => resolve()));
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const hasAllThreads = (url: string) => fetch(`${url}/api/runtime`).then((response) => response.json(), () => undefined).then((runtime) => runtime?.projections?.flatMap((projection: { threads: unknown[] }) => projection.threads).length === demoThreads.length, () => false);
+
 async function waitUntilServing(url: string, server: ChildProcess) {
   const deadline = Date.now() + READY_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (server.exitCode !== null) throw new Error('webr exited before it was ready');
-    if (await fetch(`${url}/api/auth/state`).then((response) => response.ok, () => false)) return;
+    if (await hasAllThreads(url)) return;
     await sleep(250);
   }
   throw new Error('webr did not start in time');

@@ -1,21 +1,22 @@
 ---
 name: screenshots
-description: Regenerate the README screenshots (sidebar, typing, cmdk, tailscale) from the latest Webr UI using a fake Herdr and made-up projects and agents. Use when the user asks to refresh, redo, or regenerate screenshots, or says "new screenshots".
+description: Regenerate the README screenshots and the demo GIF (sidebar, typing, cmdk, tailscale, demo) from the latest Webr UI using a fake Herdr and made-up projects and agents. Use when the user asks to refresh, redo, or regenerate screenshots, or says "new screenshots".
 ---
 
 # Webr screenshots
 
-Run `mise exec -- pnpm screenshots` from the repo root. It builds the app, starts a fully fake setup, captures four scenes, and writes `sidebar.jpg`, `typing.jpg`, `cmdk.jpg` and `tailscale.jpg` into `assets/brand/`. `dock.jpg` is a static image and is never touched.
+Run `mise exec -- pnpm screenshots` from the repo root. It builds the app, starts a fully fake setup, captures five scenes, and writes `sidebar.jpg`, `typing.jpg`, `cmdk.jpg` and `tailscale.jpg` into `assets/brand/` plus the looping `assets/demo.gif`. `dock.jpg` is a static image and is never touched.
 
-Options: `--only <scene>` (repeatable), `--skip-build`, `--out <dir>`. Use `--out` to preview before replacing the README images.
+Options: `--only <scene>` (repeatable; scenes are `sidebar`, `typing`, `cmdk`, `tailscale`, `demo`), `--skip-build`, `--out <dir>` (the assets folder: images go in `<dir>/brand`, the GIF in `<dir>/demo.gif`). Use `--out` to preview before replacing the README images.
 
-Needs `agent-browser` on the PATH. Nothing real is read: no real Herdr, projects, Tailscale or database. The user's real data never appears in an image.
+Needs `agent-browser` and `ffmpeg` on the PATH. Nothing real is read: no real Herdr, projects, Tailscale or database. The user's real data never appears in an image.
 
 ## How it works
 
 - `fake-herdr.ts` is a Unix socket server that speaks the Herdr protocol (22) and serves `snapshot.ts`. The `herdr` stub in the temp `bin/` runs `herdr-cli.ts`, which answers `--version`, the API schema and `terminal session` streams. Stubs for `claude`, `codex` and friends make the harness picker light up, and a `tailscale` stub answers `status` and `serve` so Webr runs its normal HTTPS flow with the fake `my-mac.tail1234.ts.net` address. `fake-network.ts` is preloaded into the server so the LAN address is a made-up `192.168.0.10`, never the real one.
 - `seed.ts` runs the real `reconcile` against the fake socket, then backdates thread times and adds devices and activity. Webr itself starts with `WEBR_HOME`, `HOME` and `HERDR_SOCKET_PATH` pointing into a temp dir, on port 4321 when free, so it is the unmodified app.
 - `screen.ts` draws each fake terminal as ANSI at whatever size the client asks for. The stub also echoes typed text, so the typing scene uses real keystrokes.
+- The `demo` scene opens a 3152x2140 window at scale 0.5 (so the video is 1576x1070, like the old GIF), selects the harbor thread (agent pane plus a `git status` shell pane), records 3 seconds with `agent-browser record`, and `gif.ts` turns the WebM into a looping GIF with ffmpeg. The motion is the ticking "Forming…" counter in `screen.ts` and the working avatar.
 - Phone scenes render at 430px wide, scale 942/430, then `compose.ts` adds the iOS status bar and keyboard from `frames/`. The frames were cut from the original device screenshots with `extract-frames.ts`. Re-running that script on the new images would crop the new images, so only do it with the originals from git history.
 
 ## Changing the content

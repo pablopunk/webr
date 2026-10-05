@@ -1,17 +1,21 @@
 import { createInterface } from 'node:readline';
 import { schemaFixture } from '../../tests/fixtures/schema';
-import { threadOfTerminal } from './demo';
-import { renderScreen } from './screen';
+import { threadOfShellTerminal, threadOfTerminal } from './demo';
+import { renderScreen, renderShell } from './screen';
+
+const TICK_MS = 250;
 
 const [group, action, mode, terminalId, ...flags] = process.argv.slice(2);
 const flag = (name: string, fallback: number) => { const at = flags.indexOf(name); return at >= 0 ? Number(flags[at + 1]) : fallback; };
 const print = (value: unknown) => console.log(typeof value === 'string' ? value : JSON.stringify(value));
 
 function streamTerminal(id: string) {
-  const thread = threadOfTerminal(id);
-  if (!thread) { console.error('unknown terminal'); process.exit(1); }
-  let cols = flag('--cols', 80), rows = flag('--rows', 24), seq = 0, draft = '';
-  const emit = () => print({ type: 'terminal.frame', encoding: 'ansi', seq: seq++, width: cols, height: rows, full: true, bytes: Buffer.from(renderScreen(thread, cols, rows, draft)).toString('base64') });
+  const thread = threadOfTerminal(id), shellThread = threadOfShellTerminal(id);
+  if (!thread && !shellThread) { console.error('unknown terminal'); process.exit(1); }
+  let cols = flag('--cols', 80), rows = flag('--rows', 24), seq = 0, draft = '', tick = 0;
+  const screen = () => thread ? renderScreen(thread, cols, rows, draft, tick) : renderShell(shellThread!, cols, rows);
+  const emit = () => print({ type: 'terminal.frame', encoding: 'ansi', seq: seq++, width: cols, height: rows, full: true, bytes: Buffer.from(screen()).toString('base64') });
+  if (thread?.status === 'working') setInterval(() => { tick++; emit(); }, TICK_MS);
   const typed = (text: string) => { for (const character of text) draft = character === '\x7f' ? draft.slice(0, -1) : character === '\r' ? '' : /[\x20-￿]/.test(character) ? draft + character : draft; };
   emit();
   createInterface({ input: process.stdin }).on('line', (line) => {

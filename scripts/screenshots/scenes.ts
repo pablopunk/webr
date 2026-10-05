@@ -2,9 +2,10 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Browser } from './browser';
 import { asJpeg, composePhone } from './compose';
+import { recordingToGif } from './gif';
 import { cssHeight, KEYBOARD_HEIGHT, PHONE_HEIGHT, STATUS_BAR_HEIGHT } from './frames';
 
-export type SceneContext = { url: string; scratch: string; out: string };
+export type SceneContext = { url: string; scratch: string; brand: string; assets: string };
 export type Scene = { name: string; capture(context: SceneContext): Promise<void> };
 
 const APP_HEIGHT = cssHeight(PHONE_HEIGHT - STATUS_BAR_HEIGHT);
@@ -15,6 +16,8 @@ const GROUP_BY_PROJECT = "button[aria-label='Group by project']";
 const COMMAND_PALETTE = '.mobile-controls button:nth-child(2)';
 const TERMINAL_INPUT = '.terminal-input-capture';
 const SHOW_CODE = 'Show code';
+const DEMO_THREAD = 'cursor-pagination-for-invoices';
+const DEMO_MILLISECONDS = 3000;
 
 async function phoneShot(context: SceneContext, name: string, cssHeightOfApp: number, steps: (browser: Browser) => void) {
   const browser = new Browser(`webr-shots-${name}`, true);
@@ -27,7 +30,7 @@ async function phoneShot(context: SceneContext, name: string, cssHeightOfApp: nu
   } finally { browser.close(); }
 }
 
-const save = (context: SceneContext, name: string, image: Buffer) => writeFile(join(context.out, `${name}.jpg`), image);
+const save = (context: SceneContext, name: string, image: Buffer) => writeFile(join(context.brand, `${name}.jpg`), image);
 
 export const scenes: Scene[] = [
   { name: 'sidebar', async capture(context) {
@@ -50,6 +53,19 @@ export const scenes: Scene[] = [
       const shot = join(context.scratch, 'tailscale.png');
       browser.screenshot(shot);
       await save(context, 'tailscale', await asJpeg(shot));
+    } finally { browser.close(); }
+  } },
+  { name: 'demo', async capture(context) {
+    const browser = new Browser('webr-shots-demo', false);
+    try {
+      browser.openWideWindow(context.url);
+      browser.clickText(DEMO_THREAD);
+      browser.wait(2500);
+      const video = join(context.scratch, 'demo.webm');
+      browser.startRecording(video);
+      browser.wait(DEMO_MILLISECONDS);
+      browser.stopRecording();
+      recordingToGif(video, join(context.assets, 'demo.gif'));
     } finally { browser.close(); }
   } },
 ];
