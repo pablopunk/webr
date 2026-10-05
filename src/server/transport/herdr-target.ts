@@ -7,7 +7,7 @@ import { openCliStream } from '../terminal/cli';
 import { boundedProcess } from './process';
 import { SshForward, sshOptions, remoteCommand, quoteShell } from './ssh';
 import type { LaunchInput } from '../../shared/runtime';
-import type { Machine } from '../../lib/machines';
+import type { Machine, MachineOs } from '../../lib/machines';
 import { harnessName } from '../../lib/models';
 import { acceptsModelFlag, herdrAgentKinds, isHerdrAgentKind } from '../../shared/agent-kinds';
 import { modelListings, parseModelListing } from './model-discovery';
@@ -23,16 +23,19 @@ import { expandHome, listLocalDirectories, suggestDirectories } from '../directo
 const MODEL_LISTING_TIMEOUT_MS = 15_000;
 const MODEL_CACHE_TTL_MS = 10 * 60_000;
 const MODEL_LISTING_LIMIT = 4 * 1024 * 1024;
+const osFromPlatform = (platform: string): MachineOs | undefined => platform === 'darwin' || platform === 'Darwin' ? 'macos' : platform === 'win32' || /^(MINGW|MSYS|CYGWIN)/i.test(platform) ? 'windows' : platform.toLowerCase() === 'linux' ? 'linux' : undefined;
 type Dependencies = { process: typeof boundedProcess; cli: typeof openCliStream };
 export class HerdrTarget implements TargetAdapter {
   readonly id; readonly name; readonly session; readonly locations: LaunchLocation[];
   readonly fingerprint; configVersion = 1;
   get enabled() { return this.profile.enabled; }
   get writable() { return this.compatible; }
+  get os() { return this.profile.transport === 'local' ? osFromPlatform(process.platform) : this.remoteOs; }
   get acceptsLocalFiles() { return this.profile.transport === 'local'; }
   private api?: SocketApi;
   private forwarding?: SshForward;
   private compatible = false;
+  private remoteOs?: MachineOs;
   private connecting?: Promise<SocketApi>;
   private streams = new Set<ReturnType<typeof openCliStream>>();
   private icons = new Map<string, { expires: number; value: Promise<Icon | undefined> }>();
@@ -67,6 +70,7 @@ export class HerdrTarget implements TargetAdapter {
       const schema = JSON.parse(await this.dependencies.process(schemaCommand.command, schemaCommand.args, schemaCommand.env, 5000, 2 * 1024 * 1024));
       if (validateInstalledSchema(schema).length) { this.compatible = false; throw new Error('unsupported_herdr_schema'); }
       this.compatible = true;
+      if (this.profile.transport === 'ssh') void this.detectRemoteOs();
       return this.api;
     })();
     try { return await this.connecting; }
@@ -99,6 +103,9 @@ export class HerdrTarget implements TargetAdapter {
     const modelsPending = present.some((kind) => this.pendingModels.has(kind));
     const isGitRepo = await this.isGitRepo(projectId);
     return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, modelsPending, isGitRepo, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id) => ({ id, name: harnessName(id), models: ['Default', ...(this.discoveredModels.get(id)?.models ?? [])], customModels: acceptsModelFlag(id), launchEnabled: true })) };
+  }
+  private async detectRemoteOs() {
+    this.remoteOs = await this.runOnTarget('uname', ['-s']).then((output) => osFromPlatform(output.trim()), () => undefined);
   }
   private async isGitRepo(projectId?: string) {
     const location = this.locations.find((location) => location.projectId === projectId);

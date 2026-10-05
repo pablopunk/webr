@@ -1,4 +1,5 @@
 export type MachineHarness = { id: string; name: string; models: string[]; customModels?: boolean; launchEnabled?: boolean; reason?: string };
+export type MachineOs = 'macos' | 'linux' | 'windows';
 export type Machine = {
   id: string;
   name: string;
@@ -8,6 +9,7 @@ export type Machine = {
   harnesses: MachineHarness[];
   modelsPending?: boolean;
   isGitRepo?: boolean;
+  os?: MachineOs;
   error?: string;
   writable?: boolean;
   configVersion?: number;
@@ -15,7 +17,7 @@ export type Machine = {
 
 export const machines: Machine[] = [
   {
-    id: 'local', name: 'Local', connected: true, session: 'default',
+    id: 'local', name: 'Local', os: 'macos', connected: true, session: 'default',
     projectPaths: { herdr: '~/src/herdr', maze: '~/src/maze/monorepo', spotifin: '~/src/spotifin' },
     harnesses: [
       { id: 'claude', name: 'Claude Code', models: ['Default', 'sonnet', 'opus'] },
@@ -25,7 +27,7 @@ export const machines: Machine[] = [
     ],
   },
   {
-    id: 'demo-build', name: 'Build machine (demo)', connected: true, session: 'agents',
+    id: 'demo-build', name: 'Build machine (demo)', os: 'linux', connected: true, session: 'agents',
     projectPaths: { herdr: '/srv/herdr', spotifin: '/srv/spotifin' },
     harnesses: [
       { id: 'opencode', name: 'OpenCode', models: ['Default', 'demo/remote-model'] },

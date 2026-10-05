@@ -1,4 +1,4 @@
-import type { Machine } from '../../lib/machines';
+import type { Machine, MachineOs } from '../../lib/machines';
 import type { NativeSnapshot } from '../protocol/native';
 import type { TerminalFrame, TerminalStream } from '../terminal/cli';
 import type { LaunchInput } from '../../shared/runtime';
@@ -14,6 +14,7 @@ export type TargetAdapter = {
   enabled?: boolean;
   locations: LaunchLocation[];
   writable: boolean;
+  os?: MachineOs;
   acceptsLocalFiles?: boolean;
   subscribe(onEvent: () => void, onClose: (reason: string) => void, paneIds?: string[]): Promise<() => void>;
   snapshot(): Promise<NativeSnapshot>;

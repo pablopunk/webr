@@ -3,9 +3,10 @@ import type { Project } from '../lib/models';
 import type { Machine } from '../lib/machines';
 import { ComposerCombobox } from './ComposerCombobox';
 import { HarnessIcon } from './HarnessIcon';
+import { OsIcon } from './OsIcon';
 import { ProjectPicker } from './ProjectPicker';
 
-const machineIcon = (machine: Machine) => machine.id === 'local' ? <Monitor size={14} /> : <Server size={14} />;
+const machineIcon = (machine: Machine) => machine.os ? <OsIcon os={machine.os} /> : machine.id === 'local' ? <Monitor size={14} /> : <Server size={14} />;
 
 export function LaunchSelectors({ machine, machines, projects, projectId, harness, model, onMachineChange, onProjectChange, onHarnessChange, onModelChange, onAddProject }: {
   machine: Machine; machines: Machine[]; projects: Project[]; projectId: string; harness: string; model: string;
