@@ -1,6 +1,6 @@
 import { memo, useRef, useState, type ReactNode } from 'react';
 import { ContextMenu } from '@base-ui/react/context-menu';
-import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, GitBranch, LayoutList, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Settings2, SquarePen, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, GitBranch, LayoutList, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Settings2, SquarePen, ImageUp, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { type Project, type Thread, harnessName, relativeTime } from '../lib/models';
 import { isLaunching, launchFailed, launchLabel } from '../lib/launch';
 import type { Machine } from '../lib/machines';
@@ -9,6 +9,7 @@ import { ProjectIcon } from './ProjectIcon';
 import { OpenWorktree } from './OpenWorktree';
 import { ThreadTitleEditor } from './ThreadTitleEditor';
 import { ProjectNameEditor } from './ProjectNameEditor';
+import { ProjectIconDialog } from './ProjectIconDialog';
 import { ThreadAvatar } from './ThreadAvatar';
 import { Tooltip } from './Tooltip';
 import { useFlipList } from './useFlipList';
@@ -78,9 +79,10 @@ function ThreadLink({ thread, project, machineName, current, showProject, editor
 
 function ProjectGroupHeader({ project, closed, onToggle }: { project: Project; closed: boolean; onToggle: () => void }) {
   const [renaming, setRenaming] = useState(false);
+  const [changingIcon, setChangingIcon] = useState(false);
   const Title = renaming ? 'div' : 'button';
   const label = renaming ? <ProjectNameEditor project={project} onDone={() => setRenaming(false)} onError={reportFailure} /> : <span className="group-name">{project.name}</span>;
-  return <ContextMenu.Root>
+  return <><ContextMenu.Root>
     <ContextMenu.Trigger className="group-header">
       <Title className="group-title" onClick={renaming ? undefined : onToggle} aria-expanded={renaming ? undefined : !closed}>
         <span className="group-chevron" aria-hidden="true">{closed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</span><ProjectIcon project={project} />{label}
@@ -89,9 +91,10 @@ function ProjectGroupHeader({ project, closed, onToggle }: { project: Project; c
     <ContextMenu.Portal><ContextMenu.Positioner className="thread-menu-positioner"><ContextMenu.Popup className="thread-menu">
       <ContextMenu.Item className="thread-menu-item" onClick={() => void navigate(`/new?project=${encodeURIComponent(project.id)}`)}><Plus size={14} aria-hidden="true" />New thread</ContextMenu.Item>
       <ContextMenu.Item className="thread-menu-item" onClick={() => setRenaming(true)}><Pencil size={14} aria-hidden="true" />Rename project</ContextMenu.Item>
+      <ContextMenu.Item className="thread-menu-item" onClick={() => setChangingIcon(true)}><ImageUp size={14} aria-hidden="true" />Change icon</ContextMenu.Item>
       <div className="thread-menu-path" title={project.path}>{withTildeHome(project.path)}</div>
     </ContextMenu.Popup></ContextMenu.Positioner></ContextMenu.Portal>
-  </ContextMenu.Root>;
+  </ContextMenu.Root><ProjectIconDialog project={project} open={changingIcon} onClose={() => setChangingIcon(false)} onError={reportFailure} /></>;
 }
 
 function ArchivedThreads({ threads, renderThread }: { threads: Thread[]; renderThread: (thread: Thread) => ReactNode }) {

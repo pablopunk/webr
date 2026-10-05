@@ -25,6 +25,7 @@ export class MetadataDatabase {
   }
   close() { this.sqlite.close(); }
   getSetting(key: string) { return this.db.select().from(schema.settings).where(eq(schema.settings.key, key)).get()?.value; }
+  deleteSetting(key: string) { this.db.delete(schema.settings).where(eq(schema.settings.key, key)).run(); }
   setSetting(key: string, value: string) { this.db.insert(schema.settings).values({ key, value }).onConflictDoUpdate({ target: schema.settings.key, set: { value } }).run(); }
   threadRows(machineId?: string, session?: string) {
     return this.db.select().from(schema.threads).where(machineId ? and(eq(schema.threads.machineId, machineId), session ? eq(schema.threads.session, session) : undefined) : undefined).all();

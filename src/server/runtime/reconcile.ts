@@ -5,6 +5,9 @@ import type { Project, Thread } from '../../lib/models';
 import type { TargetAdapter } from './target';
 import { orderPanes } from '../../lib/pane-strip';
 
+export const projectIconKey = (machineId: string, logicalId: string) => `project-icon:${machineId}:${logicalId}`;
+const iconRoute = (machineId: string, id: string, version = '') => `/api/projects/${encodeURIComponent(machineId)}/${encodeURIComponent(id)}/icon${version}`;
+const customIconVersion = (value?: string) => value ? `?v=${createHash('sha1').update(value).digest('hex').slice(0, 8)}` : undefined;
 export const projectNameKey = (machineId: string, logicalId: string) => `project-name:${machineId}:${logicalId}`;
 export const projectIdentity = (machineId: string, repository: string) => createHash('sha256').update(machineId + '\0' + repository).digest('hex').slice(0, 32);
 const sameBinding = (thread: Thread, target: TargetAdapter) => thread.session === target.session && thread.bindingFingerprint === target.fingerprint && thread.bindingConfigVersion === target.configVersion;
@@ -17,6 +20,12 @@ const threadTitle = (label: string | null | undefined, panes: NativeSnapshot['pa
   return agent?.title?.trim() || agent?.terminal_title_stripped?.trim() || namedTab || fallback;
 };
 
+function projectIconUrl(database: MetadataDatabase, target: TargetAdapter, id: string, logicalId: string, located: boolean) {
+  const custom = customIconVersion(database.getSetting(projectIconKey(target.id, logicalId)));
+  if (custom) return iconRoute(target.id, id, custom);
+  return target.icon && located ? iconRoute(target.id, id) : undefined;
+}
+
 export function reconcile(database: MetadataDatabase, target: TargetAdapter, snapshot: NativeSnapshot): { threads: Thread[]; projects: Project[] } {
   const saved = database.threadRows(target.id);
   const projects: Project[] = [];
@@ -26,7 +35,7 @@ export function reconcile(database: MetadataDatabase, target: TargetAdapter, sna
     const location = target.locations.find((location) => location.workspaceId === workspace.workspace_id || location.path === cwd);
     const id = location?.projectId ?? projectIdentity(target.id, workspace.worktree?.repo_key ?? (cwd || workspace.workspace_id));
     const logicalId = location?.logicalId ?? workspace.worktree?.repo_key ?? id;
-    if (!projects.some((project) => project.id === id)) projects.push({ id, machineId: target.id, localId: location?.localId, logicalId, name: database.getSetting(projectNameKey(target.id, logicalId)) ?? workspace.worktree?.repo_name ?? workspace.label, path: location?.path ?? cwd, color: '#9b83df', initial: (workspace.label[0] ?? 'P').toUpperCase(), iconUrl: target.icon && location ? `/api/projects/${encodeURIComponent(target.id)}/${encodeURIComponent(id)}/icon` : undefined });
+    if (!projects.some((project) => project.id === id)) projects.push({ id, machineId: target.id, localId: location?.localId, logicalId, name: database.getSetting(projectNameKey(target.id, logicalId)) ?? workspace.worktree?.repo_name ?? workspace.label, path: location?.path ?? cwd, color: '#9b83df', initial: (workspace.label[0] ?? 'P').toUpperCase(), iconUrl: projectIconUrl(database, target, id, logicalId, !!location) });
     for (const tab of snapshot.tabs.filter((tab) => tab.workspace_id === workspace.workspace_id)) tabProjects.set(tab.tab_id, id);
   }
   const launching = database.operations().some((operation) => operation.input.machineId === target.id && ['pending', 'running'].includes(operation.state));

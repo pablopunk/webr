@@ -7,6 +7,7 @@ export function ProjectIcon({ project }: { project: Project }) {
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    setFailed(false);
     if (image.current?.complete) {
       setLoaded(image.current.naturalWidth > 0);
       setFailed(image.current.naturalWidth === 0);

@@ -160,3 +160,17 @@ it('keeps the connection when a burst of valid terminal actions arrives at once'
   await new Promise((resolve) => setTimeout(resolve, 300));
   expect(closed).toBe(false);
 });
+it('stores a custom project icon, serves it with a version, and resets to the default', async () => {
+  const { app, headers, manager } = await setup();
+  await expect.poll(() => manager.bootstrap().projects.length).toBeGreaterThan(0);
+  const project = manager.bootstrap().projects[0];
+  const query = `machineId=${project.machineId}&logicalId=${encodeURIComponent(project.logicalId ?? project.id)}`;
+  const saved = await app.inject({ method: 'PUT', url: `/api/projects/icon?${query}`, headers: { ...headers, 'content-type': 'image/png' }, payload: png });
+  expect(saved.statusCode).toBe(200);
+  const custom = manager.bootstrap().projects[0];
+  expect(custom.iconUrl).toMatch(/icon\?v=[0-9a-f]{8}$/);
+  const served = await app.inject({ method: 'GET', url: custom.iconUrl!, headers });
+  expect(served.rawPayload).toEqual(png);
+  expect((await app.inject({ method: 'DELETE', url: `/api/projects/icon?${query}`, headers })).statusCode).toBe(200);
+  expect(manager.bootstrap().projects[0].iconUrl ?? '').not.toContain('?v=');
+});

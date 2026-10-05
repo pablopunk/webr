@@ -20,3 +20,5 @@
 .dialog-button:hover { background: var(--surface-hover); }
 .dialog-button.is-primary { border-color: transparent; background: var(--action-blue); color: #fff; }
 .dialog-button.is-danger { background: var(--danger); }
+.icon-dropzone { display: grid; width: 100%; min-height: 120px; margin: 0 0 16px; place-items: center; align-content: center; gap: 8px; border: 1.5px dashed var(--line-strong); border-radius: 8px; background: transparent; color: var(--ink); font-size: 14px; cursor: pointer; }
+.icon-dropzone:hover, .icon-dropzone.is-dragging { background: var(--surface-hover); border-color: var(--action-blue); }

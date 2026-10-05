@@ -16,6 +16,15 @@ async function post(path: string, body: Record<string, unknown> = {}) {
 export const setThreadArchived = (thread: Thread, archived: boolean) => post(`/api/threads/${encodeURIComponent(thread.id)}/archive`, { machineId: thread.machineId, archived });
 export const renameThread = (thread: Thread, title: string) => post(`/api/threads/${encodeURIComponent(thread.id)}/rename`, { machineId: thread.machineId, title });
 export const renameProject = (project: Project, name: string) => post('/api/projects/rename', { machineId: project.machineId ?? 'local', logicalId: project.logicalId ?? project.id, name });
+const projectIconUrl = (project: Project) => `/api/projects/icon?machineId=${encodeURIComponent(project.machineId ?? 'local')}&logicalId=${encodeURIComponent(project.logicalId ?? project.id)}`;
+export async function setProjectIcon(project: Project, png: Blob) {
+  const response = await fetch(projectIconUrl(project), { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: png });
+  if (!response.ok) throw new Error('Could not save this icon.');
+}
+export async function resetProjectIcon(project: Project) {
+  const response = await fetch(projectIconUrl(project), { method: 'DELETE' });
+  if (!response.ok) throw new Error('Could not reset this icon.');
+}
 export const openThreadTerminal = (thread: Thread, afterPaneId: string) => post(`/api/threads/${encodeURIComponent(thread.id)}/panes/terminal`, { machineId: thread.machineId, afterPaneId }) as Promise<{ paneId: string }>;
 export const closeThreadPane = (thread: Thread, paneId: string, force: boolean) => post(`/api/threads/${encodeURIComponent(thread.id)}/panes/close`, { machineId: thread.machineId, paneId, force }) as Promise<{ closed: boolean; busy: boolean }>;
 export const deleteThreadPermanently = (thread: Thread) => post(`/api/threads/${encodeURIComponent(thread.id)}/delete`, { machineId: thread.machineId });

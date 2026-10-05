@@ -3,7 +3,9 @@ import type { TargetAdapter } from './target';
 import type { Thread } from '../../lib/models';
 import { canClosePane, insertAfter } from '../../lib/pane-strip';
 import { TargetSupervisor } from './supervisor';
-import { projectNameKey, reconcile } from './reconcile';
+import { projectIconKey, projectNameKey, reconcile } from './reconcile';
+import { imageExtension } from '../uploads';
+import type { Icon } from '../transport/icons';
 import type { MetadataDatabase } from '../storage/database';
 import type { Bootstrap, Projection } from '../../shared/runtime';
 import type { Machine } from '../../lib/machines';
@@ -124,6 +126,26 @@ export class RuntimeManager extends EventEmitter {
     if (!supervisor) throw new Error('machine_disconnected');
     this.database.setSetting(projectNameKey(machineId, logicalId), name);
     this.publish(supervisor);
+  }
+  setProjectIcon(machineId: string, logicalId: string, contentType: string | undefined, bytes: Buffer) {
+    const supervisor = this.supervisors.get(machineId);
+    if (!supervisor) throw new Error('machine_disconnected');
+    imageExtension(contentType, bytes);
+    this.database.setSetting(projectIconKey(machineId, logicalId), `${contentType!.split(';')[0].trim()}|${bytes.toString('base64')}`);
+    this.publish(supervisor);
+  }
+  resetProjectIcon(machineId: string, logicalId: string) {
+    const supervisor = this.supervisors.get(machineId);
+    if (!supervisor) throw new Error('machine_disconnected');
+    this.database.deleteSetting(projectIconKey(machineId, logicalId));
+    this.publish(supervisor);
+  }
+  customProjectIcon(machineId: string, projectId: string): Icon | undefined {
+    const logicalId = this.projections.get(machineId)?.projects.find((project) => project.id === projectId)?.logicalId;
+    const stored = logicalId && this.database.getSetting(projectIconKey(machineId, logicalId));
+    if (!stored) return;
+    const [contentType, data] = stored.split('|');
+    return { contentType, bytes: Buffer.from(data, 'base64') };
   }
   async renameThread(machineId: string, threadId: string, title: string) {
     const supervisor = this.supervisors.get(machineId);

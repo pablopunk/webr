@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { carriesFiles, imageFilesFrom, uploadImagesAsTerminalText } from '../client/image-attach';
 import type { ShowTerminalNotice } from './useTerminalNotice';
 
+const overDialog = (event: DragEvent) => event.target instanceof Element && !!event.target.closest('[role="dialog"]');
 const ONLY_IMAGES = 'Only PNG, JPEG, GIF and WebP images can be attached.';
 const attachingLabel = (count: number) => count === 1 ? 'Attaching image…' : `Attaching ${count} images…`;
 const attachedLabel = (count: number) => count === 1 ? 'Image attached' : `${count} images attached`;
@@ -20,10 +21,10 @@ export function useImageAttachments({ machineId, active, writable, send, show }:
   useEffect(() => {
     if (!active) return;
     let depth = 0;
-    const enter = (event: DragEvent) => { if (!carriesFiles(event.dataTransfer)) return; event.preventDefault(); depth += 1; setDragging(true); };
-    const over = (event: DragEvent) => { if (!carriesFiles(event.dataTransfer)) return; event.preventDefault(); if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'; };
-    const leave = (event: DragEvent) => { if (!carriesFiles(event.dataTransfer)) return; depth = Math.max(0, depth - 1); if (!depth) setDragging(false); };
-    const drop = (event: DragEvent) => { if (!carriesFiles(event.dataTransfer)) return; event.preventDefault(); depth = 0; setDragging(false); void attach(imageFilesFrom(event.dataTransfer)); };
+    const enter = (event: DragEvent) => { if (!carriesFiles(event.dataTransfer) || overDialog(event)) return; event.preventDefault(); depth += 1; setDragging(true); };
+    const over = (event: DragEvent) => { if (!carriesFiles(event.dataTransfer) || overDialog(event)) return; event.preventDefault(); if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'; };
+    const leave = (event: DragEvent) => { if (!carriesFiles(event.dataTransfer) || overDialog(event)) return; depth = Math.max(0, depth - 1); if (!depth) setDragging(false); };
+    const drop = (event: DragEvent) => { if (!carriesFiles(event.dataTransfer) || overDialog(event)) return; event.preventDefault(); depth = 0; setDragging(false); void attach(imageFilesFrom(event.dataTransfer)); };
     window.addEventListener('dragenter', enter); window.addEventListener('dragover', over); window.addEventListener('dragleave', leave); window.addEventListener('drop', drop);
     return () => { window.removeEventListener('dragenter', enter); window.removeEventListener('dragover', over); window.removeEventListener('dragleave', leave); window.removeEventListener('drop', drop); setDragging(false); };
   }, [active, attach]);

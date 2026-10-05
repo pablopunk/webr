@@ -19,6 +19,8 @@ import { MAX_IMAGE_BYTES, UploadStore, uploadContentTypes } from './uploads';
 const localOwner = 'local';
 type SsrHandler = (request: FastifyRequest['raw'], response: import('node:http').ServerResponse, next: (error?: unknown) => void, locals: Record<string, unknown>) => void;
 
+const MAX_PROJECT_ICON_BYTES = 512 * 1024;
+
 export async function createHost(manager: RuntimeManager, origin: string, ssr?: SsrHandler, tls?: { key: Buffer; cert: Buffer }, uploads = new UploadStore(), authOptions: AuthOptions = {}, { devHmrPort, transcriber }: { devHmrPort?: number; transcriber?: Transcriber } = {}) {
   const app = Fastify({ logger: false, bodyLimit: 16 * 1024, ...(tls ? { https: tls } : {}), requestTimeout: 10_000 });
   const configuredOrigin = new URL(origin);
@@ -87,10 +89,20 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     supervisor.invalidate();
     return reply.code(result.state === 'unknown' ? 202 : 201).send(result);
   });
+  const projectIconTarget = z.object({ machineId: opaqueId, logicalId: z.string().min(1).max(1000) }).strict();
+  app.put('/api/projects/icon', { bodyLimit: MAX_PROJECT_ICON_BYTES }, async (request, reply) => {
+    const { machineId, logicalId } = projectIconTarget.parse(request.query);
+    if (!Buffer.isBuffer(request.body)) return reply.code(415).send({ error: 'unsupported_image' });
+    manager.setProjectIcon(machineId, logicalId, request.headers['content-type'], request.body); return { saved: true };
+  });
+  app.delete('/api/projects/icon', async (request) => {
+    const { machineId, logicalId } = projectIconTarget.parse(request.query);
+    manager.resetProjectIcon(machineId, logicalId); return { reset: true };
+  });
   app.get('/api/projects/:machineId/:projectId/icon', async (request, reply) => {
     const { machineId, projectId } = z.object({ machineId: opaqueId, projectId: opaqueId }).parse(request.params);
     const target = manager.supervisors.get(machineId)?.target;
-    const icon = await target?.icon?.(projectId);
+    const icon = manager.customProjectIcon(machineId, projectId) ?? await target?.icon?.(projectId);
     if (!icon) return reply.code(404).send();
     if (icon.contentType === 'image/svg+xml') reply.header('Content-Security-Policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'");
     return reply.type(icon.contentType).send(icon.bytes);
