@@ -43,7 +43,13 @@ Zero config, PWA, with Tailscale automation out of the box.
 
 ## Install
 
-Everything is handled automatically via the plugin:
+From the Herdr plugin index:
+
+```sh
+herdr plugin install pablopunk/webr/plugin
+```
+
+Or with the npm package, which also handles updates:
 
 ```sh
 npm i -g @pablopunk/webr
