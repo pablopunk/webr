@@ -70,6 +70,15 @@ async function iconInDirectory(root: string, directory: string, generic = false)
   }
 }
 
+async function childDirectories(directory: string): Promise<string[]> {
+  try {
+    return (await readdir(directory, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort().slice(0, 8);
+  } catch (error) {
+    if (!unavailable(error)) throw error;
+    return [];
+  }
+}
+
 async function discover(project: Project): Promise<ProjectIcon | undefined> {
   const directory = project.path.startsWith('~/') ? join(homedir(), project.path.slice(2)) : resolve(project.path);
   let root: string;
@@ -90,8 +99,10 @@ async function discover(project: Project): Promise<ProjectIcon | undefined> {
   } catch (error) {
     if (!unavailable(error)) throw error;
   }
+  const sources = await childDirectories(join(root, 'src'));
   const directories = [
     ...['', 'public', 'static', 'assets', 'web', 'web/public', 'app', 'app/public', 'src/assets', 'src/app', 'frontend/public'].map((path) => join(root, path)),
+    ...sources.map((source) => join(root, 'src', source, 'public')),
     ...apps.flatMap((app) => ['public', 'src/assets', 'assets'].map((path) => join(root, 'apps', app, path))),
   ];
   for (const generic of [false, true]) {
