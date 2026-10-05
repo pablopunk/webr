@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { statSync, unwatchFile, watchFile, writeFileSync } from 'node:fs';
+import { statSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { distRoot } from '../src/server/dist';
 
@@ -15,12 +15,12 @@ export const recordPid = (stateDir: string | undefined, pidFile: string) => { if
 export function restartWhenRebuilt(stop: () => Promise<void>, relaunch = relaunchSelf) {
   const startedAt = builtAt();
   if (startedAt === undefined) return () => {};
-  const entry = builtEntry();
-  watchFile(entry, { interval: POLL_MS }, (current) => {
-    if (current.mtimeMs === startedAt) return;
-    unwatchFile(entry);
+  const timer = setInterval(() => {
+    const current = builtAt();
+    if (current === undefined || current === startedAt) return;
+    clearInterval(timer);
     console.log('Webr was updated on disk. Restarting to serve the new build.');
     void stop().finally(() => { relaunch(); process.exit(0); });
-  });
-  return () => unwatchFile(entry);
+  }, POLL_MS);
+  return () => clearInterval(timer);
 }
