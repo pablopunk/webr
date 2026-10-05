@@ -49,7 +49,9 @@ From the Herdr plugin index:
 herdr plugin install pablopunk/webr/plugin
 ```
 
-Or with the npm package, which also handles updates:
+And that's it! The server will open automatically.
+
+### Alternative: Package manager
 
 ```sh
 npm i -g @pablopunk/webr
