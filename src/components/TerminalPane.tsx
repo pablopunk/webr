@@ -41,6 +41,10 @@ const FOCUS_IN = '\x1b[I';
 const FOCUS_OUT = '\x1b[O';
 const finiteSize = (size: { cols: number; rows: number } | undefined) => size && Number.isFinite(size.cols) && Number.isFinite(size.rows) ? size : undefined;
 
+function loadGlyphRenderer(terminal: Terminal, create: () => { onContextLoss(listener: () => void): unknown; dispose(): void }) {
+  try { const renderer = create(); renderer.onContextLoss(() => renderer.dispose()); terminal.loadAddon(renderer as never); } catch { /* DOM renderer stays active */ }
+}
+
 export function TerminalPane({ pane, machineId, threadId, active, canControl, onFocus }: { pane: Pane; machineId: string; threadId: string; active: boolean; canControl: boolean; onFocus: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const section = useRef<HTMLElement>(null);
@@ -63,7 +67,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     if (!host.current) return;
     let disposed = false;
     let cleanup = () => {};
-    void Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit'), import('@xterm/addon-web-links'), loadTerminalFonts()]).then(([xterm, { FitAddon }, { WebLinksAddon }]) => {
+    void Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit'), import('@xterm/addon-web-links'), import('@xterm/addon-webgl'), loadTerminalFonts()]).then(([xterm, { FitAddon }, { WebLinksAddon }, { WebglAddon }]) => {
     if (disposed || !host.current) return;
     const terminal = new xterm.Terminal({
       fontFamily: TERMINAL_FONT_FAMILY, fontSize: TERMINAL_FONT_SIZE,
@@ -72,6 +76,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
       linkHandler: { activate: () => {} },
     });
     terminal.open(host.current);
+    loadGlyphRenderer(terminal, () => new WebglAddon());
     terminal.attachCustomWheelEventHandler(() => false);
     term.current = terminal;
     const redirectFocus = () => { if (writableRef.current) host.current?.parentElement?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus(); };
