@@ -7,8 +7,16 @@ import { projectPath } from './snapshot';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const TSX_LOADER = import.meta.resolve('tsx');
-const HARNESS_BINARIES = ['claude', 'codex', 'gemini', 'opencode', 'cursor', 'amp'];
-const TAILSCALE_STATUS = JSON.stringify({ Self: { DNSName: 'my-mac.tail1234.ts.net.' } });
+const HARNESS_BINARIES = ['claude', 'codex', 'opencode', 'pi'];
+const TAILSCALE_STATUS = JSON.stringify({ Self: { DNSName: 'my-mac.tail1234.ts.net.' }, CertDomains: ['my-mac.tail1234.ts.net'] });
+const TAILSCALE_STUB = `#!/bin/sh
+case "$1 $2" in
+  "status --json") echo '${TAILSCALE_STATUS}';;
+  "serve status") echo '{}';;
+  "serve --bg") ;;
+  *) exit 1;;
+esac
+`;
 
 const GLYPHS: Record<DemoProject['glyph'], string> = {
   sun: '<circle cx="128" cy="128" r="44" fill="white"/><g stroke="white" stroke-width="12" stroke-linecap="round"><path d="M128 36v24M128 196v24M36 128h24M196 128h24M63 63l17 17M176 176l17 17M193 63l-17 17M80 176l-17 17"/></g>',
@@ -26,7 +34,7 @@ export async function prepareDemoWorkspace(root: string): Promise<DemoPaths> {
   await Promise.all([paths.bin, paths.home, paths.webrHome].map((directory) => mkdir(directory, { recursive: true })));
   const node = process.execPath;
   await executable(join(paths.bin, 'herdr'), `#!/bin/sh\nexec "${node}" --import "${TSX_LOADER}" "${join(HERE, 'herdr-cli.ts')}" "$@"\n`);
-  await executable(join(paths.bin, 'tailscale'), `#!/bin/sh\n[ "$1" = status ] && echo '${TAILSCALE_STATUS}' && exit 0\nexit 1\n`);
+  await executable(join(paths.bin, 'tailscale'), TAILSCALE_STUB);
   await Promise.all(HARNESS_BINARIES.map((name) => executable(join(paths.bin, name), '#!/bin/sh\nexit 0\n')));
   await Promise.all(demoProjects.map(async (project) => {
     const publicDirectory = join(projectPath(root, project.id), 'public');

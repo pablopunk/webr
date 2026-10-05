@@ -13,8 +13,8 @@ Needs `agent-browser` on the PATH. Nothing real is read: no real Herdr, projects
 
 ## How it works
 
-- `fake-herdr.ts` is a Unix socket server that speaks the Herdr protocol (22) and serves `snapshot.ts`. The `herdr` stub in the temp `bin/` runs `herdr-cli.ts`, which answers `--version`, the API schema and `terminal session` streams. Stubs for `claude`, `codex` and friends make the harness picker light up, and a `tailscale` stub provides the fake `my-mac.tail1234.ts.net` address.
-- `seed.ts` runs the real `reconcile` against the fake socket, then backdates thread times and adds devices and activity. Webr itself starts with `WEBR_HOME`, `HOME` and `HERDR_SOCKET_PATH` pointing into a temp dir, so it is the unmodified app.
+- `fake-herdr.ts` is a Unix socket server that speaks the Herdr protocol (22) and serves `snapshot.ts`. The `herdr` stub in the temp `bin/` runs `herdr-cli.ts`, which answers `--version`, the API schema and `terminal session` streams. Stubs for `claude`, `codex` and friends make the harness picker light up, and a `tailscale` stub answers `status` and `serve` so Webr runs its normal HTTPS flow with the fake `my-mac.tail1234.ts.net` address. `fake-network.ts` is preloaded into the server so the LAN address is a made-up `192.168.0.10`, never the real one.
+- `seed.ts` runs the real `reconcile` against the fake socket, then backdates thread times and adds devices and activity. Webr itself starts with `WEBR_HOME`, `HOME` and `HERDR_SOCKET_PATH` pointing into a temp dir, on port 4321 when free, so it is the unmodified app.
 - `screen.ts` draws each fake terminal as ANSI at whatever size the client asks for. The stub also echoes typed text, so the typing scene uses real keystrokes.
 - Phone scenes render at 430px wide, scale 942/430, then `compose.ts` adds the iOS status bar and keyboard from `frames/`. The frames were cut from the original device screenshots with `extract-frames.ts`. Re-running that script on the new images would crop the new images, so only do it with the originals from git history.
 

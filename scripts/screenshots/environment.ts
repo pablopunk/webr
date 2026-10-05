@@ -11,9 +11,11 @@ import { prepareDemoWorkspace } from './workspace';
 
 const REPO = fileURLToPath(new URL('../..', import.meta.url));
 const READY_TIMEOUT_MS = 30_000;
-const SHOWN_ORIGIN = 'https://my-mac.tail1234.ts.net';
+const PREFERRED_PORT = 4321;
+const FAKE_NETWORK = fileURLToPath(new URL('./fake-network.ts', import.meta.url));
 
-const freePort = () => new Promise<number>((resolve) => { const probe = createServer(); probe.listen(0, () => { const { port } = probe.address() as { port: number }; probe.close(() => resolve(port)); }); });
+const listenOn = (port: number) => new Promise<number>((resolve, reject) => { const probe = createServer(); probe.once('error', reject); probe.listen(port, () => { const { port: bound } = probe.address() as { port: number }; probe.close(() => resolve(bound)); }); });
+const freePort = () => listenOn(PREFERRED_PORT).catch(() => listenOn(0));
 const close = (server: Server) => new Promise<void>((resolve) => server.close(() => resolve()));
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -32,13 +34,14 @@ export type DemoEnvironment = { url: string; root: string; stop(): Promise<void>
 export async function startDemoEnvironment(): Promise<DemoEnvironment> {
   const root = await mkdtemp(join(tmpdir(), 'webr-shots-'));
   const paths = await prepareDemoWorkspace(root);
-  const env = { ...process.env, PATH: `${paths.bin}:${process.env.PATH}`, HOME: paths.home, HERDR_SOCKET_PATH: paths.socket, WEBR_HOME: paths.webrHome };
+  const { WEBR_ORIGIN: _origin, ...inherited } = process.env;
+  const env = { ...inherited, PATH: `${paths.bin}:${process.env.PATH}`, HOME: paths.home, HERDR_SOCKET_PATH: paths.socket, WEBR_HOME: paths.webrHome };
   Object.assign(process.env, { PATH: env.PATH, HERDR_SOCKET_PATH: paths.socket });
   const fakeHerdr = await startFakeHerdr(paths.socket, () => demoSnapshot(root));
   await seedDatabase(paths);
   const port = await freePort();
   const url = `http://localhost:${port}`;
-  const server = spawn(process.execPath, ['--import', import.meta.resolve('tsx'), 'server/start.ts'], { cwd: REPO, env: { ...env, PORT: String(port), HOST: '127.0.0.1', WEBR_ORIGIN: SHOWN_ORIGIN }, stdio: 'inherit' });
+  const server = spawn(process.execPath, ['--import', import.meta.resolve('tsx'), '--import', FAKE_NETWORK, 'server/start.ts'], { cwd: REPO, env: { ...env, PORT: String(port), HOST: '0.0.0.0' }, stdio: 'inherit' });
   const stop = async () => { server.kill('SIGTERM'); await close(fakeHerdr); await rm(root, { recursive: true, force: true }); };
   try { await waitUntilServing(url, server); } catch (error) { await stop(); throw error; }
   return { url, root, stop };
