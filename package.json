@@ -48,7 +48,9 @@
     "icons": "tsx scripts/build-icons.ts",
     "validate:offline": "tsx scripts/validate-protocol.ts",
     "prepack": "astro build",
-    "smoke:install": "tsx scripts/smoke-install.ts"
+    "smoke:install": "tsx scripts/smoke-install.ts",
+    "screenshots": "tsx scripts/screenshots/capture.ts",
+    "screenshots:serve": "tsx scripts/screenshots/serve.ts"
   },
   "dependencies": {
     "@astrojs/node": "11.1.6",
