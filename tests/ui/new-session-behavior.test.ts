@@ -4,7 +4,8 @@ import { initialWorktreeChoice, readNewSessionBehavior, recordWorktreeChoice, wr
 
 beforeEach(() => localStorage.clear());
 
-it('defaults to a new worktree and honors the old setting', () => {
+it('defaults to remembering by project and honors the old setting', () => {
+  expect(readNewSessionBehavior()).toBe('remember');
   expect(initialWorktreeChoice('local', 'p')).toBe(true);
   localStorage.setItem('webr-new-worktree', 'false');
   expect(readNewSessionBehavior()).toBe('main');

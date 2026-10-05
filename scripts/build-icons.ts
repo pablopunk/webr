@@ -16,9 +16,9 @@ trimmedMark(64, resolve(out, 'brand-mark.png'));
 trimmedMark(32, resolve(out, 'favicon-32.png'));
 trimmedMark(16, resolve(out, 'favicon-16.png'));
 magick(resolve(out, 'favicon-16.png'), resolve(out, 'favicon-32.png'), resolve(out, 'favicon.ico'));
-paddedOnTile(180, 20, resolve(out, 'apple-touch-icon.png'));
-paddedOnTile(192, 22, resolve(out, 'icon-192.png'));
-paddedOnTile(512, 58, resolve(out, 'icon-512.png'));
+paddedOnTile(180, 8, resolve(out, 'apple-touch-icon.png'));
+paddedOnTile(192, 9, resolve(out, 'icon-192.png'));
+paddedOnTile(512, 24, resolve(out, 'icon-512.png'));
 paddedOnTile(512, 110, resolve(out, 'icon-maskable-512.png'));
 
 writeFileSync(resolve(out, 'manifest.webmanifest'), `${JSON.stringify({

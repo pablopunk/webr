@@ -11,7 +11,10 @@ const legacyWorktreeKey = 'webr-new-worktree';
 const lastWorktreeKey = (machineId: string, projectId: string) => `webr-last-worktree:${machineId}:${projectId}`;
 
 const isBehavior = (value: string | null): value is NewSessionBehavior => value === 'main' || value === 'worktree' || value === 'remember';
-const behaviorFromLegacySetting = (): NewSessionBehavior => (localStorage.getItem(legacyWorktreeKey) === 'false' ? 'main' : 'worktree');
+const behaviorFromLegacySetting = (): NewSessionBehavior => {
+  const legacy = localStorage.getItem(legacyWorktreeKey);
+  return legacy === null ? 'remember' : legacy === 'false' ? 'main' : 'worktree';
+};
 
 export function readNewSessionBehavior(): NewSessionBehavior {
   const stored = localStorage.getItem(behaviorKey);
