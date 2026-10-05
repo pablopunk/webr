@@ -4,6 +4,7 @@ import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, Circle
 import { type Project, type Thread, harnessName, relativeTime } from '../lib/models';
 import { isLaunching, launchFailed, launchLabel } from '../lib/launch';
 import type { Machine } from '../lib/machines';
+import { HarnessIcon } from './HarnessIcon';
 import { ProjectIcon } from './ProjectIcon';
 import { OpenWorktree } from './OpenWorktree';
 import { ThreadTitleEditor } from './ThreadTitleEditor';
@@ -69,8 +70,8 @@ function ThreadLink({ thread, project, machineName, current, showProject, editor
   const context = launching || failed ? status : showProject ? project?.name : harnessName(thread.agent);
   const Row = editor ? 'div' : 'a';
   return <Tooltip label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`} side="right"><Row className={`thread-row ${current ? 'is-current' : ''} ${needsAttention ? `needs-attention status-${failed ? 'blocked' : thread.status}` : ''}`} href={editor ? undefined : `/threads/${encodeURIComponent(thread.id)}`} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${status}`}>
-    <span className="thread-avatar" aria-hidden="true"><ThreadAvatar thread={thread} working={thread.status === 'working' || launching} size={24} />{StatusIcon && <StatusIcon className={`thread-status status-${failed ? 'blocked' : thread.status}`} size={14} strokeWidth={2.2} />}{showProject && project && <span className="thread-avatar-project"><ProjectIcon project={project} /></span>}</span>
-    <span className="thread-copy"><span className="thread-context">{thread.worktree && !launching && !failed && <GitBranch className="thread-worktree" size={11} aria-label="Worktree" />}{context}</span>{editor ?? <span className="thread-name">{thread.title}</span>}</span>
+    <span className="thread-avatar" aria-hidden="true"><ThreadAvatar thread={thread} working={thread.status === 'working' || launching} size={24} />{StatusIcon && <StatusIcon className={`thread-status status-${failed ? 'blocked' : thread.status}`} size={14} strokeWidth={2.2} />}<span className="thread-avatar-harness"><HarnessIcon harness={thread.agent} size={14} /></span></span>
+    <span className="thread-copy"><span className="thread-context">{showProject && project && !launching && !failed && <ProjectIcon project={project} />}{thread.worktree && !launching && !failed && <GitBranch className="thread-worktree" size={11} aria-label="Worktree" />}{context}</span>{editor ?? <span className="thread-name">{thread.title}</span>}</span>
     <span className="thread-time">{relativeTime(thread.updatedAt)}</span>
   </Row></Tooltip>;
 }

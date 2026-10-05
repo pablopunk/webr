@@ -50,7 +50,7 @@
 .thread-row:hover, .thread-row.is-current:hover { border-color: var(--card-edge); background: var(--card-hover); box-shadow: var(--card-shadow-hover); color: var(--ink); }
 .thread-row.needs-attention.status-blocked { --attention-bg: color-mix(in srgb, var(--blocked) 10%, var(--sidebar)); border-color: var(--card-edge); background: var(--attention-bg); box-shadow: var(--card-shadow); }
 .thread-row.needs-attention.status-done { --attention-bg: color-mix(in srgb, var(--done) 10%, var(--sidebar)); border-color: var(--card-edge); background: var(--attention-bg); box-shadow: var(--card-shadow); }
-.thread-row.needs-attention .thread-status, .thread-row.needs-attention .thread-avatar-project { background: var(--attention-bg); }
+.thread-row.needs-attention .thread-status, .thread-row.needs-attention .thread-avatar-harness { background: var(--attention-bg); }
 .thread-row.is-current { border-color: var(--card-edge); background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); }
 .thread-row.is-current:hover { background: var(--card-hover); box-shadow: var(--card-shadow-hover); }
 .thread-copy { display: flex; grid-column: 2; grid-row: 1 / 3; flex-direction: column; justify-content: center; gap: 4px; min-width: 0; }
@@ -59,9 +59,9 @@
 .thread-name-input { width: 100%; min-width: 0; margin: -2px -4px; padding: 1px 4px; border: 1px solid var(--focus-ring); border-radius: 4px; outline: 0; background: var(--surface); color: var(--ink); font: inherit; }
 .thread-time { grid-column: 3; grid-row: 1; justify-self: end; font: 10px var(--font-mono); color: var(--ink-soft); }
 .thread-status { position: absolute; top: -5px; left: -5px; padding: 1px; border-radius: 50%; background: var(--sidebar); color: var(--ink-soft); }
-.thread-avatar-project { position: absolute; right: -6px; bottom: -6px; display: grid; padding: 1.5px; border-radius: 5px; background: var(--sidebar); }
-.thread-row.is-current .thread-avatar-project { background: var(--surface-raised); }
-.thread-row:hover .thread-avatar-project { background: var(--card-hover); }
+.thread-avatar-harness { position: absolute; right: -6px; bottom: -6px; display: grid; padding: 1.5px; border-radius: 5px; background: var(--sidebar); }
+.thread-row.is-current .thread-avatar-harness { background: var(--surface-raised); }
+.thread-row:hover .thread-avatar-harness { background: var(--card-hover); }
 .thread-row.is-current .thread-status { background: var(--surface-raised); }
 .thread-row:hover .thread-status { background: var(--card-hover); }
 .thread-status.status-blocked { color: var(--blocked); }
