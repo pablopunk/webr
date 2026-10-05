@@ -104,11 +104,11 @@ it('says to restart Herdr when the plugin is not installed', async () => {
   expect((await runUpdate(environment({ restartPlugin: async () => undefined }))).at(-1)).toContain('Restart Herdr');
 });
 
-it('leaves everything alone when already up to date', async () => {
+it('skips the install but still restarts the plugin when already up to date', async () => {
   process.env.WEBR_HOME = env().WEBR_HOME;
-  const install = vi.fn(() => true); const restartPlugin = vi.fn();
-  expect(await runUpdate(environment({ latestVersion: async () => version, install, restartPlugin }))).toEqual([`Webr ${version} is the latest version.`]);
-  expect(install).not.toHaveBeenCalled(); expect(restartPlugin).not.toHaveBeenCalled();
+  const install = vi.fn(() => true); const restartPlugin = vi.fn(async () => ['Restarted.']);
+  expect(await runUpdate(environment({ latestVersion: async () => version, install, restartPlugin }))).toEqual([`Webr ${version} is the latest version.`, 'Restarted.']);
+  expect(install).not.toHaveBeenCalled(); expect(restartPlugin).toHaveBeenCalledOnce();
 });
 
 it('fails clearly when the install fails or the copy is not a global install', async () => {

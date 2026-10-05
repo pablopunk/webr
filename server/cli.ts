@@ -14,7 +14,8 @@ import { refreshLatestVersionCache, updateHint } from './update/hint';
 const HELP = `Webr — control your Herdr agents from anywhere.
 
 Usage
-  webr [start] [options]        Run the server in this terminal
+  webr                          Show status and this help
+  webr start [options]          Run the server in this terminal
   webr plugin install [options]  Start Webr whenever the Herdr server starts, and open it
   webr plugin uninstall          Remove the Herdr plugin
   webr plugin status             Show whether the plugin is installed and Webr is running
@@ -89,15 +90,25 @@ async function openWhenUp(port: number) {
   }
 }
 
+async function printStatus(values: ReturnType<typeof parseCommand>['values']) {
+  (await statusLines(knownPort(values.port ? ['--port', values.port] : []), modeLines(pluginMode(defaultDeps().run, defaultDeps().stateDir)))).forEach((line) => console.log(line));
+}
+
+async function printStatusAndHelp(values: ReturnType<typeof parseCommand>['values']) {
+  await printStatus(values);
+  console.log(`\n${HELP}`);
+}
+
 export async function main(argv: string[]) {
   const { values, positionals } = parseCommand(argv);
-  const [command = 'start', subcommand] = positionals;
+  const [command, subcommand] = positionals;
   if (values.help || command === 'help') return void console.log(HELP);
   if (values.version) { console.log(packageInfo().version); return printUpdateHint(); }
+  if (!command) return printStatusAndHelp(values);
   if (command === 'start') { applyServerFlags(values); await requireHerdr(); return runServer(); }
   if (command === 'update') return void (await runUpdate(realUpdateEnvironment(() => updatePlugin(defaultDeps())))).forEach((line) => console.log(line));
   if (command === 'refresh-update-cache') return refreshLatestVersionCache().catch(() => undefined);
-  if (command === 'status') return void (await statusLines(knownPort(values.port ? ['--port', values.port] : []), modeLines(pluginMode(defaultDeps().run, defaultDeps().stateDir)))).forEach((line) => console.log(line));
+  if (command === 'status') return printStatus(values);
   if (command === 'open') return void (await openWebr(knownPort(values.port ? ['--port', values.port] : []))).forEach((line) => console.log(line));
   if (command === 'invite') return invite(knownPort(values.port ? ['--port', values.port] : []));
   if (command === 'plugin' && ['install', 'uninstall', 'status'].includes(subcommand ?? '')) return pluginCommand(subcommand!, values);

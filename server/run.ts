@@ -14,6 +14,8 @@ import { Transcriber } from '../src/server/voice/transcriber';
 import { modelDirectory } from '../src/server/voice/model';
 import { join } from 'node:path';
 import { builtSsr, devSsr } from './ssr';
+import { recordPid, restartWhenRebuilt } from './rebuilt-restart';
+import { PID_FILE } from './plugin/files';
 
 const WILDCARD_HOSTS = ['0.0.0.0', '::'];
 
@@ -36,6 +38,8 @@ export async function runServer() {
   const app = await createHost(manager, origin, ssr.handler, tls, undefined, { publicUrls: urls, tailscale: tailscale?.status }, { devHmrPort: ssr.hmrPort, transcriber: new Transcriber(modelDirectory(webrHome())) });
   await app.listen({ host, port });
   manager.start();
+  recordPid(process.env.HERDR_PLUGIN_STATE_DIR, PID_FILE);
+  if (process.env.WEBR_DEV !== '1') restartWhenRebuilt(async () => { await Promise.all([app.close(), ssr.stop()]); database.close(); });
   console.log(`Webr listening at ${origin}`);
   if (!isLoopbackHost(host) || urls.length) console.log(`Other devices connect at:\n${(urls.length ? urls : [origin]).map((url) => `  ${url}`).join('\n')}\nThey ask for access and you approve them in Webr on this computer.`);
   for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => { void Promise.all([app.close(), ssr.stop()]).finally(() => { database.close(); process.exit(0); }); });
