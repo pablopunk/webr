@@ -55,10 +55,17 @@ async function appDirectories(root: string) {
     .slice(0, 32).flatMap((entry) => ['public', 'static', 'assets', 'src/assets', 'src/app'].map((part) => join(apps, entry.name, part)));
 }
 
+async function sourceDirectories(root: string) {
+  try {
+    return (await readdir(join(root, 'src'), { withFileTypes: true })).filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name).sort().slice(0, 8).map((name) => join(root, 'src', name, 'public'));
+  } catch { return []; }
+}
+
 export async function readApprovedIcon(path: string): Promise<Icon | undefined> {
   let root: string;
   try { root = await realpath(path); } catch { return; }
-  for (const directory of [...directories.map((part) => join(root, part)), ...await appDirectories(root)]) {
+  for (const directory of [...directories.map((part) => join(root, part)), ...await sourceDirectories(root), ...await appDirectories(root)]) {
     const icon = await iconInDirectory(root, directory);
     if (icon) return icon;
   }
