@@ -23,7 +23,8 @@ Needs `agent-browser` and `ffmpeg` on the PATH. Nothing real is read: no real He
 
 - Projects, threads, transcripts and agent names: `demo.ts`. Harness names the app knows are `claude`, `codex`, `opencode` and `pi`.
 - Scenes and click steps: `scenes.ts`. Prefer selectors without spaces, because `agent-browser click` splits on them. Use `Browser.clickText` for visible text.
-- For manual poking, run `mise exec -- pnpm screenshots:serve` and open the printed URL.
+- For manual poking, run `mise exec -- pnpm screenshots:serve` and open the printed URL. Drive it with `AGENT_BROWSER_ARGS=--disable-3d-apis agent-browser --session <name> ...`, and pass absolute screenshot paths because the daemon has its own working directory.
+- An empty "Not connected" page right after start means the fake Herdr has not connected yet; `environment.ts` waits for `/api/runtime` to report it, so keep that wait if you change startup.
 
 ## Gotchas
 
