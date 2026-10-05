@@ -7,7 +7,7 @@ const SOFTWARE_RENDERING = '--disable-3d-apis';
 const DESKTOP = { width: 1024, height: 709, scale: 2 };
 const CLICK_ATTEMPTS = 20;
 const CLICK_RETRY_MS = 500;
-const WIDE_WINDOW = { width: 3152, height: 2140, scale: 0.5 };
+const WIDE_WINDOW = { width: 1200, height: 815, scale: 1.3133 };
 
 export class Browser {
   constructor(private session: string, private touch: boolean) {}
@@ -27,7 +27,7 @@ export class Browser {
   wait(milliseconds: number) { this.run('wait', String(milliseconds)); }
   private retrying(action: () => void) {
     for (let attempt = 1; ; attempt++) {
-      try { action(); return; } catch (error) { if (attempt === CLICK_ATTEMPTS) throw error; this.wait(CLICK_RETRY_MS); }
+      try { action(); return; } catch (error) { if (attempt === CLICK_ATTEMPTS) throw new Error(`${String(error)}\nThe page was ${this.run('get', 'url')} and showed:\n${this.run('snapshot', '-i').split('\n').slice(0, 12).join('\n')}`); this.wait(CLICK_RETRY_MS); }
     }
   }
   click(selector: string) { this.retrying(() => this.run('click', selector)); this.wait(700); }

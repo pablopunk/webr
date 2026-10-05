@@ -20,7 +20,9 @@ const freePort = () => listenOn(PREFERRED_PORT).catch(() => listenOn(0));
 const close = (server: Server) => new Promise<void>((resolve) => server.close(() => resolve()));
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const hasAllThreads = (url: string) => fetch(`${url}/api/runtime`).then((response) => response.json(), () => undefined).then((runtime) => runtime?.projections?.flatMap((projection: { threads: unknown[] }) => projection.threads).length === demoThreads.length, () => false);
+type Projection = { connected: boolean; threads: unknown[] };
+const isFullyConnected = (projections: Projection[] = []) => projections.length > 0 && projections.every((projection) => projection.connected) && projections.flatMap((projection) => projection.threads).length === demoThreads.length;
+const hasAllThreads = (url: string) => fetch(`${url}/api/runtime`).then((response) => response.json(), () => undefined).then((runtime) => isFullyConnected(runtime?.projections), () => false);
 
 async function waitUntilServing(url: string, server: ChildProcess) {
   const deadline = Date.now() + READY_TIMEOUT_MS;

@@ -68,10 +68,10 @@ const cursorPagination: Block[] = [
     '+    .orderBy(desc(invoices.createdAt), desc(invoices.id)).limit(page.size + 1);', ' }'] },
   { kind: 'tool', name: 'Update', args: 'src/routes/invoices.ts', result: ['Updated src/routes/invoices.ts with 24 additions and 11 removals'] },
   { kind: 'diff', lines: [
-    '-  const { page = 1, size = 50 } = request.query;', '+  const { cursor, size = 50 } = request.query;',
-    '-  const rows = await listInvoices(db, account.id, { size, offset: (page - 1) * size });',
-    '+  const rows = await listInvoices(db, account.id, { size, cursor });', '+  const hasMore = rows.length > size;',
-    '-  return { invoices: rows };', '+  return { invoices: rows.slice(0, size), nextCursor: hasMore ? encodeCursor(rows[size - 1]) : null };'] },
+    '-  const { page = 1, size = 50 } = req.query;', '+  const { cursor, size = 50 } = req.query;',
+    '-  const rows = await list(db, page, size);',
+    '+  const rows = await list(db, cursor);', '+  const hasMore = rows.length > size;',
+    '-  return { invoices: rows };', '+  return { invoices: rows, nextCursor };'] },
   { kind: 'tool', name: 'Bash', args: 'pnpm test invoices', result: ['✓ 17 passed, × 1 failed (2.4s)', 'invoices.test.ts › lists the second page: expected 50 rows, received 0'] },
   { kind: 'say', text: 'One test still assumes `?page=2`. Updating it to follow `nextCursor` instead.' },
   { kind: 'tool', name: 'Update', args: 'tests/invoices.test.ts', result: ['Updated tests/invoices.test.ts with 6 additions and 3 removals'] },
@@ -100,11 +100,11 @@ const rotation: Block[] = [
 ];
 
 const gitStatus: ShellOutput = { command: 'git status', lines: [
-  'On branch main', "Your branch is ahead of 'origin/main' by 3 commits.", '  (use "git push" to publish your local commits)', '',
-  'Changes not staged for commit:', '  (use "git add <file>..." to update what will be committed)', '  (use "git restore <file>..." to discard changes in working directory)',
+  'On branch main', "Ahead of 'origin/main' by 3 commits.", '  (use "git push" to publish)', '',
+  'Changes not staged for commit:', '  (use "git add <file>..." to update)', '  (use "git restore <file>..." to discard)',
   '!\tmodified:   src/db/queries.ts', '!\tmodified:   src/lib/cursor.ts', '!\tmodified:   src/routes/invoices.ts', '!\tmodified:   src/routes/payments.ts', '!\tmodified:   src/routes/index.ts', '!\tmodified:   tests/invoices.test.ts', '',
-  'Untracked files:', '  (use "git add <file>..." to include in what will be committed)', '?\tsrc/lib/cursor.test.ts', '?\tsrc/routes/pagination.ts', '',
-  'no changes added to commit (use "git add" and/or "git commit -a")',
+  'Untracked files:', '  (use "git add <file>..." to include)', '?\tsrc/lib/cursor.test.ts', '?\tsrc/routes/pagination.ts', '',
+  'no changes added to commit',
 ] };
 
 export const demoThreads: DemoThread[] = [
