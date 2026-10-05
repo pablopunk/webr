@@ -18,7 +18,7 @@ import type { Bootstrap } from '../shared/runtime';
 import { appShortcutAction } from '../client/keyboard';
 import { perfAvailable, startPerf } from '../client/perf';
 import { closeThreadPane, openThreadTerminal } from '../client/thread-actions';
-import { canClosePane, neighbourPane } from '../lib/pane-strip';
+import { canClosePane, paneToFocusAfterClosing } from '../lib/pane-strip';
 import { usePaneWindowStart, useNarrowScreen } from '../client/pane-window';
 import { alertDialog, confirmDialog } from './dialogs';
 import { useClearDoneOnVisit } from '../client/clear-done-on-visit';
@@ -94,13 +94,13 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
   const closePane = useCallback(async (paneId = focusedPane) => {
     if (!thread || !canClosePane(thread, paneId)) return;
     const pane = thread.panes.find((pane) => pane.id === paneId)!;
-    const next = neighbourPane(thread.panes, paneId);
+    const next = paneToFocusAfterClosing(thread.panes, windowStart, paneId);
     try {
       let result = await closeThreadPane(thread, paneId, false);
       if (result.busy && await confirmDialog(`${pane.title} is running a process. Close it anyway?`, { confirmLabel: 'Close', danger: true })) result = await closeThreadPane(thread, paneId, true);
       if (result.closed && next) setFocusedPane(next.id);
     } catch (error) { reportPaneFailure(error); }
-  }, [thread, focusedPane, setFocusedPane]);
+  }, [thread, focusedPane, windowStart, setFocusedPane]);
 
   const toggleSidebar = useCallback(() => {
     if (window.matchMedia('(max-width: 760px)').matches) { setMobileOpen((value) => !value); return; }
