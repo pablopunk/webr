@@ -39,6 +39,8 @@ const loadTerminalFonts = () => typeof document === 'undefined' || !document.fon
 ]).then(() => undefined, () => undefined);
 const FOCUS_IN = '\x1b[I';
 const FOCUS_OUT = '\x1b[O';
+const finiteSize = (size: { cols: number; rows: number } | undefined) => size && Number.isFinite(size.cols) && Number.isFinite(size.rows) ? size : undefined;
+
 export function TerminalPane({ pane, machineId, threadId, active, canControl, onFocus }: { pane: Pane; machineId: string; threadId: string; active: boolean; canControl: boolean; onFocus: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const section = useRef<HTMLElement>(null);
@@ -80,17 +82,18 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     const fit = new FitAddon(); terminal.loadAddon(fit);
     terminal.loadAddon(new WebLinksAddon(openLinkOnModifierClick));
     const estimatedViewport = () => ({ cols: Math.floor((host.current?.clientWidth ?? 640) / 8), rows: Math.floor((host.current?.clientHeight ?? 400) / 20) });
-    const measuredViewport = () => { try { return fit.proposeDimensions(); } catch { return undefined; } };
+    const measuredViewport = () => { try { return finiteSize(fit.proposeDimensions()); } catch { return undefined; } };
+    const hostIsLaidOut = () => !!host.current?.isConnected && host.current.clientWidth > 0 && host.current.clientHeight > 0;
     const viewport = () => { const { cols, rows } = measuredViewport() ?? estimatedViewport(); return { cols: Math.max(2, Math.min(500, cols)), rows: Math.max(1, Math.min(300, rows)) }; };
     control.current = terminals.mount({ machineId, threadId, terminalId: pane.terminalId, terminal, mode: canControl ? 'control' : 'observe', ...viewport(), onState: (message, writable) => { setMessage(message); setWritable(writable); writableRef.current = writable; } });
     const gestures = bindTerminalGestures(host.current, () => ({ element: terminal.element?.querySelector<HTMLElement>('.xterm-screen') ?? undefined, cols: terminal.cols, rows: terminal.rows }), () => control.current, () => writableRef.current);
     let timer: ReturnType<typeof setTimeout>;
     const resize = new ResizeObserver(() => {
       clearTimeout(timer);
-      timer = setTimeout(() => { const { cols, rows } = viewport(); control.current?.resize(cols, rows); }, 150);
+      timer = setTimeout(() => { if (!hostIsLaidOut()) return; const { cols, rows } = viewport(); control.current?.resize(cols, rows); }, 150);
     });
     resize.observe(host.current);
-    const claimSize = () => { if (document.visibilityState !== 'visible' || !document.hasFocus()) return; const { cols, rows } = viewport(); control.current?.resize(cols, rows, true); };
+    const claimSize = () => { if (document.visibilityState !== 'visible' || !document.hasFocus() || !hostIsLaidOut()) return; const { cols, rows } = viewport(); control.current?.resize(cols, rows, true); };
     window.addEventListener('focus', claimSize); document.addEventListener('visibilitychange', claimSize);
     const colorObserver = new MutationObserver(() => { terminal.options.theme = themeColors(); });
     colorObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });

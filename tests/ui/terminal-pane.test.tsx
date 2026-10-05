@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { TerminalPane } from '../../src/components/TerminalPane';
 
-const fixture = vi.hoisted(() => ({ onData: vi.fn(), control: vi.fn(), observe: vi.fn(), input: vi.fn(), close: vi.fn(), mount: vi.fn(), selection: '', osc: new Map<number, (data: string) => boolean>() }));
+const fixture = vi.hoisted(() => ({ onData: vi.fn(), control: vi.fn(), observe: vi.fn(), input: vi.fn(), close: vi.fn(), mount: vi.fn(), selection: '', dimensions: { cols: 90, rows: 31 } as { cols: number; rows: number }, osc: new Map<number, (data: string) => boolean>() }));
 vi.mock('../../src/client/provider', () => ({ useRuntime: () => ({ terminals: fixture }) }));
 vi.mock('@xterm/xterm', () => ({ Terminal: class {
   options = {}; cols = 80; rows = 24; element?: HTMLElement; onData = fixture.onData;
@@ -15,8 +15,8 @@ vi.mock('@xterm/xterm', () => ({ Terminal: class {
   hasSelection() { return !!fixture.selection; } getSelection() { return fixture.selection; } dispose() {}
 } }));
 vi.mock('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }));
-vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { proposeDimensions() { return { cols: 90, rows: 31 }; } } }));
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); fixture.selection = ''; });
+vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { proposeDimensions() { return fixture.dimensions; } } }));
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); fixture.selection = ''; fixture.dimensions = { cols: 90, rows: 31 }; });
 it('keeps terminals free of control bars and leaves right-click to the browser', async () => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   fixture.mount.mockImplementation((options) => { options.onState('Read-only', false); return { control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }; });
@@ -162,4 +162,13 @@ it('draws a solid cursor in the focused pane and an outline in the other one', a
   await act(async () => onState('Input control is active.', true)); expect(terminal.options.cursorInactiveStyle).toBe('outline');
   view.rerender(<TerminalPane {...props} active />); expect(terminal.options.cursorInactiveStyle).toBe('block');
   expect(document.activeElement).toBe(screen.getByLabelText('Terminal input'));
+});
+it('never sends an unmeasurable size while a pane leaves the layout', async () => {
+  let observed!: () => void; vi.stubGlobal('ResizeObserver', class { constructor(callback: () => void) { observed = callback; } observe() {} disconnect() {} });
+  const resize = vi.fn(); fixture.dimensions = { cols: NaN, rows: NaN };
+  fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize, mouse() {}, scroll() {} }));
+  render(<TerminalPane pane={{ id: 'w1:p1', terminalId: 'term_fixture', title: 'Shell', kind: 'shell' }} machineId="fixture" threadId="fixture-thread" active canControl onFocus={() => {}} />);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
+  const { cols, rows } = fixture.mount.mock.calls[0][0]; expect(Number.isFinite(cols) && Number.isFinite(rows)).toBe(true);
+  observed(); await new Promise((resolve) => setTimeout(resolve, 200)); expect(resize).not.toHaveBeenCalled();
 });
