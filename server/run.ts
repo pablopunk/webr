@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { MetadataDatabase } from '../src/server/storage/database';
 import { RuntimeManager } from '../src/server/runtime/manager';
 import { loadRegistry } from '../src/server/transport/registry';
+import { discoverSavedMachines } from '../src/server/transport/saved-machines';
+import { boundedProcess } from '../src/server/transport/process';
 import { HerdrTarget } from '../src/server/transport/herdr-target';
 import { createHost } from '../src/server/host';
 import { publicUrls } from '../src/server/public-urls';
@@ -38,6 +40,7 @@ export async function runServer() {
   const app = await createHost(manager, origin, ssr.handler, tls, undefined, { publicUrls: urls, tailscale: tailscale?.status }, { devHmrPort: ssr.hmrPort, transcriber: new Transcriber(modelDirectory(webrHome())) });
   await app.listen({ host, port });
   manager.start();
+  if (!process.env.WEBR_TARGETS) void discoverSavedMachines(process.env, boundedProcess, (profile) => manager.addTarget(new HerdrTarget(profile)));
   recordPid(process.env.HERDR_PLUGIN_STATE_DIR, PID_FILE);
   if (process.env.WEBR_DEV !== '1') restartWhenRebuilt(async () => { await Promise.all([app.close(), ssr.stop()]); database.close(); });
   console.log(`Webr listening at ${origin}`);

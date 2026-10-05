@@ -32,10 +32,10 @@ async function profileOf(machine: z.infer<typeof savedMachines>[number], env: No
   } catch { return undefined; }
 }
 
-export async function discoverSavedMachines(env = process.env, runProcess = boundedProcess): Promise<TargetProfile[]> {
+export async function discoverSavedMachines(env = process.env, runProcess = boundedProcess, onFound: (profile: TargetProfile) => void = () => {}): Promise<TargetProfile[]> {
   try {
     const machines = savedMachines.parse(JSON.parse(await runProcess('herdr', ['machine', 'list', '--json'], env)));
-    const profiles = await Promise.all(machines.filter((machine) => machine.enabled).map((machine) => profileOf(machine, env, runProcess)));
+    const profiles = await Promise.all(machines.filter((machine) => machine.enabled).map(async (machine) => { const profile = await profileOf(machine, env, runProcess); if (profile) onFound(profile); return profile; }));
     return profiles.filter((profile): profile is TargetProfile => !!profile);
   } catch { return []; }
 }

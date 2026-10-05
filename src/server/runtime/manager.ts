@@ -17,20 +17,25 @@ export class RuntimeManager extends EventEmitter {
   private projections = new Map<string, Projection>();
   private catalogs = new Map<string, { expires: number; value: Promise<Machine> }>();
   private configVersions = new Map<string, number>();
+  private started = false;
+  private closed = false;
   constructor(readonly database: MetadataDatabase, targets: TargetAdapter[]) {
     super(); this.setMaxListeners(100);
     this.journal = new LaunchJournal(database, () => this.publishAll());
-    for (const target of targets) {
-      target.configVersion = database.registerProfile(target.id, target.session, JSON.stringify({ fingerprint: target.fingerprint, locations: target.locations }), target.locations);
-      this.configVersions.set(target.id, target.configVersion);
-      const supervisor = new TargetSupervisor(target, () => this.publish(supervisor));
-      if (target.enabled === false) supervisor.error = 'profile_disabled';
-      this.supervisors.set(target.id, supervisor);
-      this.publish(supervisor);
-    }
+    for (const target of targets) this.addTarget(target);
   }
-  start() { for (const supervisor of this.supervisors.values()) if (supervisor.target.enabled !== false) void supervisor.start(); }
-  async close() { for (const supervisor of this.supervisors.values()) supervisor.stop(); await this.journal.stop(); this.removeAllListeners(); }
+  addTarget(target: TargetAdapter) {
+    if (this.closed || this.supervisors.has(target.id)) return;
+    target.configVersion = this.database.registerProfile(target.id, target.session, JSON.stringify({ fingerprint: target.fingerprint, locations: target.locations }), target.locations);
+    this.configVersions.set(target.id, target.configVersion);
+    const supervisor = new TargetSupervisor(target, () => this.publish(supervisor));
+    if (target.enabled === false) supervisor.error = 'profile_disabled';
+    this.supervisors.set(target.id, supervisor);
+    this.publish(supervisor);
+    if (this.started && target.enabled !== false) void supervisor.start();
+  }
+  start() { this.started = true; for (const supervisor of this.supervisors.values()) if (supervisor.target.enabled !== false) void supervisor.start(); }
+  async close() { this.closed = true; for (const supervisor of this.supervisors.values()) supervisor.stop(); await this.journal.stop(); this.removeAllListeners(); }
   bootstrap(): Bootstrap {
     const projections = [...this.projections.values()];
     return { projections, projects: projections.flatMap((projection) => projection.projects), threads: projections.flatMap((projection) => projection.threads), machines: [...this.supervisors.values()].map((supervisor) => ({ id: supervisor.target.id, name: supervisor.target.name, session: supervisor.target.session, connected: supervisor.connected, projectPaths: Object.fromEntries(supervisor.target.locations.map((location) => [location.projectId, location.path])), harnesses: [], error: supervisor.error, writable: supervisor.target.writable, configVersion: this.configVersions.get(supervisor.target.id) })) };

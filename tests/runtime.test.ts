@@ -122,3 +122,8 @@ it('closes only terminal panes and asks the client to confirm while a process ru
   expect(await manager.closePane('fixture', thread.id, paneId, true)).toEqual({ closed: true, busy: false });
   expect(target.effects).toEqual(['split:right', `close:${paneId}`]); expect(manager.bootstrap().threads[0].panes.map((pane) => pane.kind)).toEqual(['agent']);
 });
+it('adds a machine found after start and connects it at once', async () => {
+  const manager = new RuntimeManager(database(), []); cleanup.push(() => manager.close()); manager.start();
+  manager.addTarget(new FakeTarget());
+  await expect.poll(() => manager.bootstrap().machines.map((machine) => [machine.id, machine.connected])).toEqual([['fixture', true]]);
+});

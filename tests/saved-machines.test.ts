@@ -16,6 +16,7 @@ it('turns each reachable enabled saved machine into an approved ssh profile', as
   const env = await stateWithExecutable('a1');
   const run = async (command: string, args: string[]) => command === 'herdr' ? JSON.stringify([machine('a1', 'box'), machine('b2', 'off', false)]) : JSON.stringify({ sessions: [{ name: 'default', socket_path: '/home/u/.config/herdr/herdr.sock' }] });
   expect(await discoverSavedMachines(env, run)).toMatchObject([{ id: 'a1', name: 'box', transport: 'ssh', host: 'box@host', socket: '/home/u/.config/herdr/herdr.sock', executable: '/home/u/.local/bin/herdr', automatic: true }]);
+  const found: string[] = []; await discoverSavedMachines(env, run, (profile) => found.push(profile.id)); expect(found).toEqual(['a1']);
 });
 it('skips machines that cannot be reached and survives a missing herdr', async () => {
   const env = await stateWithExecutable('a1');
