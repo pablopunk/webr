@@ -10,7 +10,7 @@ Publishing is outward-facing: confirm the version bump with the user before tagg
 1. Start from a clean `main` that is up to date with `origin/main`: `git status --short` is empty, `git fetch && git status -sb`.
 2. Verify locally: `mise exec -- pnpm check && mise exec -- pnpm test && mise exec -- pnpm smoke:install`. Stop on any failure.
 3. Pick the bump (0.x: `minor` for anything breaking or a new feature, `patch` for fixes). Ask the user if unclear.
-4. `npm version <patch|minor> -m "Release %s"` bumps `package.json`, commits and creates the `v<version>` tag.
+4. `npm version <patch|minor> -m "Release %s"` bumps `package.json`, runs the `version` script (which syncs `plugin/herdr-plugin.toml` to the same version and stages it), commits and creates the `v<version>` tag. Never edit the plugin version by hand.
 5. `git push origin main --follow-tags`. Use `rtk proxy git push ...` if a rejection is unclear.
 6. The `Publish` workflow (`.github/workflows/publish.yml`) runs on the `v*` tag: check, test, build, smoke test, then `npm publish --provenance` through npm trusted publishing (OIDC, no token or secret). Watch it with `rtk proxy gh run watch`.
 7. Verify: `npm view @pablopunk/webr version` shows the new version.
