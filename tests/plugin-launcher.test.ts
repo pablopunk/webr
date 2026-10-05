@@ -85,15 +85,15 @@ it('prefers webr on PATH over the saved launcher, and ignores a saved launcher t
   expect(gone.launch().stdout).toContain('Started Webr (npx)');
 });
 
-it('exits quietly without a second copy while the recorded process is alive', async () => {
+it('replaces a recorded process that is alive but not serving the configured port', async () => {
   const box = await sandbox();
   fakeProgram(join(box.bin, 'webr'), box.record, 'global');
   box.launch();
   await box.recordsAfterStart();
+  const stale = Number(readFileSync(join(box.state, 'webr.pid'), 'utf8'));
   const second = box.launch();
-  expect(second.status).toBe(0);
-  expect(second.stdout).toContain('already running');
-  expect(box.records()).toHaveLength(1);
+  expect(second.stdout).toContain('Started Webr (global)');
+  expect(Number(readFileSync(join(box.state, 'webr.pid'), 'utf8'))).not.toBe(stale);
 });
 
 it('exits quietly when something already listens on the configured port', async () => {

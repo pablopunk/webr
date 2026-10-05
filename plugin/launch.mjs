@@ -14,7 +14,10 @@ const stateDir = requiredDir('HERDR_PLUGIN_STATE_DIR');
 mkdirSync(stateDir, { recursive: true });
 
 const config = readJson(join(configDir, CONFIG_FILE)) ?? {};
-const running = isPidAlive(readPid(join(stateDir, PID_FILE))) || await isPortOpen(probeAddress(config, rememberedPort()));
+const address = probeAddress(config, rememberedPort());
+const running = await isPortOpen(address);
+const stalePid = readPid(join(stateDir, PID_FILE));
+if (!running && isPidAlive(stalePid)) process.kill(stalePid, 'SIGTERM');
 const plan = launchPlan({ config, devCheckout: usableCheckout(readJson(join(stateDir, DEV_FILE))), webrPath: findOnPath('webr'), savedLauncher: usableLauncher(config.launcher), running });
 
 if (plan.action === 'skip') {
