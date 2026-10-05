@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { realRun } from '../server/command';
 import { enterPluginDevMode, stopProductionWebr } from '../server/plugin/dev';
-import { installPlugin, pluginStatus, uninstallWebrPlugin, updatePlugin, type PluginDeps } from '../server/plugin';
+import { installPlugin, uninstallWebrPlugin, updatePlugin, type PluginDeps } from '../server/plugin';
 import { isPortOpen } from '../server/plugin/probe';
 import { modeLines, pluginMode } from '../server/plugin/mode';
 import { PLUGIN_ID, PLUGIN_SOURCE } from '../server/plugin/herdr';
@@ -101,7 +101,7 @@ it('updates the plugin by stopping the running Webr and letting the new webr rei
   const herdr = fakeHerdr('github');
   const webr = await startFakeWebr(herdr);
   expect(await updatePlugin(herdr.deps())).toEqual(['refreshed']);
-  expect(herdr.webrCalls()).toEqual(['plugin install --no-open']);
+  expect(herdr.webrCalls()).toEqual(['install --no-open']);
   await webr.exited;
 });
 
@@ -117,15 +117,6 @@ it('leaves a Webr the plugin did not start alone and says how to proceed', async
 it('has nothing to restart without herdr or the plugin', async () => {
   expect(await updatePlugin(fakeHerdr().deps())).toBeUndefined();
   expect(await updatePlugin(fakeHerdr('github').deps({ run: () => ({ ok: false, output: '' }) }))).toBeUndefined();
-});
-
-it('reports status', async () => {
-  const herdr = fakeHerdr('github');
-  writeFileSync(join(herdr.config, 'config.json'), JSON.stringify({ port: 1 }));
-  const text = (await pluginStatus(herdr.deps())).join('\n');
-  expect(text).toContain('Installed (from GitHub)');
-  expect(text).toContain('not running on port 1');
-  expect((await pluginStatus(fakeHerdr().deps()))[0]).toContain('not installed');
 });
 
 it('never adds the plugin in dev mode for someone who did not install it', () => {
@@ -192,13 +183,13 @@ it('tells production, a live dev run, a stuck link and no plugin apart', () => {
 
 it('shows the mode in status and says how to recover', async () => {
   const live = fakeHerdr('local'); recordDev(live, process.pid);
-  expect((await pluginStatus(live.deps())).join('\n')).toContain('Mode: dev, running from /checkout');
+  expect(modeLines(pluginMode(live.run, live.state)).join('\n')).toContain('Mode: dev, running from /checkout');
   const crashed = fakeHerdr('local'); recordDev(crashed, deadPid());
-  expect(modeLines(pluginMode(crashed.run, crashed.state)).join('')).toContain('webr plugin install');
-  expect((await pluginStatus(fakeHerdr('github').deps())).join('\n')).toContain('Mode: production');
+  expect(modeLines(pluginMode(crashed.run, crashed.state)).join('')).toContain('webr install');
+  expect(modeLines(pluginMode(fakeHerdr('github').run, fakeHerdr('github').state)).join('\n')).toContain('Mode: production');
 });
 
-it('plugin install puts production back after a crashed dev run, keeping saved settings', async () => {
+it('install puts production back after a crashed dev run, keeping saved settings', async () => {
   const herdr = fakeHerdr('local'); recordDev(herdr, deadPid());
   const port = await freePort();
   writeFileSync(join(herdr.config, 'config.json'), JSON.stringify({ port, origin: 'https://mac.example.ts.net' }));
@@ -210,13 +201,13 @@ it('plugin install puts production back after a crashed dev run, keeping saved s
   expect(readFileSync(join(herdr.state, 'launches'), 'utf8')).toBe('x');
 });
 
-it('plugin install also repairs a link that has no dev record', async () => {
+it('install also repairs a link that has no dev record', async () => {
   const herdr = fakeHerdr('local');
   await installPlugin({}, herdr.deps());
   expect(readFileSync(herdr.registry, 'utf8').trim()).toBe('github');
 });
 
-it('plugin install refuses while pnpm dev is running', async () => {
+it('install refuses while pnpm dev is running', async () => {
   const live = fakeHerdr('local'); recordDev(live, process.pid);
   await expect(installPlugin({}, live.deps())).rejects.toThrow('"pnpm dev" is running');
   expect(readFileSync(live.registry, 'utf8').trim()).toBe('local');

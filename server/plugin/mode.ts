@@ -35,6 +35,6 @@ export function pluginMode(run: RunCommand, stateDir: string): PluginMode {
 export function modeLines(mode: PluginMode) {
   if (mode.kind === 'production') return ['Mode: production (started by the Herdr plugin).'];
   if (mode.kind === 'dev') return [`Mode: dev, running from ${mode.checkout}. Stopping "pnpm dev" brings production back.`];
-  if (mode.kind === 'stuck') return [`Mode: the plugin still points at ${mode.where} but dev is not running. Run "webr plugin install" to restore production.`];
+  if (mode.kind === 'stuck') return [`Mode: the plugin still points at ${mode.where} but dev is not running. Run "webr install" to restore production.`];
   return [];
 }

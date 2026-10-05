@@ -45,7 +45,7 @@ Zero config, PWA, with Tailscale automation out of the box.
 ## Install
 
 ```sh
-npx @pablopunk/webr plugin install
+npx @pablopunk/webr install
 ```
 
 This installs the Herdr plugin, starts Webr and opens the dashboard, with Tailscale HTTPS configured automatically when it's available.

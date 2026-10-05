@@ -61,22 +61,7 @@ export async function updatePlugin(deps: PluginDeps) {
   if (!deps.run('herdr', ['--version']).ok) return undefined;
   if (!installedPlugin(deps.run)) return undefined;
   const address = probeAddress(readPluginConfig(pluginConfigDir(deps.run)));
-  if ((await isPortOpen(address)) && !(await stopPluginWebr(deps.stateDir, address))) return [`Webr is running on port ${address.port} but the plugin did not start it. Stop it and run "webr plugin install" to use the new version.`];
-  const refreshed = deps.run('webr', ['plugin', 'install', '--no-open']);
-  return refreshed.ok ? quiet(refreshed.output) : [`The new Webr could not refresh the plugin. Run "webr plugin install". ${quiet(refreshed.output).join(' ')}`];
-}
-
-export async function pluginStatus(deps: PluginDeps) {
-  requireHerdr(deps.run);
-  const plugin = installedPlugin(deps.run);
-  if (!plugin) return ['The Webr plugin is not installed. Install it with "webr plugin install".'];
-  const config = readPluginConfig(pluginConfigDir(deps.run));
-  const address = probeAddress(config);
-  return [
-    `Installed (${plugin.kind === 'github' ? 'from GitHub' : `linked to ${plugin.root}`}).`,
-    `Webr is ${await isPortOpen(address) ? 'running' : 'not running'} on port ${address.port}.`,
-    ...modeLines(pluginMode(deps.run, deps.stateDir)),
-    `Settings: ${JSON.stringify(config)}`,
-    `Logs and state: ${deps.stateDir}`,
-  ];
+  if ((await isPortOpen(address)) && !(await stopPluginWebr(deps.stateDir, address))) return [`Webr is running on port ${address.port} but the plugin did not start it. Stop it and run "webr install" to use the new version.`];
+  const refreshed = deps.run('webr', ['install', '--no-open']);
+  return refreshed.ok ? quiet(refreshed.output) : [`The new Webr could not refresh the plugin. Run "webr install". ${quiet(refreshed.output).join(' ')}`];
 }

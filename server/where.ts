@@ -6,7 +6,7 @@ const launcher = (platform = process.platform) => platform === 'darwin' ? ['open
 
 export async function statusLines(port: number, mode: string[] = []) {
   if (await isPortOpen({ host: '127.0.0.1', port })) return [`Webr is running at ${localUrl(port)}`, ...mode];
-  return [`Webr is not running. Its address is ${localUrl(port)}.`, ...mode, 'It starts with the Herdr server once the plugin is installed ("webr plugin install"), or run "webr start".'];
+  return [`Webr is not running. Its address is ${localUrl(port)}.`, ...mode, 'It starts with the Herdr server once the plugin is installed ("webr install"), or run "webr start".'];
 }
 
 export async function openWebr(port: number, open = openInBrowser) {

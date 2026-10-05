@@ -2,7 +2,7 @@ import { parseArgs } from 'node:util';
 import { renderUnicode } from 'uqr';
 import { runServer } from './run';
 import { explicitPort, knownPort } from './port';
-import { defaultDeps, installPlugin, pluginStatus, uninstallWebrPlugin, updatePlugin } from './plugin';
+import { defaultDeps, installPlugin, uninstallWebrPlugin, updatePlugin } from './plugin';
 import { checkHerdr } from './herdr-check';
 import { modeLines, pluginMode } from './plugin/mode';
 import { openWebr, statusLines } from './where';
@@ -16,9 +16,8 @@ const HELP = `Webr — control your Herdr agents from anywhere.
 Usage
   webr                          Show status and this help
   webr start [options]          Run the server in this terminal
-  webr plugin install [options]  Start Webr whenever the Herdr server starts, and open it
-  webr plugin uninstall          Remove the Herdr plugin
-  webr plugin status             Show whether the plugin is installed and Webr is running
+  webr install [options]        Start Webr whenever the Herdr server starts, and open it
+  webr uninstall                Remove Webr from Herdr
   webr invite [--port <port>]    Print a one-time code and QR to connect a device
   webr status                    Show whether Webr is running and where
   webr open                      Open Webr in your browser
@@ -27,7 +26,7 @@ Usage
 Options
   --port <port>     Port to listen on (default: first free port from 4444, then remembered)
   --host <address>  Listen on a specific address (default 0.0.0.0, every interface)
-  --no-open         Don't open the browser after "plugin install"
+  --no-open         Don't open the browser after "install"
   --origin <url>    Public URL when served through a proxy, e.g. https://mac.tailnet.ts.net
   -v, --version     Print the version
   -h, --help        Print this help
@@ -76,11 +75,13 @@ const pluginSettings = (values: ReturnType<typeof parseCommand>['values']) => ({
   ...(values.origin ? { origin: values.origin } : {}),
 });
 
-async function pluginCommand(action: string, values: ReturnType<typeof parseCommand>['values']) {
-  const deps = defaultDeps();
-  const lines = action === 'install' ? await installPlugin(pluginSettings(values), deps) : action === 'uninstall' ? await uninstallWebrPlugin(deps) : await pluginStatus(deps);
-  for (const line of lines.filter(Boolean)) console.log(line);
-  if (action === 'install' && !values['no-open']) await openWhenUp(knownPort(values.port ? ['--port', values.port] : []));
+async function install(values: ReturnType<typeof parseCommand>['values']) {
+  for (const line of (await installPlugin(pluginSettings(values), defaultDeps())).filter(Boolean)) console.log(line);
+  if (!values['no-open']) await openWhenUp(knownPort(values.port ? ['--port', values.port] : []));
+}
+
+async function uninstall() {
+  for (const line of (await uninstallWebrPlugin(defaultDeps())).filter(Boolean)) console.log(line);
 }
 
 async function openWhenUp(port: number) {
@@ -101,7 +102,7 @@ async function printStatusAndHelp(values: ReturnType<typeof parseCommand>['value
 
 export async function main(argv: string[]) {
   const { values, positionals } = parseCommand(argv);
-  const [command, subcommand] = positionals;
+  const [command] = positionals;
   if (values.help || command === 'help') return void console.log(HELP);
   if (values.version) { console.log(packageInfo().version); return printUpdateHint(); }
   if (!command) return printStatusAndHelp(values);
@@ -111,6 +112,7 @@ export async function main(argv: string[]) {
   if (command === 'status') return printStatus(values);
   if (command === 'open') return void (await openWebr(knownPort(values.port ? ['--port', values.port] : []))).forEach((line) => console.log(line));
   if (command === 'invite') return invite(knownPort(values.port ? ['--port', values.port] : []));
-  if (command === 'plugin' && ['install', 'uninstall', 'status'].includes(subcommand ?? '')) return pluginCommand(subcommand!, values);
+  if (command === 'install') return install(values);
+  if (command === 'uninstall') return uninstall();
   throw new Error(`Unknown command: ${positionals.join(' ')}\n\n${HELP}`);
 }

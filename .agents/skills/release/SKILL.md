@@ -23,4 +23,4 @@ Trusted publishing needs npm 11.5+ (the workflow upgrades it, Node 22 ships 10) 
 
 Manual publish (only if CI is unavailable): run `npm publish --access public` in a real terminal so npm can ask for the authenticator code, or pass `--otp=<code>`. It fails with `EOTP` inside Claude Code's `!` prompt, and the auto-mode classifier blocks the agent from publishing, so the user types it.
 
-After a release, remind the user that `webr plugin install` pulls the plugin folder from GitHub `main`, not from npm, so the plugin is live as soon as `main` is pushed.
+After a release, remind the user that `webr install` pulls the plugin folder from GitHub `main`, not from npm, so the plugin is live as soon as `main` is pushed.
