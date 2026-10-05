@@ -32,3 +32,9 @@ it('redirects a detached thread to the new thread page', () => {
   render(<ThreadView thread={{ ...thread, bindingState: 'detached' }} connected canControl focusedPane="b" onFocusPane={vi.fn()} windowStart={0} narrow={false} />);
   expect(navigate).toHaveBeenCalledWith('/new?project=p');
 });
+
+it('keeps a detached thread whose launch failed so the failure is shown', () => {
+  vi.mocked(navigate).mockClear();
+  render(<ThreadView thread={{ ...thread, panes: [], bindingState: 'detached', operation: { id: 'o', state: 'failed', step: 'prompt' } }} connected canControl focusedPane="" onFocusPane={vi.fn()} windowStart={0} narrow={false} />);
+  expect(navigate).not.toHaveBeenCalled();
+});
