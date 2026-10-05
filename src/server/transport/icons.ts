@@ -2,7 +2,8 @@ import { readdir, realpath, stat, readFile } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 
 const contentTypes: Record<string, string> = { '.ico': 'image/x-icon', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp' };
-const directories = ['', 'public', 'static', 'assets', 'web', 'web/public', 'app/public', 'src/assets', 'src/app', 'frontend/public'];
+const maxBytes = 2 * 1024 * 1024;
+const directories = ['build/Icon.icon/Assets', '', 'public', 'static', 'assets', 'web', 'web/public', 'app/public', 'src/assets', 'src/app', 'frontend/public'];
 export type Icon = { bytes: Buffer; contentType: string };
 
 function withinRoot(root: string, path: string) {
@@ -37,9 +38,9 @@ async function iconInDirectory(root: string, directory: string): Promise<Icon | 
       const file = await realpath(join(actual, entry.name));
       if (!withinRoot(root, file)) continue;
       const info = await stat(file);
-      if (!info.isFile() || info.size <= 0 || info.size > 1024 * 1024) continue;
+      if (!info.isFile() || info.size <= 0 || info.size > maxBytes) continue;
       const bytes = await readFile(file);
-      if (bytes.length <= 1024 * 1024) return { bytes, contentType: contentTypes[extname(entry.name).toLowerCase()] };
+      if (bytes.length <= maxBytes) return { bytes, contentType: contentTypes[extname(entry.name).toLowerCase()] };
     } catch {}
   }
 }
