@@ -5,6 +5,7 @@
 * Respect manual file changes to prevent overwrites.
 * Commit frequently and use history to guide changes.
 * Do not fix symptoms, fix diseases. After two successive symptom patches in the same code path, stop patching and audit the architecture.
+* To measure UI responsiveness, have the user exercise `pnpm dev` (reload the page first), then read `.data/perf.jsonl` (`client.second` stats, `main.stalled`, `slow.*`) instead of guessing.
 
 ## Other rules
 
