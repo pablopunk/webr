@@ -129,15 +129,15 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     const input = z.object({ machineId: opaqueId, title: z.string().trim().min(1).max(90).refine((title) => !/[\x00-\x1f\x7f]/.test(title)) }).strict().parse(request.body);
     await manager.renameThread(input.machineId, id, input.title); return { title: input.title };
   });
-  app.post('/api/threads/:id/terminal', async (request) => {
+  app.post('/api/threads/:id/panes/terminal', async (request) => {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
-    const input = z.object({ machineId: opaqueId, direction: z.enum(['right', 'down']) }).strict().parse(request.body);
-    return manager.toggleTerminal(input.machineId, id, input.direction);
+    const input = z.object({ machineId: opaqueId, afterPaneId: opaqueId }).strict().parse(request.body);
+    return manager.openTerminal(input.machineId, id, input.afterPaneId);
   });
-  app.post('/api/threads/:id/terminal/close', async (request) => {
+  app.post('/api/threads/:id/panes/close', async (request) => {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
-    const input = z.object({ machineId: opaqueId }).strict().parse(request.body);
-    await manager.closeTerminal(input.machineId, id); return { closed: true };
+    const input = z.object({ machineId: opaqueId, paneId: opaqueId, force: z.boolean() }).strict().parse(request.body);
+    return manager.closePane(input.machineId, id, input.paneId, input.force);
   });
   app.post('/api/threads/:id/delete', async (request) => {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);

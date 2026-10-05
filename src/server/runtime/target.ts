@@ -34,5 +34,6 @@ export type TargetAdapter = {
   renameTab?(tabId: string, label: string, renameWorkspace: boolean): Promise<void>;
   splitTerminal?(paneId: string, direction: TerminalDirection): Promise<string>;
   closePane?(paneId: string): Promise<void>;
+  paneBusy?(paneId: string): Promise<boolean>;
   close(): void;
 };

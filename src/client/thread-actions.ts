@@ -16,9 +16,8 @@ async function post(path: string, body: Record<string, unknown> = {}) {
 export const setThreadArchived = (thread: Thread, archived: boolean) => post(`/api/threads/${encodeURIComponent(thread.id)}/archive`, { machineId: thread.machineId, archived });
 export const renameThread = (thread: Thread, title: string) => post(`/api/threads/${encodeURIComponent(thread.id)}/rename`, { machineId: thread.machineId, title });
 export const renameProject = (project: Project, name: string) => post('/api/projects/rename', { machineId: project.machineId ?? 'local', logicalId: project.logicalId ?? project.id, name });
-export type TerminalDirection = 'right' | 'down';
-export const toggleThreadTerminal = (thread: Thread, direction: TerminalDirection) => post(`/api/threads/${encodeURIComponent(thread.id)}/terminal`, { machineId: thread.machineId, direction }) as Promise<{ paneId: string; hidden: boolean }>;
-export const closeThreadTerminal = (thread: Thread) => post(`/api/threads/${encodeURIComponent(thread.id)}/terminal/close`, { machineId: thread.machineId });
+export const openThreadTerminal = (thread: Thread, afterPaneId: string) => post(`/api/threads/${encodeURIComponent(thread.id)}/panes/terminal`, { machineId: thread.machineId, afterPaneId }) as Promise<{ paneId: string }>;
+export const closeThreadPane = (thread: Thread, paneId: string, force: boolean) => post(`/api/threads/${encodeURIComponent(thread.id)}/panes/close`, { machineId: thread.machineId, paneId, force }) as Promise<{ closed: boolean; busy: boolean }>;
 export const deleteThreadPermanently = (thread: Thread) => post(`/api/threads/${encodeURIComponent(thread.id)}/delete`, { machineId: thread.machineId });
 export const deleteArchivedThreads = () => post('/api/archive/delete') as Promise<{ deleted: number; failed: string[] }>;
 const plural = (count: number, one: string, many: string) => count === 1 ? one : many;

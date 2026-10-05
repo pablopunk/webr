@@ -17,9 +17,10 @@ import { RuntimeProvider, useRuntime, useRuntimeSelector } from '../client/provi
 import type { Bootstrap } from '../shared/runtime';
 import { appShortcutAction } from '../client/keyboard';
 import { perfAvailable, startPerf } from '../client/perf';
-import { closeThreadTerminal, toggleThreadTerminal, type TerminalDirection } from '../client/thread-actions';
-import { currentTerminalDirection, threadAgent, threadShell } from '../lib/terminal-split';
-import { alertDialog } from './dialogs';
+import { closeThreadPane, openThreadTerminal } from '../client/thread-actions';
+import { canClosePane, neighbourPane } from '../lib/pane-strip';
+import { usePaneWindowStart, useNarrowScreen } from '../client/pane-window';
+import { alertDialog, confirmDialog } from './dialogs';
 import { useClearDoneOnVisit } from '../client/clear-done-on-visit';
 import { isListedThread } from '../lib/launch';
 import { carriesFiles } from '../client/image-attach';
@@ -82,21 +83,24 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
     return () => { media.removeEventListener('change', onChange); window.removeEventListener('popstate', syncCollapsedFromUrl); };
   }, []);
 
-  const layouts = thread ? projections[thread.machineId]?.layouts ?? [] : [];
-  const reportTerminalFailure = (error: unknown) => void alertDialog(error instanceof Error ? error.message : 'Herdr could not change the terminal.');
-  const toggleTerminal = useCallback((direction?: TerminalDirection) => {
-    if (!thread) return;
-    const chosen = direction ?? currentTerminalDirection(thread, layouts, window.matchMedia('(max-width: 760px)').matches);
-    void toggleThreadTerminal(thread, chosen).then(({ paneId, hidden }) => setFocusedPane(hidden ? threadAgent(thread)?.id ?? paneId : paneId), reportTerminalFailure);
-  }, [thread, layouts, setFocusedPane]);
-  const focusPane = useCallback((paneId: string) => {
-    const hiddenShell = thread?.terminalHidden && threadShell(thread)?.id === paneId;
-    if (hiddenShell) toggleTerminal(); else setFocusedPane(paneId);
-  }, [thread, toggleTerminal, setFocusedPane]);
-  const closeTerminal = useCallback(() => {
-    if (!thread) return;
-    void closeThreadTerminal(thread).then(() => { const agent = threadAgent(thread); if (agent) setFocusedPane(agent.id); }, reportTerminalFailure);
-  }, [thread, setFocusedPane]);
+  const reportPaneFailure = (error: unknown) => void alertDialog(error instanceof Error ? error.message : 'Herdr could not change the pane.');
+  const paneIds = thread?.panes.map((pane) => pane.id) ?? [];
+  const windowStart = usePaneWindowStart(ui, scope, paneIds, focusedPane);
+  const narrow = useNarrowScreen();
+  const openTerminal = useCallback(() => {
+    if (!thread || !focusedPane) return;
+    void openThreadTerminal(thread, focusedPane).then(({ paneId }) => setFocusedPane(paneId), reportPaneFailure);
+  }, [thread, focusedPane, setFocusedPane]);
+  const closePane = useCallback(async (paneId = focusedPane) => {
+    if (!thread || !canClosePane(thread, paneId)) return;
+    const pane = thread.panes.find((pane) => pane.id === paneId)!;
+    const next = neighbourPane(thread.panes, paneId);
+    try {
+      let result = await closeThreadPane(thread, paneId, false);
+      if (result.busy && await confirmDialog(`${pane.title} is running a process. Close it anyway?`, { confirmLabel: 'Close', danger: true })) result = await closeThreadPane(thread, paneId, true);
+      if (result.closed && next) setFocusedPane(next.id);
+    } catch (error) { reportPaneFailure(error); }
+  }, [thread, focusedPane, setFocusedPane]);
 
   const toggleSidebar = useCallback(() => {
     if (window.matchMedia('(max-width: 760px)').matches) { setMobileOpen((value) => !value); return; }
@@ -128,11 +132,12 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
       if (!action) return;
       event.preventDefault();
       if (action === 'toggleSidebar') toggleSidebar();
-      if (action === 'toggleTerminal') toggleTerminal();
+      if (action === 'openTerminal') openTerminal();
+      if (action === 'closePane') void closePane();
        if (action === 'newThread') void navigate(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`);
        if ((action === 'nextPane' || action === 'previousPane') && thread?.panes.length) {
          const index = thread.panes.findIndex((pane) => pane.id === focusedPane);
-         focusPane(thread.panes[(index + (action === 'nextPane' ? 1 : -1) + thread.panes.length) % thread.panes.length].id);
+         setFocusedPane(thread.panes[(index + (action === 'nextPane' ? 1 : -1) + thread.panes.length) % thread.panes.length].id);
        }
       if ((action === 'nextThread' || action === 'previousThread') && threads.length) {
         const index = threads.findIndex((item) => item.id === thread?.id);
@@ -142,13 +147,13 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [thread, threads, paletteOpen, toggleSidebar, toggleTerminal, focusPane, focusedPane, setFocusedPane]);
+  }, [thread, threads, paletteOpen, toggleSidebar, openTerminal, closePane, focusedPane, setFocusedPane]);
 
   return <div className={`app-shell ${page === 'thread' ? 'is-thread' : ''}`}>
     <Sidebar projects={projects} threads={threads} archived={archived} machines={machines} currentId={thread?.id} mode={mode} onModeChange={changeMode} collapsed={collapsed}
       mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} />
     <div className="main-panel">
-      {page === 'thread' && thread && <ThreadView thread={thread} layouts={projections[thread.machineId]?.layouts ?? []} tabs={projections[thread.machineId]?.availableTabs ?? []} connected={gatewayConnected && !!projections[thread.machineId]?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={focusPane} onToggleTerminal={() => toggleTerminal()} />}
+      {page === 'thread' && thread && <ThreadView thread={thread} tabs={projections[thread.machineId]?.availableTabs ?? []} connected={gatewayConnected && !!projections[thread.machineId]?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} />}
       {page === 'new' && <NewThreadView key={projectId} projects={projects} machines={machines} selectedProjectId={projectId} onOpenSidebar={toggleSidebar} />}
       {page === 'settings' && <SettingsView onOpenSidebar={toggleSidebar} />}
       {page === 'missing' && <main className="not-found"><h1>Thread not found</h1><a href="/">Open a thread</a></main>}
@@ -157,7 +162,7 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
     {perfAvailable && <PerfOverlay />}
     <PairingPrompt />
     <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projects={projects} threads={threads} thread={thread} focusedPane={focusedPane}
-      mode={mode} onModeChange={changeMode} onToggleSidebar={toggleSidebar} onFocusPane={focusPane} onTerminalAction={(action) => { const pane = thread?.panes.find((pane) => pane.id === focusedPane); if (thread && pane?.terminalId) terminals.command(thread.machineId, thread.id, pane.terminalId, action); }}
-      onToggleTerminal={toggleTerminal} onCloseTerminal={closeTerminal} />
+      mode={mode} onModeChange={changeMode} onToggleSidebar={toggleSidebar} onFocusPane={setFocusedPane} onTerminalAction={(action) => { const pane = thread?.panes.find((pane) => pane.id === focusedPane); if (thread && pane?.terminalId) terminals.command(thread.machineId, thread.id, pane.terminalId, action); }}
+      onOpenTerminal={openTerminal} onClosePane={() => void closePane()} />
   </div>;
 }

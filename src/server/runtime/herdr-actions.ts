@@ -56,11 +56,15 @@ export class HerdrActions {
       catch (error) { if (!(error instanceof Error) || error.message !== 'agent_pane_busy' || Date.now() >= end) throw error; await pause(500); }
     }
   }
+  private async shellOwnsForeground(paneId: string) {
+    const info = processInfo.safeParse((await this.api.request('pane.process_info', { pane_id: paneId })).process_info);
+    return info.success && info.data.foreground_processes.length > 0 && info.data.foreground_processes.every((process) => process.pid === info.data.shell_pid);
+  }
+  async paneBusy(paneId: string) { return !await this.shellOwnsForeground(paneId); }
   private async untilShellReady(paneId: string) {
     const end = Date.now() + SHELL_READY_TIMEOUT_MS;
     do {
-      const info = processInfo.safeParse((await this.api.request('pane.process_info', { pane_id: paneId })).process_info);
-      if (info.success && info.data.foreground_processes.length && info.data.foreground_processes.every((process) => process.pid === info.data.shell_pid)) return;
+      if (await this.shellOwnsForeground(paneId)) return;
       await pause(250);
     } while (Date.now() < end);
     throw new Error('shell_not_ready');

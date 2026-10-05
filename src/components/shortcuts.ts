@@ -1,21 +1,21 @@
-export type ShortcutAction = 'nextThread' | 'previousThread' | 'nextPane' | 'previousPane' | 'toggleSidebar' | 'newThread' | 'toggleTerminal';
+export type ShortcutAction = 'nextThread' | 'previousThread' | 'nextPane' | 'previousPane' | 'toggleSidebar' | 'newThread' | 'openTerminal' | 'closePane';
 
 export const shortcutLabels: Record<ShortcutAction, string> = {
   nextThread: 'Next thread', previousThread: 'Previous thread',
   nextPane: 'Next pane', previousPane: 'Previous pane',
-  toggleSidebar: 'Toggle sidebar', newThread: 'New thread', toggleTerminal: 'Toggle terminal',
+  toggleSidebar: 'Toggle sidebar', newThread: 'New thread', openTerminal: 'New terminal', closePane: 'Close pane',
 };
 
 export const defaultShortcuts: Record<ShortcutAction, string> = {
   nextThread: 'ctrl+j', previousThread: 'ctrl+k',
   nextPane: 'ctrl+l', previousPane: 'ctrl+h',
-  toggleSidebar: 'meta+b', newThread: 'ctrl+x', toggleTerminal: 'ctrl+q',
+  toggleSidebar: 'meta+b', newThread: 'ctrl+x', openTerminal: 'ctrl+e', closePane: 'ctrl+q',
 };
 
 export function getShortcuts(): Record<ShortcutAction, string> {
   try {
-    const saved = JSON.parse(localStorage.getItem('webr-shortcuts') ?? '{}');
-    return { ...defaultShortcuts, ...saved };
+    const saved = JSON.parse(localStorage.getItem('webr-shortcuts') ?? '{}') as Record<string, string>;
+    return { ...defaultShortcuts, ...Object.fromEntries(Object.entries(saved).filter(([action]) => Object.hasOwn(defaultShortcuts, action))) };
   } catch {
     return defaultShortcuts;
   }

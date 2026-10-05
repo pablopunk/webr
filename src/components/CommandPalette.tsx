@@ -2,26 +2,26 @@ import { alertDialog, confirmDialog } from './dialogs';
 import { Tooltip } from './Tooltip';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThreadAvatar } from './ThreadAvatar';
-import { Archive, ArchiveRestore, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, FolderTree, Gauge, LayoutList, Monitor, Moon, PanelBottom, PanelLeft, PanelRight, Settings2, SquarePen, SquareTerminal, Sun, TerminalSquare, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, FolderTree, Gauge, LayoutList, Monitor, Moon, PanelLeft, Settings2, SquarePen, SquareTerminal, Sun, TerminalSquare, X } from 'lucide-react';
 import type { Project, Thread } from '../lib/models';
 import { defaultShortcuts, formatShortcut, getShortcuts, type ShortcutAction } from './shortcuts';
 import type { SidebarMode } from './Sidebar';
 import { applyTheme } from './ThemeControl';
 import { navigate } from 'astro:transitions/client';
-import { setThreadArchived, type TerminalDirection } from '../client/thread-actions';
-import { threadShell } from '../lib/terminal-split';
+import { setThreadArchived } from '../client/thread-actions';
+import { canClosePane } from '../lib/pane-strip';
 import { perfAvailable, perfVisible, setPerfVisible } from '../client/perf';
 
 const reportFailure = (error: unknown) => alertDialog(error instanceof Error ? error.message : 'Herdr could not complete this action.');
 
 type Command = { label: string; icon: ReactNode; detail?: string; shortcut?: ShortcutAction; run: () => void };
 
-export function CommandPalette({ open, onClose, projects, threads, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onToggleTerminal, onCloseTerminal }: {
+export function CommandPalette({ open, onClose, projects, threads, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onClosePane }: {
   open: boolean; onClose: () => void; projects: Project[]; threads: Thread[]; thread?: Thread;
   focusedPane: string; mode: SidebarMode; onModeChange: (mode: SidebarMode) => void;
   onToggleSidebar: () => void; onFocusPane: (paneId: string) => void;
   onTerminalAction: (action: 'control' | 'takeover' | 'release') => void;
-  onToggleTerminal: (direction?: TerminalDirection) => void; onCloseTerminal: () => void;
+  onOpenTerminal: () => void; onClosePane: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
@@ -64,12 +64,9 @@ export function CommandPalette({ open, onClose, projects, threads, thread, focus
     ...(thread ? [
       { label: thread.archivedAt ? 'Unarchive thread' : 'Archive thread', icon: thread.archivedAt ? <ArchiveRestore size={16} /> : <Archive size={16} />, run: () => { void setThreadArchived(thread, !thread.archivedAt).catch(reportFailure); } },
       { label: 'Copy thread link', icon: <Copy size={16} />, run: () => { void navigator.clipboard.writeText(location.href); } },
-      ...(thread.bindingState === 'attached' ? threadShell(thread) ? [
-        { label: 'Toggle terminal', icon: <SquareTerminal size={16} />, shortcut: 'toggleTerminal' as const, run: () => onToggleTerminal() },
-        { label: 'Close terminal', icon: <X size={16} />, detail: 'Stops its shell', run: onCloseTerminal },
-      ] : [
-        { label: 'Toggle terminal (side)', icon: <PanelRight size={16} />, shortcut: 'toggleTerminal' as const, run: () => onToggleTerminal('right') },
-        { label: 'Toggle terminal (below)', icon: <PanelBottom size={16} />, run: () => onToggleTerminal('down') },
+      ...(thread.bindingState === 'attached' ? [
+        { label: 'New terminal', icon: <SquareTerminal size={16} />, shortcut: 'openTerminal' as const, run: onOpenTerminal },
+        ...(canClosePane(thread, focusedPane) ? [{ label: 'Close pane', icon: <X size={16} />, shortcut: 'closePane' as const, run: onClosePane }] : []),
       ] : []),
       ...(thread.bindingState === 'attached' ? [
         { label: 'Request terminal control', icon: <TerminalSquare size={16} />, run: () => onTerminalAction('control') },
@@ -82,7 +79,7 @@ export function CommandPalette({ open, onClose, projects, threads, thread, focus
     ] : []),
     ...threads.map((item) => ({ label: item.title, icon: <ThreadAvatar thread={item} working={item.status === 'working'} size={22} />, detail: projects.find((project) => project.id === item.projectId)?.name,
       run: () => { void navigate(`/threads/${encodeURIComponent(item.id)}`); } })),
-  ], [projects, threads, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onToggleTerminal, onCloseTerminal]);
+  ], [projects, threads, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onClosePane]);
 
   const matching = commands.filter((command) => `${command.label} ${command.detail ?? ''}`.toLowerCase().includes(query.toLowerCase().trim()));
   if (!open) return null;

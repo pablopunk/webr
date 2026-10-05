@@ -149,6 +149,7 @@ export class HerdrTarget implements TargetAdapter {
   async renameTab(tabId: string, label: string, renameWorkspace: boolean) { return this.actions().renameTab(await this.snapshot(), tabId, label, renameWorkspace); }
   async splitTerminal(paneId: string, direction: TerminalDirection) { return this.actions().splitTerminal(await this.snapshot(), paneId, direction); }
   async closePane(paneId: string) { return this.actions().closePane(paneId); }
+  async paneBusy(paneId: string) { return this.actions().paneBusy(paneId); }
   async discardTab(tabId: string, removeWorktree: boolean) { return this.actions().discardTab(await this.snapshot(), tabId, removeWorktree); }
   private actions() {
     return new HerdrActions({ request: async (method, params, options) => {

@@ -3,6 +3,7 @@ import type { MetadataDatabase } from '../storage/database';
 import type { NativeSnapshot } from '../protocol/native';
 import type { Project, Thread } from '../../lib/models';
 import type { TargetAdapter } from './target';
+import { orderPanes } from '../../lib/pane-strip';
 
 export const projectNameKey = (machineId: string, logicalId: string) => `project-name:${machineId}:${logicalId}`;
 export const projectIdentity = (machineId: string, repository: string) => createHash('sha256').update(machineId + '\0' + repository).digest('hex').slice(0, 32);
@@ -46,7 +47,7 @@ export function reconcile(database: MetadataDatabase, target: TargetAdapter, sna
     const signature = JSON.stringify([tab?.label, panes.map((pane) => [pane.terminal_id, pane.pane_id, pane.agent, readingAwareStatus(pane.agent_status), pane.title, pane.terminal_title_stripped])]);
     const meaningfulChange = attached && row.metadata.semanticSignature !== signature;
     const operation = operations.find((operation) => operation.threadId === row.id);
-    const thread: Thread = { ...row.metadata, title: attached ? threadTitle(tab?.label, panes, row.metadata.title) : row.metadata.title, projectId: attached ? tabProjects.get(tab!.tab_id) ?? row.metadata.projectId : row.metadata.projectId, bindingState: attached ? 'attached' : operation && !row.anchors.length ? 'pending' : 'detached', status: attached ? paneStatus(panes) ?? 'unknown' : 'unknown', agent: attached ? panes.find((pane) => pane.agent)?.agent ?? '' : row.metadata.agent, semanticSignature: attached ? signature : row.metadata.semanticSignature, updatedAt: meaningfulChange ? new Date().toISOString() : row.metadata.updatedAt, panes: panes.map((pane) => ({ id: pane.pane_id, terminalId: pane.terminal_id, title: pane.title ?? pane.terminal_title_stripped ?? pane.agent ?? 'Shell', kind: pane.agent ? 'agent' : 'shell' })), operation: operation ? { id: operation.id, state: operation.state, step: operation.step } : undefined };
+    const thread: Thread = { ...row.metadata, title: attached ? threadTitle(tab?.label, panes, row.metadata.title) : row.metadata.title, projectId: attached ? tabProjects.get(tab!.tab_id) ?? row.metadata.projectId : row.metadata.projectId, bindingState: attached ? 'attached' : operation && !row.anchors.length ? 'pending' : 'detached', status: attached ? paneStatus(panes) ?? 'unknown' : 'unknown', agent: attached ? panes.find((pane) => pane.agent)?.agent ?? '' : row.metadata.agent, semanticSignature: attached ? signature : row.metadata.semanticSignature, updatedAt: meaningfulChange ? new Date().toISOString() : row.metadata.updatedAt, panes: orderPanes(panes.map((pane) => ({ id: pane.pane_id, terminalId: pane.terminal_id, title: pane.title ?? pane.terminal_title_stripped ?? pane.agent ?? 'Shell', kind: pane.agent ? 'agent' as const : 'shell' as const })), row.metadata.paneOrder), operation: operation ? { id: operation.id, state: operation.state, step: operation.step } : undefined };
     if (attached && (meaningfulChange || JSON.stringify(row.anchors) !== JSON.stringify(panes.map((pane) => pane.terminal_id)))) database.saveThread({ ...thread, panes: [], operation: undefined }, panes.map((pane) => pane.terminal_id), row.alias);
     return thread;
   });

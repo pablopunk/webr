@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
-import type { TargetAdapter, TerminalDirection } from './target';
+import type { TargetAdapter } from './target';
 import type { Thread } from '../../lib/models';
-import { threadAgent, threadShell } from '../../lib/terminal-split';
+import { canClosePane, insertAfter } from '../../lib/pane-strip';
 import { TargetSupervisor } from './supervisor';
 import { projectNameKey, reconcile } from './reconcile';
 import type { MetadataDatabase } from '../storage/database';
@@ -128,23 +128,21 @@ export class RuntimeManager extends EventEmitter {
     if (thread.bindingState === 'attached') await supervisor.readFresh();
     this.publish(supervisor);
   }
-  async toggleTerminal(machineId: string, threadId: string, direction: TerminalDirection) {
+  async openTerminal(machineId: string, threadId: string, afterPaneId: string) {
     const { supervisor, thread } = this.attachedThread(machineId, threadId);
-    const shell = threadShell(thread);
-    const agent = threadAgent(thread);
-    if (shell) { this.saveThreadMetadata(machineId, threadId, { terminalHidden: !thread.terminalHidden }); this.publish(supervisor); return { paneId: shell.id, hidden: !thread.terminalHidden }; }
-    if (!agent || !supervisor.target.splitTerminal) throw new Error('thread_not_found');
-    const paneId = await supervisor.target.splitTerminal(agent.id, direction);
-    this.saveThreadMetadata(machineId, threadId, { terminalHidden: false });
+    if (!thread.panes.some((pane) => pane.id === afterPaneId) || !supervisor.target.splitTerminal) throw new Error('thread_not_found');
+    const paneId = await supervisor.target.splitTerminal(afterPaneId, 'right');
+    this.saveThreadMetadata(machineId, threadId, { paneOrder: insertAfter(thread.panes.map((pane) => pane.id), afterPaneId, paneId) });
     await supervisor.readFresh(); this.publish(supervisor);
-    return { paneId, hidden: false };
+    return { paneId };
   }
-  async closeTerminal(machineId: string, threadId: string) {
+  async closePane(machineId: string, threadId: string, paneId: string, force: boolean) {
     const { supervisor, thread } = this.attachedThread(machineId, threadId);
-    const shell = threadShell(thread);
-    if (shell) await supervisor.target.closePane?.(shell.id);
-    this.saveThreadMetadata(machineId, threadId, { terminalHidden: false });
+    if (!canClosePane(thread, paneId)) return { closed: false, busy: false };
+    if (!force && await supervisor.target.paneBusy?.(paneId)) return { closed: false, busy: true };
+    await supervisor.target.closePane?.(paneId);
     await supervisor.readFresh(); this.publish(supervisor);
+    return { closed: true, busy: false };
   }
   private attachedThread(machineId: string, threadId: string) {
     const supervisor = this.supervisors.get(machineId);
