@@ -14,7 +14,7 @@ export function createRuntimeStore(bootstrap: Bootstrap) {
     connection: (connected) => set((state) => {
       if (connected) return { connected };
       for (const id of Object.keys(state.projections)) awaiting.add(id);
-      return { connected, projections: Object.fromEntries(Object.entries(state.projections).map(([id, projection]) => [id, { ...projection, connected: false, freshAt: null }])), threads: Object.fromEntries(Object.entries(state.threads).map(([id, thread]) => [id, { ...thread, status: 'unknown' as const, panes: [], bindingState: 'detached' as const }])) };
+      return { connected, projections: Object.fromEntries(Object.entries(state.projections).map(([id, projection]) => [id, { ...projection, connected: false, freshAt: null }])), threads: Object.fromEntries(Object.entries(state.threads).map(([id, thread]) => [id, { ...thread, status: 'unknown' as const, bindingState: 'detached' as const }])) };
     }),
     install: (projection) => {
       const old = get();

@@ -84,12 +84,12 @@ it('does not use a late snapshot from a previous subscription after disconnect',
   target.lost!('events_lost'); finish(target.state);
   await new Promise((resolve) => setTimeout(resolve, 10)); expect(supervisor.snapshot).toBeUndefined();
 });
-it('invalidates absent runtime on gateway loss without treating enabled profiles as connected', () => {
+it('marks runtime stale on gateway loss but keeps the last known threads listed', () => {
   const db = database(); const target = new FakeTarget(); const records = reconcile(db, target, target.state);
   const projection: Projection = { machineId: target.id, generation: 'one', revision: 1, freshAt: new Date().toISOString(), connected: true, ...records, layouts: [] };
   const store = createRuntimeStore({ projections: [projection], machines: [], threads: [], projects: [] });
   store.getState().connection(true); store.getState().connection(false); store.getState().connection(true);
-  expect(store.getState().projections[target.id].connected).toBe(false); expect(store.getState().threads[records.threads[0].id].panes).toEqual([]);
+  expect(store.getState().projections[target.id].connected).toBe(false); expect(store.getState().threads[records.threads[0].id]).toMatchObject({ bindingState: 'detached', status: 'unknown', panes: records.threads[0].panes });
   store.getState().install(projection); expect(store.getState().projections[target.id].connected).toBe(true); expect(store.getState().threads[records.threads[0].id].bindingState).toBe('attached');
 });
 it('archives a thread out of the list and deletes archived threads together with their Herdr tab', async () => {
