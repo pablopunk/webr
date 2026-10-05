@@ -1,16 +1,16 @@
-.pairing-title { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+.pairing-title { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
 .pairing-code { margin: 0 0 16px; font: 700 40px/1 var(--font-mono); letter-spacing: .18em; text-align: center; text-indent: .18em; }
 .pairing-invite .dialog-message code { font-family: var(--font-mono); }
 .qr-code { display: block; width: min(240px, 100%); aspect-ratio: 1; margin: 0 auto 14px; border-radius: 8px; }
 .pairing-token { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 6px; }
 .pairing-token code { font: 600 14px var(--font-mono); letter-spacing: .08em; user-select: all; }
 .pairing-token .dialog-button { display: inline-grid; place-items: center; min-width: 32px; padding: 0; }
-.device-tag { margin-left: 8px; padding: 1px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-style: normal; }
-.device-meta { display: block; color: var(--ink-muted); font-size: 11px; }
+.device-tag { margin-left: 8px; padding: 1px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-style: normal; }
+.device-meta { display: block; color: var(--ink-muted); font-size: 13px; }
 .crash-report { position: fixed; z-index: 100; inset: 0 0 auto; max-height: 60dvh; margin: 0; padding: 12px 16px; overflow: auto; background: #fff0ef; color: #7a1f1a; font: 11px/1.4 var(--font-mono); white-space: pre-wrap; word-break: break-word; }
 .pairing-invite .theme-control { flex-wrap: wrap; justify-content: center; margin: 0 0 12px; }
 .pairing-invite .theme-option { white-space: nowrap; }
-.settings-subtitle { margin: 16px 0 4px; color: var(--ink-soft); font-size: 11px; font-weight: 500; }
-.activity-row { display: flex; justify-content: space-between; gap: 12px; margin: 0; padding: 4px 0; color: var(--ink-muted); font-size: 11px; }
+.settings-subtitle { margin: 16px 0 4px; color: var(--ink-soft); font-size: 13px; font-weight: 500; }
+.activity-row { display: flex; justify-content: space-between; gap: 12px; margin: 0; padding: 4px 0; color: var(--ink-muted); font-size: 13px; }
 .activity-row time { flex: none; }
-.tailscale-callout { margin: 0 0 10px; padding: 8px 10px; border: 1px solid var(--line, currentColor); border-radius: 6px; color: var(--ink-soft); font-size: 11px; line-height: 1.45; }
+.tailscale-callout { margin: 0 0 10px; padding: 8px 10px; border: 1px solid var(--line, currentColor); border-radius: 6px; color: var(--ink-soft); font-size: 13px; line-height: 1.45; }

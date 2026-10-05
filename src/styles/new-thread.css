@@ -3,21 +3,21 @@
 .thread-composer { border: 1px solid var(--line-strong); border-radius: 18px; background: var(--surface); box-shadow: var(--card-shadow); transition: border-color .2s, box-shadow .2s; }
 .thread-composer:focus-within { border-color: color-mix(in srgb, var(--focus-ring) 50%, var(--line-strong)); box-shadow: var(--card-shadow-hover); }
 .workspace-composer { display: grid; gap: 12px; padding: 18px; }
-.workspace-composer label { display: grid; gap: 6px; font-size: 12px; color: var(--ink-soft); }
+.workspace-composer label { display: grid; gap: 6px; font-size: 14px; color: var(--ink-soft); }
 .workspace-composer input { width: 100%; padding: 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: transparent; color: var(--ink); }
 .workspace-composer button { justify-self: end; padding: 8px 12px; }
 .workspace-composer .path-field { position: relative; }
 .path-suggestions { position: absolute; z-index: 5; top: 100%; left: 0; right: 0; margin: 4px 0 0; padding: 4px; list-style: none; border: 1px solid var(--card-edge); border-radius: 8px; background: var(--surface-raised); box-shadow: var(--card-shadow-hover); max-height: 240px; overflow-y: auto; }
-.path-suggestions li { padding: 6px 8px; border-radius: 5px; font-size: 13px; color: var(--ink); cursor: pointer; }
+.path-suggestions li { padding: 6px 8px; border-radius: 5px; font-size: 15px; color: var(--ink); cursor: pointer; }
 .path-suggestions li[data-highlighted] { background: var(--surface-hover); }
 .workspace-cancel { align-self: center; padding: 8px 12px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-soft); }
 .workspace-cancel:hover { background: var(--surface-hover); color: var(--ink); }
-.thread-composer textarea { display: block; width: 100%; min-height: 94px; max-height: 45vh; padding: 17px 18px 0; border: 0; outline: 0; resize: vertical; background: transparent; color: var(--ink); font-size: 14px; line-height: 1.5; }
+.thread-composer textarea { display: block; width: 100%; min-height: 94px; max-height: 45vh; padding: 17px 18px 0; border: 0; outline: 0; resize: vertical; background: transparent; color: var(--ink); font-size: 16px; line-height: 1.5; }
 .thread-composer textarea::placeholder { color: var(--ink-muted); }
 .composer-toolbar { display: flex; align-items: center; gap: 10px; padding: 9px 12px 12px; }
 .composer-selectors { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; gap: 3px; }
 .composer-actions { display: inline-flex; flex: none; align-items: center; gap: 5px; margin-left: auto; }
-.composer-preview-note { margin: 12px 0 0; color: var(--ink-soft); font-size: 11px; text-align: center; }
+.composer-preview-note { margin: 12px 0 0; color: var(--ink-soft); font-size: 13px; text-align: center; }
 .worktree-option { position: relative; display: inline-grid; place-items: center; width: 30px; height: 32px; border-radius: 6px; color: var(--ink-soft); cursor: pointer; }
 .worktree-option:hover { color: var(--ink); background: var(--surface-hover); }
 .worktree-option:focus-within { outline: 0; }

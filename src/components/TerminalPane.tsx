@@ -33,7 +33,7 @@ function themeColors() {
 }
 
 const TERMINAL_FONT_FAMILY = '"JetBrains Mono", "Webr Symbols", ui-monospace, Menlo, monospace';
-const TERMINAL_FONT_SIZE = 13;
+const TERMINAL_FONT_SIZE = 15;
 const loadTerminalFonts = () => typeof document === 'undefined' || !document.fonts ? Promise.resolve() : Promise.all([
   document.fonts.load(`400 ${TERMINAL_FONT_SIZE}px "JetBrains Mono"`), document.fonts.load(`700 ${TERMINAL_FONT_SIZE}px "JetBrains Mono"`), document.fonts.load(`${TERMINAL_FONT_SIZE}px "Webr Symbols"`, '\ue0b0'),
 ]).then(() => undefined, () => undefined);
