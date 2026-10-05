@@ -8,8 +8,10 @@ const isInsideNodeModules = (path: string) => /[\\/]node_modules[\\/]/.test(path
 const isBunInstall = (path: string) => /[\\/]\.bun[\\/]/.test(path);
 const isPnpmInstall = (path: string) => /[\\/]pnpm[\\/]/.test(path) || /[\\/]\.pnpm[\\/]/.test(path);
 
+export const isNpxRun = (path: string) => /[\\/]_npx[\\/]/.test(path);
+
 export function detectPackageManager(installPath: string): PackageManager | undefined {
-  if (!isInsideNodeModules(installPath)) return undefined;
+  if (isNpxRun(installPath) || !isInsideNodeModules(installPath)) return undefined;
   if (isBunInstall(installPath)) return 'bun';
   return isPnpmInstall(installPath) ? 'pnpm' : 'npm';
 }

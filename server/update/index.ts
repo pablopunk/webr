@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { packageInfo } from '../package-info';
 import { fetchLatestVersion, writeCachedLatest } from './latest';
-import { detectPackageManager, globalInstallCommand, installedPackagePath, type InstallCommand } from './package-manager';
+import { detectPackageManager, isNpxRun, globalInstallCommand, installedPackagePath, type InstallCommand } from './package-manager';
 import { isNewerVersion } from './versions';
 
 export type UpdateEnvironment = {
@@ -31,6 +31,7 @@ const restartedPlugin = async (environment: UpdateEnvironment) => (await environ
 
 export async function runUpdate(environment: UpdateEnvironment) {
   const { name, version } = packageInfo();
+  if (isNpxRun(environment.installPath())) return [`Webr ${version} is running through npx. Run "npx @pablopunk/webr@latest install" to refresh the plugin.`, ...(await restartedPlugin(environment))];
   const manager = detectPackageManager(environment.installPath());
   if (!manager) throw new Error('This copy of Webr was not installed globally, so it cannot update itself. If it is a git checkout, pull and rebuild it.');
   const latest = await environment.latestVersion(name);
