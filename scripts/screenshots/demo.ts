@@ -83,14 +83,12 @@ const rateLimit: Block[] = [
   { kind: 'user', text: 'rate limit the webhook sender, 50 per minute per endpoint' },
   { kind: 'tool', name: 'Write', args: 'src/webhooks/limiter.ts', result: ['Wrote 36 lines to src/webhooks/limiter.ts'] },
   { kind: 'say', text: 'A token bucket per endpoint, refilled every second. Failed deliveries back off exponentially.' },
-  { kind: 'note', text: 'Worked for 54s · done 11:32 AM' },
 ];
 
 const onboarding: Block[] = [
   { kind: 'user', text: 'redesign the onboarding carousel with the new illustrations' },
   { kind: 'tool', name: 'Update', args: 'Sources/Onboarding/CarouselView.swift', result: ['Updated with 61 additions and 28 removals'] },
   { kind: 'say', text: 'Pages now use a paged `TabView` with a parallax offset on the artwork.' },
-  { kind: 'note', text: 'Worked for 1m 12s · done 10:05 AM' },
 ];
 
 const rotation: Block[] = [
@@ -112,8 +110,8 @@ export const demoThreads: DemoThread[] = [
   { id: 'tooltip', project: 'lumen', title: 'Fix the chart tooltip jumping on Safari', agent: 'claude', status: 'blocked', minutesAgo: 3, linkedWorktree: false, model: 'Sonnet 5.5', context: 31, transcript: tooltip, ask: { question: 'Do you want to proceed?', options: ['Yes', 'Yes, and don’t ask again this session', 'No, and tell Claude what to do differently'] } },
   { id: 'slow-load', project: 'lumen', title: 'Why is the dashboard slow on first load?', agent: 'codex', status: 'idle', minutesAgo: 4, linkedWorktree: false, model: 'gpt-5.5', context: 9, transcript: slowLoad },
   { id: 'cursor', shell: gitStatus, project: 'harbor', title: 'cursor-pagination-for-invoices', agent: 'claude', status: 'working', minutesAgo: 60, linkedWorktree: true, model: 'Sonnet 5.5', context: 42, transcript: cursorPagination },
-  { id: 'rate-limit', project: 'harbor', title: 'rate-limit-webhook-sender', agent: 'opencode', status: 'idle', minutesAgo: 62, linkedWorktree: true, model: 'Sonnet 5.5', context: 18, transcript: rateLimit },
-  { id: 'onboarding', project: 'pixelforge', title: 'Redesign the onboarding carousel', agent: 'claude', status: 'idle', minutesAgo: 120, linkedWorktree: false, model: 'Opus 5.5', context: 27, transcript: onboarding },
+  { id: 'rate-limit', project: 'harbor', title: 'rate-limit-webhook-sender', agent: 'opencode', status: 'working', minutesAgo: 62, linkedWorktree: true, model: 'Sonnet 5.5', context: 18, transcript: rateLimit },
+  { id: 'onboarding', project: 'pixelforge', title: 'Redesign the onboarding carousel', agent: 'claude', status: 'working', minutesAgo: 120, linkedWorktree: false, model: 'Opus 5.5', context: 27, transcript: onboarding },
   { id: 'rotation', project: 'pixelforge', title: 'Crash when rotating on iPad', agent: 'pi', status: 'idle', minutesAgo: 300, linkedWorktree: false, model: 'Sonnet 5.5', context: 12, transcript: rotation },
 ];
 

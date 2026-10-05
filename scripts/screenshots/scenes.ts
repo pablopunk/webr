@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Browser } from './browser';
 import { asJpeg, composePhone } from './compose';
-import { recordingToGif } from './gif';
+import { firstFrameShowsThreads, recordingToGif } from './gif';
 import { cssHeight, KEYBOARD_HEIGHT, PHONE_HEIGHT, STATUS_BAR_HEIGHT } from './frames';
 
 export type SceneContext = { url: string; scratch: string; brand: string; assets: string };
@@ -18,6 +18,8 @@ const TERMINAL_INPUT = '.terminal-input-capture';
 const SHOW_CODE = 'Show code';
 const DEMO_THREAD = 'cursor-pagination-for-invoices';
 const DEMO_MILLISECONDS = 3000;
+const DEMO_LEAD_MILLISECONDS = 1500;
+const DEMO_ATTEMPTS = 3;
 
 async function phoneShot(context: SceneContext, name: string, cssHeightOfApp: number, steps: (browser: Browser) => void) {
   const browser = new Browser(`webr-shots-${name}`, true);
@@ -56,16 +58,24 @@ export const scenes: Scene[] = [
     } finally { browser.close(); }
   } },
   { name: 'demo', async capture(context) {
-    const browser = new Browser('webr-shots-demo', false);
-    try {
-      browser.openWideWindow(context.url);
-      browser.clickText(DEMO_THREAD);
-      browser.wait(2500);
-      const video = join(context.scratch, 'demo.webm');
-      browser.startRecording(video);
-      browser.wait(DEMO_MILLISECONDS);
-      browser.stopRecording();
-      recordingToGif(video, join(context.assets, 'demo.gif'));
-    } finally { browser.close(); }
+    for (let attempt = 1; attempt <= DEMO_ATTEMPTS; attempt++) {
+      await recordDemo(context);
+      if (await firstFrameShowsThreads(join(context.assets, 'demo.gif'))) return;
+    }
+    throw new Error('the demo GIF started with an empty window');
   } },
 ];
+
+async function recordDemo(context: SceneContext) {
+  const browser = new Browser('webr-shots-demo', false);
+  try {
+    browser.openWideWindow(context.url);
+    browser.clickText(DEMO_THREAD);
+    browser.wait(2500);
+    const video = join(context.scratch, 'demo.webm');
+    browser.startRecording(video);
+    browser.wait(DEMO_LEAD_MILLISECONDS + DEMO_MILLISECONDS);
+    browser.stopRecording();
+    recordingToGif(video, join(context.assets, 'demo.gif'), DEMO_LEAD_MILLISECONDS / 1000);
+  } finally { browser.close(); }
+}
