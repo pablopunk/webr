@@ -37,20 +37,16 @@ export function registerWebsockets(app: FastifyInstance, manager: RuntimeManager
       if (pair[kind]) { socket.close(1008); return; }
       pair[kind] = socket;
       if (kind === 'terminal') hub.attach(owner, socket);
-      let pending = 0;
-      let commands = Promise.resolve();
+      const reportFailure = (action: { streamId: number; generation: number }, error: unknown) => { if (socket.readyState === 1) socket.send(JSON.stringify({ type: 'stream.error', streamId: action.streamId, generation: action.generation, reason: error instanceof Error ? error.message : 'action_failed' })); };
       socket.on('message', (data, binary) => {
-        if (binary || kind !== 'terminal' || ++pending > 16) { pair!.close(); return; }
+        if (binary || kind !== 'terminal') { pair!.close(); return; }
         let value: unknown;
         try { value = JSON.parse(data.toString()); } catch { pair!.close(); return; }
         const validated = terminalAction.safeParse(value);
         if (!validated.success) { pair!.close(); return; }
-        commands = commands.then(async () => {
-          if (!pairs.has(owner)) return;
-          if (!pair?.metadata || !pair.terminal) { pair!.close(); return; }
-          try { hub.action(owner, validated.data); }
-          catch (error) { if (socket.readyState === 1) socket.send(JSON.stringify({ type: 'stream.error', streamId: validated.data.streamId, generation: validated.data.generation, reason: error instanceof Error ? error.message : 'action_failed' })); }
-        }).catch(() => pair!.close()).finally(() => { --pending; });
+        if (!pairs.has(owner)) return;
+        if (!pair?.metadata || !pair.terminal) { pair!.close(); return; }
+        try { hub.action(owner, validated.data); } catch (error) { reportFailure(validated.data, error); }
       });
       socket.on('error', () => pair!.close());
       socket.on('close', () => pair!.close());

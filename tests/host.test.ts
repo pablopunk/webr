@@ -152,3 +152,11 @@ it('answers invalid requests with 400 also when the production page renderer is 
   const response = await app.inject({ method: 'POST', url: '/api/threads/not-a-uuid/rename', headers, payload: { machineId: 'fixture', title: 'x' } });
   expect(response.statusCode).toBe(400); expect(response.json()).toEqual({ error: 'invalid_request' });
 });
+it('keeps the connection when a burst of valid terminal actions arrives at once', async () => {
+  const { app, headers } = await setup();
+  const { terminal } = await pair(app, headers);
+  let closed = false; terminal.on('close', () => { closed = true; });
+  for (let streamId = 1; streamId <= 40; streamId++) terminal.send(JSON.stringify({ type: 'release', streamId, generation: 1 }));
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  expect(closed).toBe(false);
+});
