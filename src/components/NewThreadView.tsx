@@ -38,6 +38,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   }));
   const selectedHarness = machine.harnesses.find((choice) => choice.id === harness);
   const canSubmit = !!(prompt.trim() && !images.uploading && model.trim() && machine.connected && machineProjects.some((project) => project.id === projectId) && selectedHarness?.launchEnabled) && !busy;
+  const harnessIds = catalog.data?.harnesses.map((choice) => choice.id).join(',');
   const draftRestored = useRef(false);
   useEffect(() => {
     const draft = readNewThreadDraft();
@@ -54,7 +55,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     const previous = localStorage.getItem(harnessPreference(machineId, projectId));
     setHarness(choices.find((choice) => choice.id === previous)?.id ?? choices.find((choice) => choice.launchEnabled)?.id ?? choices[0]?.id ?? '');
     setModel('Default');
-  }, [machineId, projectId, catalog.data]);
+  }, [machineId, projectId, harnessIds]);
   useEffect(() => {
     const known = projectIdsBeforeCreate.current;
     const added = known && machineProjects.find((project) => !known.has(project.id));

@@ -21,6 +21,7 @@ import { nativeLocations } from './native-locations';
 import { expandHome, listLocalDirectories, suggestDirectories } from '../directories';
 
 const MODEL_LISTING_TIMEOUT_MS = 15_000;
+const MODEL_CACHE_TTL_MS = 10 * 60_000;
 const MODEL_LISTING_LIMIT = 4 * 1024 * 1024;
 type Dependencies = { process: typeof boundedProcess; cli: typeof openCliStream };
 export class HerdrTarget implements TargetAdapter {
@@ -93,10 +94,21 @@ export class HerdrTarget implements TargetAdapter {
     await api.request('ping');
     const run = (command: string, args: string[]) => this.runOnTarget(command, args);
     const isPresent = (kind: string) => run('/bin/sh', ['-c', 'command -v "$1" >/dev/null', 'sh', kind]).then(() => true, () => false);
-    const listModels = (kind: string) => modelListings[kind] ? run(kind, modelListings[kind].args).then((output) => parseModelListing(kind, output), () => []) : Promise.resolve([]);
     const present = (await Promise.all(herdrAgentKinds.map(async (kind) => (await isPresent(kind)) ? kind : undefined))).filter((kind): kind is string => !!kind);
-    const discovered = await Promise.all(present.map(listModels));
-    return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id, index) => ({ id, name: harnessName(id), models: ['Default', ...discovered[index]], customModels: acceptsModelFlag(id), launchEnabled: true })) };
+    present.forEach((kind) => this.discoverModels(kind));
+    const modelsPending = present.some((kind) => this.pendingModels.has(kind));
+    return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, modelsPending, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id) => ({ id, name: harnessName(id), models: ['Default', ...(this.discoveredModels.get(id)?.models ?? [])], customModels: acceptsModelFlag(id), launchEnabled: true })) };
+  }
+  private discoveredModels = new Map<string, { models: string[]; expires: number }>();
+  private pendingModels = new Set<string>();
+  private discoverModels(kind: string) {
+    const listing = modelListings[kind];
+    const fresh = (this.discoveredModels.get(kind)?.expires ?? 0) > Date.now();
+    if (!listing || fresh || this.pendingModels.has(kind)) return;
+    this.pendingModels.add(kind);
+    this.runOnTarget(kind, listing.args).then((output) => parseModelListing(kind, output), () => [] as string[])
+      .then((models) => this.discoveredModels.set(kind, { models, expires: Date.now() + MODEL_CACHE_TTL_MS }))
+      .finally(() => this.pendingModels.delete(kind));
   }
   private runOnTarget(command: string, args: string[]) {
     return this.profile.transport === 'local'

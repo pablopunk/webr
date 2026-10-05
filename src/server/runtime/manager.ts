@@ -10,6 +10,7 @@ import type { Machine } from '../../lib/machines';
 import { LaunchJournal } from './launch';
 
 const CATALOG_TTL_MS = 5 * 60_000;
+const MODELS_PENDING_TTL_MS = 500;
 
 export class RuntimeManager extends EventEmitter {
   readonly supervisors = new Map<string, TargetSupervisor>();
@@ -50,7 +51,11 @@ export class RuntimeManager extends EventEmitter {
     if (existing && existing.expires > Date.now()) return existing.value;
     const value = supervisor.target.catalog(projectId);
     this.catalogs.set(key, { expires: Date.now() + CATALOG_TTL_MS, value });
-    try { return await value; } catch (error) { this.catalogs.delete(key); throw error; }
+    try {
+      const catalog = await value;
+      if (catalog.modelsPending) this.catalogs.set(key, { expires: Date.now() + MODELS_PENDING_TTL_MS, value });
+      return catalog;
+    } catch (error) { this.catalogs.delete(key); throw error; }
   }
   refreshCatalog(machineId: string) {
     for (const key of this.catalogs.keys()) if (JSON.parse(key)[0] === machineId) this.catalogs.delete(key);

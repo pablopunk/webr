@@ -6,6 +6,7 @@ export type Machine = {
   session: string;
   projectPaths: Record<string, string>;
   harnesses: MachineHarness[];
+  modelsPending?: boolean;
   error?: string;
   writable?: boolean;
   configVersion?: number;
