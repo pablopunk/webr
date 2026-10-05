@@ -89,7 +89,7 @@ export class HerdrTarget implements TargetAdapter {
     if (tab.workspace_id !== workspace.workspace_id || pane.workspace_id !== workspace.workspace_id || pane.tab_id !== tab.tab_id) throw new Error('workspace_identity_mismatch');
     return { workspaceId: workspace.workspace_id, tabId: tab.tab_id, terminalId: pane.terminal_id };
   }
-  async catalog(_projectId?: string): Promise<Machine> {
+  async catalog(projectId?: string): Promise<Machine> {
     const api = await this.connect();
     await api.request('ping');
     const run = (command: string, args: string[]) => this.runOnTarget(command, args);
@@ -97,7 +97,13 @@ export class HerdrTarget implements TargetAdapter {
     const present = (await Promise.all(herdrAgentKinds.map(async (kind) => (await isPresent(kind)) ? kind : undefined))).filter((kind): kind is string => !!kind);
     present.forEach((kind) => this.discoverModels(kind));
     const modelsPending = present.some((kind) => this.pendingModels.has(kind));
-    return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, modelsPending, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id) => ({ id, name: harnessName(id), models: ['Default', ...(this.discoveredModels.get(id)?.models ?? [])], customModels: acceptsModelFlag(id), launchEnabled: true })) };
+    const isGitRepo = await this.isGitRepo(projectId);
+    return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, modelsPending, isGitRepo, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id) => ({ id, name: harnessName(id), models: ['Default', ...(this.discoveredModels.get(id)?.models ?? [])], customModels: acceptsModelFlag(id), launchEnabled: true })) };
+  }
+  private async isGitRepo(projectId?: string) {
+    const location = this.locations.find((location) => location.projectId === projectId);
+    if (!location) return true;
+    return this.runOnTarget('git', ['-C', await this.expandHome(location.path), 'rev-parse', '--is-inside-work-tree']).then(() => true, () => false);
   }
   private discoveredModels = new Map<string, { models: string[]; expires: number }>();
   private pendingModels = new Set<string>();

@@ -36,6 +36,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   const machineProjects = projects.filter((project) => Object.hasOwn(machine.projectPaths, project.id)).map((project) => ({
     ...project, path: machine.projectPaths[project.id], iconUrl: machineId === 'local' ? project.iconUrl : undefined,
   }));
+  const canUseWorktree = catalog.data?.isGitRepo !== false;
   const selectedHarness = machine.harnesses.find((choice) => choice.id === harness);
   const canSubmit = !!(prompt.trim() && !images.uploading && model.trim() && machine.connected && machineProjects.some((project) => project.id === projectId) && selectedHarness?.launchEnabled) && !busy;
   const harnessIds = catalog.data?.harnesses.map((choice) => choice.id).join(',');
@@ -85,7 +86,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     event.preventDefault();
     if (!canSubmit) return;
     setBusy(true); setError('');
-    const payload = JSON.stringify({ prompt: promptWithImages(prompt, images.attachments), projectId, machineId, agent: harness, model: model.trim(), worktree });
+    const payload = JSON.stringify({ prompt: promptWithImages(prompt, images.attachments), projectId, machineId, agent: harness, model: model.trim(), worktree: worktree && canUseWorktree });
     if (operation.current?.payload !== payload) operation.current = { payload, key: uuid() };
     try {
       const result = await fetch('/api/threads', {
@@ -123,7 +124,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
         <LaunchSelectors machine={machine} machines={machines} projects={machineProjects} projectId={projectId} harness={harness} model={model}
           onMachineChange={changeMachine} onProjectChange={changeProject} onHarnessChange={changeHarness} onModelChange={setModel}
           onAddProject={machine.connected && machine.writable ? () => setCreatingWorkspace(true) : undefined} />
-        <Tooltip label={worktree ? 'new worktree' : 'current checkout'}><label className="worktree-option"><input type="checkbox" checked={worktree} onChange={(event) => setWorktree(event.target.checked)} aria-label="Create a new worktree" /><GitBranch size={15} aria-hidden="true" /></label></Tooltip>
+        {canUseWorktree && <Tooltip label={worktree ? 'new worktree' : 'current checkout'}><label className="worktree-option"><input type="checkbox" checked={worktree} onChange={(event) => setWorktree(event.target.checked)} aria-label="Create a new worktree" /><GitBranch size={15} aria-hidden="true" /></label></Tooltip>}
         <div className="composer-actions">
           <Tooltip label="Create thread"><button className="composer-send" type="submit" disabled={!canSubmit} aria-label="Create thread">{busy ? '…' : <ArrowUp size={18} strokeWidth={2.2} />}</button></Tooltip>
         </div>

@@ -7,6 +7,7 @@ export type Machine = {
   projectPaths: Record<string, string>;
   harnesses: MachineHarness[];
   modelsPending?: boolean;
+  isGitRepo?: boolean;
   error?: string;
   writable?: boolean;
   configVersion?: number;
