@@ -16,11 +16,12 @@ const SETTLE_INTERVAL_MS = 350;
 const AGENT_SHARE_OF_TERMINAL_SPLIT = 0.5;
 const SETTLED_READS = 3;
 const pause = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
+const launchSubcommand = (kind: string): string[] => kind === 'opencode' ? ['mini'] : [];
 export function modelArguments(kind: string, model: string): string[] {
   if (!isHerdrAgentKind(kind) || !/^[A-Za-z0-9_/.:+-]{1,120}$/.test(model)) throw new Error('unsupported_launch_adapter');
-  if (model === 'Default') return [];
+  if (model === 'Default') return launchSubcommand(kind);
   if (!acceptsModelFlag(kind)) throw new Error('unsupported_launch_adapter');
-  return ['--model', model];
+  return [...launchSubcommand(kind), '--model', model];
 }
 export const agentName = (threadId: string) => 'web-' + threadId.replaceAll('-', '').slice(0, 28);
 
