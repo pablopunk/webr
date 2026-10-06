@@ -111,6 +111,19 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     if (icon.contentType === 'image/svg+xml') reply.header('Content-Security-Policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'");
     return reply.type(icon.contentType).send(icon.bytes);
   });
+  const candidateParams = z.object({ machineId: opaqueId, projectId: opaqueId });
+  app.get('/api/projects/:machineId/:projectId/icon-candidates', async (request) => {
+    const { machineId, projectId } = candidateParams.parse(request.params);
+    const found = await manager.supervisors.get(machineId)?.target.iconCandidates?.(projectId) ?? [];
+    return found.map((candidate, index) => ({ name: candidate.name, url: `/api/projects/${encodeURIComponent(machineId)}/${encodeURIComponent(projectId)}/icon-candidates/${index}` }));
+  });
+  app.get('/api/projects/:machineId/:projectId/icon-candidates/:index', async (request, reply) => {
+    const { machineId, projectId, index } = candidateParams.extend({ index: z.coerce.number().int().min(0).max(99) }).parse(request.params);
+    const candidate = (await manager.supervisors.get(machineId)?.target.iconCandidates?.(projectId))?.[index];
+    if (!candidate) return reply.code(404).send();
+    if (candidate.contentType === 'image/svg+xml') reply.header('Content-Security-Policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'");
+    return reply.type(candidate.contentType).send(candidate.bytes);
+  });
   app.post('/api/threads', async (request, reply) => {
     const input = launchInput.parse(request.body);
     const key = z.uuid().parse(request.headers['idempotency-key']);

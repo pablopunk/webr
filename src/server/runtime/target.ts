@@ -3,7 +3,7 @@ import type { NativeSnapshot } from '../protocol/native';
 import type { TerminalFrame, TerminalStream } from '../terminal/cli';
 import type { LaunchInput } from '../../shared/runtime';
 import type { WorktreeEntry } from './herdr-actions';
-import type { Icon } from '../transport/icons';
+import type { Icon, IconCandidate } from '../transport/icons';
 
 export type TerminalDirection = 'right' | 'down';
 export type LaunchLocation = { projectId: string; localId?: string; logicalId?: string; path: string; workspaceId: string };
@@ -22,6 +22,7 @@ export type TargetAdapter = {
   catalog(projectId?: string): Promise<Machine>;
   canLaunch?(input: LaunchInput): boolean;
   icon?(projectId: string): Promise<Icon | undefined>;
+  iconCandidates?(projectId: string): Promise<IconCandidate[]>;
   worktrees?(projectId: string): Promise<WorktreeEntry[]>;
   openWorktree?(projectId: string, path: string): Promise<void>;
   suggestDirectories?(prefix: string): Promise<string[]>;

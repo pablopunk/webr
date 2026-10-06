@@ -13,7 +13,7 @@ import { harnessName } from '../../lib/models';
 import { acceptsModelFlag, herdrAgentKinds, isHerdrAgentKind } from '../../shared/agent-kinds';
 import { modelListings, parseModelListing } from './model-discovery';
 import { HerdrActions } from '../runtime/herdr-actions';
-import { readApprovedIcon, type Icon } from './icons';
+import { listIconCandidates, readApprovedIcon, type Icon, type IconCandidate } from './icons';
 import { targetFingerprint } from './identity';
 import { scopedProjectId } from '../../shared/projects';
 import { validateInstalledSchema } from '../protocol/validate';
@@ -41,6 +41,7 @@ export class HerdrTarget implements TargetAdapter {
   private connecting?: Promise<SocketApi>;
   private streams = new Set<ReturnType<typeof openCliStream>>();
   private icons = new Map<string, { expires: number; value: Promise<Icon | undefined> }>();
+  private candidates = new Map<string, { expires: number; value: Promise<IconCandidate[]> }>();
   constructor(private profile: TargetProfile, private dependencies: Dependencies = { process: boundedProcess, cli: openCliStream }) {
     if (profile.transport === 'ssh') this.storeUpload = (fileName, bytes) => uploadOverSsh(profile.host!, fileName, bytes);
     this.id = profile.id; this.name = profile.name; this.session = profile.session;
@@ -148,6 +149,14 @@ export class HerdrTarget implements TargetAdapter {
     if (cached && cached.expires > Date.now()) return cached.value;
     const value = readApprovedIcon(location.path);
     this.icons.set(projectId, { expires: Date.now() + 60_000, value }); return value;
+  }
+  async iconCandidates(projectId: string) {
+    const location = this.locations.find((location) => location.projectId === projectId);
+    if (this.profile.transport !== 'local' || !location) return [];
+    const cached = this.candidates.get(projectId);
+    if (cached && cached.expires > Date.now()) return cached.value;
+    const value = listIconCandidates(location.path);
+    this.candidates.set(projectId, { expires: Date.now() + 60_000, value }); return value;
   }
   openTerminal: TargetAdapter['openTerminal'] = (terminalId, mode, cols, rows, takeover, onFrame, onClose) => {
     if (!this.compatible || mode === 'control' && !this.writable || mode === 'observe' && takeover) throw new Error('terminal_control_unavailable');

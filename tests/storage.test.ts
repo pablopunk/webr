@@ -6,7 +6,7 @@ import { MetadataDatabase } from '../src/server/storage/database';
 import { reconcile } from '../src/server/runtime/reconcile';
 import { RuntimeManager } from '../src/server/runtime/manager';
 import { FakeTarget } from './fixtures/target';
-import { readApprovedIcon } from '../src/server/transport/icons';
+import { listIconCandidates, readApprovedIcon } from '../src/server/transport/icons';
 
 it('migrates a private WAL database repeatedly and retains UUID aliases and avatars after reopening', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'hd-')); const path = join(directory, 'gateway.sqlite');
@@ -50,6 +50,14 @@ it('finds a branded app favicon in a monorepo without selecting another app or e
     await writeFile(join(directory, 'outside.ico'), 'outside');
     await symlink(join(directory, 'outside.ico'), join(root, 'favicon.ico'));
     expect((await readApprovedIcon(root))?.bytes.toString()).toBe('maze');
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+it('lists project icon candidates ordered by likelihood without leaving the approved root', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'hi-')); const root = join(directory, 'root'); await mkdir(join(root, 'public'), { recursive: true });
+  try {
+    await writeFile(join(root, 'logo.png'), 'logo'); await writeFile(join(root, 'public', 'favicon.ico'), 'fav'); await writeFile(join(root, 'photo.png'), 'photo');
+    await writeFile(join(directory, 'outside.png'), 'outside'); await symlink(join(directory, 'outside.png'), join(root, 'icon.png'));
+    expect((await listIconCandidates(root)).map((candidate) => candidate.name)).toEqual(['public/favicon.ico', 'logo.png']);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 it('focuses only a pane that belongs to the thread so Herdr marks finished work as seen', async () => {

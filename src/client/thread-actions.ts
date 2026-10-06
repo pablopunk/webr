@@ -21,6 +21,11 @@ export async function setProjectIcon(project: Project, png: Blob) {
   const response = await fetch(projectIconUrl(project), { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: png });
   if (!response.ok) throw new Error('Could not save this icon.');
 }
+export type IconCandidateOption = { name: string; url: string };
+export async function fetchIconCandidates(project: Project): Promise<IconCandidateOption[]> {
+  const response = await fetch(`/api/projects/${encodeURIComponent(project.machineId ?? 'local')}/${encodeURIComponent(project.id)}/icon-candidates`);
+  return response.ok ? await response.json() : [];
+}
 export async function resetProjectIcon(project: Project) {
   const response = await fetch(projectIconUrl(project), { method: 'DELETE' });
   if (!response.ok) throw new Error('Could not reset this icon.');

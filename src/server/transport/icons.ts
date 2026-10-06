@@ -5,6 +5,8 @@ const contentTypes: Record<string, string> = { '.ico': 'image/x-icon', '.png': '
 const maxBytes = 2 * 1024 * 1024;
 const directories = ['build/Icon.icon/Assets', '', 'public', 'static', 'assets', 'web', 'web/public', 'app/public', 'src/assets', 'src/app', 'frontend/public'];
 export type Icon = { bytes: Buffer; contentType: string };
+export type IconCandidate = Icon & { name: string; rank: number };
+const maxCandidates = 12;
 
 function withinRoot(root: string, path: string) {
   const part = relative(root, path);
@@ -24,7 +26,7 @@ function rank(name: string) {
   return Infinity;
 }
 
-async function iconInDirectory(root: string, directory: string): Promise<Icon | undefined> {
+async function* iconsInDirectory(root: string, directory: string): AsyncGenerator<IconCandidate> {
   let actual: string;
   try { actual = await realpath(directory); } catch { return; }
   if (!withinRoot(root, actual)) return;
@@ -40,7 +42,7 @@ async function iconInDirectory(root: string, directory: string): Promise<Icon | 
       const info = await stat(file);
       if (!info.isFile() || info.size <= 0 || info.size > maxBytes) continue;
       const bytes = await readFile(file);
-      if (bytes.length <= maxBytes) return { bytes, contentType: contentTypes[extname(entry.name).toLowerCase()] };
+      if (bytes.length <= maxBytes) yield { bytes, contentType: contentTypes[extname(entry.name).toLowerCase()], name: relative(root, file), rank: rank(entry.name) };
     } catch {}
   }
 }
@@ -63,11 +65,27 @@ async function sourceDirectories(root: string) {
   } catch { return []; }
 }
 
+async function searchDirectories(root: string) {
+  return [...directories.map((part) => join(root, part)), ...await sourceDirectories(root), ...await appDirectories(root)];
+}
+
 export async function readApprovedIcon(path: string): Promise<Icon | undefined> {
   let root: string;
   try { root = await realpath(path); } catch { return; }
-  for (const directory of [...directories.map((part) => join(root, part)), ...await sourceDirectories(root), ...await appDirectories(root)]) {
-    const icon = await iconInDirectory(root, directory);
-    if (icon) return icon;
+  for (const directory of await searchDirectories(root)) {
+    for await (const icon of iconsInDirectory(root, directory)) return icon;
   }
+}
+
+export async function listIconCandidates(path: string): Promise<IconCandidate[]> {
+  let root: string;
+  try { root = await realpath(path); } catch { return []; }
+  const seen = new Set<string>(); const found: IconCandidate[] = [];
+  for (const directory of await searchDirectories(root)) {
+    for await (const icon of iconsInDirectory(root, directory)) {
+      if (seen.has(icon.name)) continue;
+      seen.add(icon.name); found.push(icon);
+    }
+  }
+  return found.sort((a, b) => a.rank - b.rank).slice(0, maxCandidates);
 }
