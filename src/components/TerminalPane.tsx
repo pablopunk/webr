@@ -12,8 +12,8 @@ import { conflictMessage } from '../client/terminal-manager';
 import { ImagePlus } from 'lucide-react';
 import { useImageAttachments } from './useImageAttachments';
 import { imageFilesFrom } from '../client/image-attach';
-import { openLinkOnModifierClick } from '../client/terminal-links';
-import { bindTerminalClipboard } from '../client/terminal-clipboard';
+import { openLinkUnderModifierClick } from '../client/terminal-links';
+import { bindTerminalClipboard, type CopyOutcome } from '../client/terminal-clipboard';
 import { useTerminalNotice } from './useTerminalNotice';
 import { useVoiceInput } from './useVoiceInput';
 
@@ -61,7 +61,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
   const { notice, show } = useTerminalNotice();
   const images = useImageAttachments({ machineId, active, writable: writableRef, show, send: (text) => { control.current?.input(text, true); } });
   const voice = useVoiceInput({ show, send: (text) => { control.current?.input(text, true); } });
-  const showCopyResult = useRef((copied: boolean) => {}); showCopyResult.current = (copied) => copied ? show('Copied to clipboard', 'info', 1200) : show('The browser blocked clipboard access.', 'error', 4000);
+  const showCopyResult = useRef((outcome: CopyOutcome) => {}); showCopyResult.current = (outcome) => outcome === 'copied' ? show('Copied to clipboard', 'info', 1200) : outcome === 'waiting-for-click' ? show('Click or press a key to finish copying.', 'info', 6000) : show('The browser blocked clipboard access.', 'error', 4000);
 
   useEffect(() => {
     if (!host.current) return;
@@ -81,11 +81,13 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     term.current = terminal;
     const redirectFocus = () => { if (writableRef.current) host.current?.parentElement?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus(); };
     terminal.textarea?.addEventListener('focus', redirectFocus);
-    const clipboard = bindTerminalClipboard(host.current, terminal, () => writableRef.current, (copied) => showCopyResult.current(copied));
+    const clipboard = bindTerminalClipboard(host.current, terminal, () => writableRef.current, (outcome) => showCopyResult.current(outcome));
     const links = terminal.parser.registerOscHandler(8, () => true);
     if (!pane.terminalId) { clipboard(); terminal.dispose(); return; }
     const fit = new FitAddon(); terminal.loadAddon(fit);
-    terminal.loadAddon(new WebLinksAddon(openLinkOnModifierClick));
+    terminal.loadAddon(new WebLinksAddon(() => {}));
+    const openLink = (event: MouseEvent) => openLinkUnderModifierClick(terminal, event);
+    const hostElement = host.current; hostElement.addEventListener('mouseup', openLink);
     const estimatedViewport = () => ({ cols: Math.floor((host.current?.clientWidth ?? 640) / 8), rows: Math.floor((host.current?.clientHeight ?? 400) / 20) });
     const measuredViewport = () => { try { return finiteSize(fit.proposeDimensions()); } catch { return undefined; } };
     const hostIsLaidOut = () => !!host.current?.isConnected && host.current.clientWidth > 0 && host.current.clientHeight > 0;
@@ -107,7 +109,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
       writableRef.current = false; gestures();
       window.removeEventListener('focus', claimSize); document.removeEventListener('visibilitychange', claimSize);
       terminal.textarea?.removeEventListener('focus', redirectFocus);
-      clipboard(); links.dispose(); resize.disconnect(); colorObserver.disconnect();
+      clipboard(); hostElement.removeEventListener('mouseup', openLink); links.dispose(); resize.disconnect(); colorObserver.disconnect();
       terminal.dispose(); term.current = null;
     };
     }).catch(() => setMessage('The terminal could not load.'));

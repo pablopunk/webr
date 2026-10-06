@@ -1,28 +1,28 @@
 // @vitest-environment jsdom
-import { expect, test, vi } from 'vitest';
+import { expect, test } from 'vitest';
 import { Terminal } from '@xterm/xterm';
-import { WebLinksAddon } from '@xterm/addon-web-links';
-import { openLinkOnModifierClick } from '../src/client/terminal-links';
+import { urlAtCell } from '../src/client/terminal-links';
 
-const linksOnFirstLine = async (text: string) => {
-  const terminal = new Terminal({ cols: 80, rows: 5, allowProposedApi: true });
-  let provider: { provideLinks: (line: number, done: (links: { text: string }[]) => void) => void } | undefined;
-  const register = terminal.registerLinkProvider.bind(terminal);
-  terminal.registerLinkProvider = (candidate) => { provider = candidate as typeof provider; return register(candidate); };
-  terminal.loadAddon(new WebLinksAddon(openLinkOnModifierClick));
+const terminalShowing = async (text: string, cols = 80) => {
+  const terminal = new Terminal({ cols, rows: 5, allowProposedApi: true });
   await new Promise<void>((done) => terminal.write(text, done));
-  return new Promise<string[]>((done) => provider!.provideLinks(1, (links) => done(links.map((link) => link.text))));
+  return terminal;
 };
 
-test('detects urls in terminal output', async () => {
-  expect(await linksOnFirstLine('see https://google.es ok')).toEqual(['https://google.es']);
+test('finds the url under a cell', async () => {
+  const terminal = await terminalShowing('see https://google.es ok');
+  expect(urlAtCell(terminal, 10, 0)).toBe('https://google.es');
+  expect(urlAtCell(terminal, 1, 0)).toBeUndefined();
 });
 
-test('opens a link only on Cmd or Ctrl click', () => {
-  const open = vi.spyOn(window, 'open').mockReturnValue(null);
-  openLinkOnModifierClick(new MouseEvent('click'), 'https://google.es');
-  expect(open).not.toHaveBeenCalled();
-  openLinkOnModifierClick(new MouseEvent('click', { metaKey: true }), 'https://google.es');
-  openLinkOnModifierClick(new MouseEvent('click', { ctrlKey: true }), 'https://google.es');
-  expect(open).toHaveBeenCalledTimes(2);
+test('leaves trailing punctuation out of the url', async () => {
+  const terminal = await terminalShowing('go to https://google.es/a.');
+  expect(urlAtCell(terminal, 10, 0)).toBe('https://google.es/a');
+  expect(urlAtCell(terminal, 25, 0)).toBeUndefined();
+});
+
+test('finds a url wrapped over two rows from either row', async () => {
+  const terminal = await terminalShowing('https://example.com/a/long/path', 20);
+  expect(urlAtCell(terminal, 3, 0)).toBe('https://example.com/a/long/path');
+  expect(urlAtCell(terminal, 3, 1)).toBe('https://example.com/a/long/path');
 });

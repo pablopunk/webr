@@ -24,17 +24,24 @@ const hasOwnTextSelection = (target: EventTarget | null) => {
   return !!document.getSelection()?.toString();
 };
 
-export function bindTerminalClipboard(host: HTMLElement, terminal: Terminal, canWriteFromTerminalOutput: () => boolean, onCopied: (copied: boolean) => void) {
-  const copySelectionOnRelease = () => { if (terminal.hasSelection()) void writeClipboardText(terminal.getSelection()).then(onCopied); };
+export type CopyOutcome = 'copied' | 'blocked' | 'waiting-for-click';
+
+export function bindTerminalClipboard(host: HTMLElement, terminal: Terminal, canWriteFromTerminalOutput: () => boolean, onCopied: (outcome: CopyOutcome) => void) {
+  const reportCopy = (copied: boolean) => onCopied(copied ? 'copied' : 'blocked');
+  let textWaitingForClick: string | undefined;
+  const copyWaitingTextOnUserGesture = () => { const text = textWaitingForClick; textWaitingForClick = undefined; if (text !== undefined) void writeClipboardText(text).then(reportCopy); };
+  const copyFromTerminalOutput = (text: string) => void writeClipboardText(text).then((copied) => { if (copied) return reportCopy(true); textWaitingForClick = text; onCopied('waiting-for-click'); });
+  const copySelectionOnRelease = () => { if (terminal.hasSelection()) void writeClipboardText(terminal.getSelection()).then(reportCopy); };
   const copySelectionOnShortcut = (event: ClipboardEvent) => {
     if (event.defaultPrevented || !terminal.hasSelection() || hasOwnTextSelection(event.target)) return;
-    event.clipboardData?.setData('text/plain', terminal.getSelection()); event.preventDefault(); onCopied(true);
+    event.clipboardData?.setData('text/plain', terminal.getSelection()); event.preventDefault(); reportCopy(true);
   };
   const osc52 = terminal.parser.registerOscHandler(OSC_CLIPBOARD, (data) => {
     const text = decodeOsc52ClipboardWrite(data);
-    if (text !== undefined && canWriteFromTerminalOutput()) void writeClipboardText(text).then(onCopied);
+    if (text !== undefined && canWriteFromTerminalOutput()) copyFromTerminalOutput(text);
     return true;
   });
   host.addEventListener('mouseup', copySelectionOnRelease); window.addEventListener('copy', copySelectionOnShortcut);
-  return () => { osc52.dispose(); host.removeEventListener('mouseup', copySelectionOnRelease); window.removeEventListener('copy', copySelectionOnShortcut); };
+  window.addEventListener('pointerdown', copyWaitingTextOnUserGesture, true); window.addEventListener('keydown', copyWaitingTextOnUserGesture, true);
+  return () => { osc52.dispose(); window.removeEventListener('pointerdown', copyWaitingTextOnUserGesture, true); window.removeEventListener('keydown', copyWaitingTextOnUserGesture, true); host.removeEventListener('mouseup', copySelectionOnRelease); window.removeEventListener('copy', copySelectionOnShortcut); };
 }
