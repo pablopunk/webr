@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import { builtSsr, devSsr } from './ssr';
 import { recordPid, restartWhenRebuilt } from './rebuilt-restart';
 import { PID_FILE } from './plugin/files';
+import { UpdateService } from './update/service';
 
 const WILDCARD_HOSTS = ['0.0.0.0', '::'];
 
@@ -37,13 +38,15 @@ export async function runServer() {
   const managesTailscale = !process.env.WEBR_ORIGIN && [...WILDCARD_HOSTS, '127.0.0.1'].includes(host);
   const tailscale = managesTailscale ? await ensureTailscaleHttps(port) : undefined;
   const urls = [...(tailscale?.status === 'ready' ? [tailscale.url] : []), ...publicUrls(origin, host, port, undefined, await detectTailscaleHost())];
-  const app = await createHost(manager, origin, ssr.handler, tls, undefined, { publicUrls: urls, tailscale: tailscale?.status }, { devHmrPort: ssr.hmrPort, transcriber: new Transcriber(modelDirectory(webrHome())) });
+  const updates = process.env.WEBR_DEV === '1' ? undefined : new UpdateService();
+  const app = await createHost(manager, origin, ssr.handler, tls, undefined, { publicUrls: urls, tailscale: tailscale?.status }, { devHmrPort: ssr.hmrPort, transcriber: new Transcriber(modelDirectory(webrHome())), updates });
   await app.listen({ host, port });
   manager.start();
+  const stopWatchingUpdates = updates?.watch();
   if (!process.env.WEBR_TARGETS) void discoverSavedMachines(process.env, boundedProcess, (profile) => manager.addTarget(new HerdrTarget(profile)));
   recordPid(process.env.HERDR_PLUGIN_STATE_DIR, PID_FILE);
   if (process.env.WEBR_DEV !== '1') restartWhenRebuilt(async () => { await Promise.all([app.close(), ssr.stop()]); database.close(); });
   console.log(`Webr listening at ${origin}`);
   if (!isLoopbackHost(host) || urls.length) console.log(`Other devices connect at:\n${(urls.length ? urls : [origin]).map((url) => `  ${url}`).join('\n')}\nThey ask for access and you approve them in Webr on this computer.`);
-  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => { void Promise.all([app.close(), ssr.stop()]).finally(() => { database.close(); process.exit(0); }); });
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => { void Promise.all([app.close(), ssr.stop()]).finally(() => { stopWatchingUpdates?.(); database.close(); process.exit(0); }); });
 }

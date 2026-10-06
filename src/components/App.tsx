@@ -7,6 +7,7 @@ import { CrashReport } from './CrashReport';
 import { NewThreadView } from './NewThreadView';
 import { SettingsView } from './SettingsView';
 import { Sidebar, type SidebarMode } from './Sidebar';
+import { UpdateButton } from './UpdateButton';
 import { applyTheme } from './ThemeControl';
 import { ThreadView } from './ThreadView';
 import { getShortcuts } from './shortcuts';
@@ -151,7 +152,7 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
 
   return <div className={`app-shell ${page === 'thread' ? 'is-thread' : ''}`}>
     <Sidebar projects={projects} threads={threads} archived={archived} machines={machines} currentId={thread?.id} mode={mode} onModeChange={changeMode} collapsed={collapsed}
-      mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} />
+      mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} updateAction={<UpdateButton />} />
     <div className="main-panel">
       {page === 'thread' && thread && <ThreadView thread={thread} connected={gatewayConnected && !!projections[thread.machineId]?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} />}
       {page === 'new' && <NewThreadView key={projectId} projects={projects} machines={machines} selectedProjectId={projectId} onOpenSidebar={toggleSidebar} />}

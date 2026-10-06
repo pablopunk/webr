@@ -14,6 +14,7 @@ import { isTrustedHost } from './auth/access';
 import { registerDevHmrProxy } from './dev-hmr-proxy';
 import { registerVoiceRoutes } from './voice/routes';
 import type { Transcriber } from './voice/transcriber';
+import type { Updates } from '../shared/update';
 import { MAX_IMAGE_BYTES, UploadStore, uploadContentTypes, uploadFileName } from './uploads';
 
 const localOwner = 'local';
@@ -21,7 +22,7 @@ type SsrHandler = (request: FastifyRequest['raw'], response: import('node:http')
 
 const MAX_PROJECT_ICON_BYTES = 512 * 1024;
 
-export async function createHost(manager: RuntimeManager, origin: string, ssr?: SsrHandler, tls?: { key: Buffer; cert: Buffer }, uploads = new UploadStore(), authOptions: AuthOptions = {}, { devHmrPort, transcriber }: { devHmrPort?: number; transcriber?: Transcriber } = {}) {
+export async function createHost(manager: RuntimeManager, origin: string, ssr?: SsrHandler, tls?: { key: Buffer; cert: Buffer }, uploads = new UploadStore(), authOptions: AuthOptions = {}, { devHmrPort, transcriber, updates }: { devHmrPort?: number; transcriber?: Transcriber; updates?: Updates } = {}) {
   const app = Fastify({ logger: false, bodyLimit: 16 * 1024, ...(tls ? { https: tls } : {}), requestTimeout: 10_000 });
   const configuredOrigin = new URL(origin);
   const auth = new Auth(manager.database, configuredOrigin, authOptions);
@@ -53,6 +54,10 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
   auth.routes(app);
   if (devHmrPort) registerDevHmrProxy(app, devHmrPort);
   if (transcriber) registerVoiceRoutes(app, transcriber);
+  if (updates) {
+    app.get('/api/update', async () => updates.status());
+    app.post('/api/update', async (_request, reply) => { const status = updates.start(); return reply.code(status.state === 'updating' ? 202 : 409).send(status); });
+  }
   app.get('/api/catalog/machines', async () => manager.bootstrap().machines);
   app.get('/api/catalog/:machineId', async (request) => {
     const { machineId } = z.object({ machineId: opaqueId }).parse(request.params);

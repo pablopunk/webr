@@ -82,6 +82,9 @@
 .sidebar-palette { display: inline-flex; align-items: center; justify-content: center; padding: 3px 6px; border: 1px solid var(--line-strong); border-radius: 4px; background: transparent; color: var(--ink-soft); }
 .sidebar-palette:hover { color: var(--ink); background: var(--surface-hover); }
 .sidebar-palette kbd { font: 10px/1 var(--font-mono); }
+.sidebar-update { display: inline-flex; flex: none; align-items: center; gap: 5px; padding: 3px 8px; border: 0; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 12px; }
+.sidebar-update:hover:not(:disabled) { filter: brightness(1.08); }
+.sidebar-update:disabled { opacity: .7; }
 .sidebar-settings:hover { color: var(--ink); background: var(--surface-hover); }
 .sidebar-empty { padding: 8px; color: var(--ink-muted); font-size: 13px; }
 .sidebar-scrim, .mobile-close { display: none; }

@@ -34,6 +34,7 @@ type Props = {
   onCollapse: () => void;
   onCloseMobile: () => void;
   onOpenPalette?: () => void;
+  updateAction?: ReactNode;
 };
 
 const statusLabel: Record<Thread['status'], string> = {
@@ -117,7 +118,7 @@ function ArchivedThreads({ threads, renderThread }: { threads: Thread[]; renderT
   </section>;
 }
 
-export function Sidebar({ projects, threads, archived = [], machines, currentId, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile, onOpenPalette }: Props) {
+export function Sidebar({ projects, threads, archived = [], machines, currentId, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile, onOpenPalette, updateAction }: Props) {
   const [closedProjects, setClosedProjects] = useState<string[]>([]);
   const currentProjectId = threads.find((thread) => thread.id === currentId)?.projectId;
   const projectGroups = groupProjectLocations(projects, currentProjectId);
@@ -158,6 +159,7 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
         {!!archived.length && <ArchivedThreads threads={archived} renderThread={(thread) => threadLink(thread, true)} />}
         <div className="sidebar-footer">
           <a className="sidebar-settings" href="/settings"><Settings2 size={15} /> Settings</a>
+          {updateAction}
           <Tooltip label="Open command palette"><button type="button" className="sidebar-palette" aria-label="Open command palette" onClick={onOpenPalette}><kbd>⌘K</kbd></button></Tooltip>
         </div>
       </>}

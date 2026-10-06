@@ -182,3 +182,16 @@ it('stores a custom project icon, serves it with a version, and resets to the de
   expect((await app.inject({ method: 'DELETE', url: `/api/projects/icon?${query}`, headers })).statusCode).toBe(200);
   expect(manager.bootstrap().projects[0].iconUrl ?? '').not.toContain('?v=');
 });
+
+it('serves update status and starts updates only when a service is attached', async () => {
+  const { app, headers } = await setup();
+  expect((await app.inject({ method: 'GET', url: '/api/update', headers })).statusCode).toBe(404);
+  const status = { current: '1.0.0', latest: '1.1.0', available: true, state: 'idle' as const };
+  const started: string[] = [];
+  const database = new MetadataDatabase(':memory:'); cleanups.push(() => database.close());
+  const updates = { status: () => status, start: () => { started.push('start'); return { ...status, state: 'updating' as const }; } };
+  const updating = await createHost(new RuntimeManager(database, [new FakeTarget()]), origin, undefined, undefined, undefined, {}, { updates }); cleanups.push(() => updating.close());
+  expect((await updating.inject({ method: 'GET', url: '/api/update', headers })).json()).toEqual(status);
+  expect((await updating.inject({ method: 'POST', url: '/api/update', headers })).statusCode).toBe(202);
+  expect(started).toEqual(['start']);
+});

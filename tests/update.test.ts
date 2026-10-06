@@ -6,6 +6,7 @@ import { isNewerVersion } from '../server/update/versions';
 import { detectPackageManager, globalInstallCommand } from '../server/update/package-manager';
 import { fetchLatestVersion, isCacheFresh, readCachedLatest, writeCachedLatest } from '../server/update/latest';
 import { updateHint } from '../server/update/hint';
+import { UpdateService, updateCommand } from '../server/update/service';
 import { runUpdate, type UpdateEnvironment } from '../server/update';
 import { packageInfo } from '../server/package-info';
 import { checkHerdr, describeHerdrProblem } from '../server/herdr-check';
@@ -141,4 +142,50 @@ it('turns discovery failures into advice', async () => {
 it('reports an unresponsive session when the ping fails for another reason', async () => {
   const status = await checkHerdr(async () => local, async () => { throw new Error('rpc_timeout'); });
   expect(status).toMatchObject({ ok: false, problem: expect.stringContaining('does not answer') });
+});
+
+const waitingService = (deps: ConstructorParameters<typeof UpdateService>[0] = {}) => {
+  const exits: ((code: number | null) => void)[] = [];
+  const home = deps.env ?? env();
+  writeCachedLatest(newer, home);
+  const service = new UpdateService({ env: home, command: { command: 'webr', args: ['update'] }, run: (_command, onExit) => { exits.push(onExit); }, tail: () => 'boom', restartGraceMs: 5, ...deps });
+  return { service, exits };
+};
+
+it('offers an update only when the registry has a newer version and an update command exists', () => {
+  const { service } = waitingService();
+  expect(service.status()).toMatchObject({ current: version, latest: newer, available: true, state: 'idle' });
+  expect(waitingService({ command: undefined }).service.status().available).toBe(false);
+  const disabled = env({ WEBR_NO_UPDATE_CHECK: '1' });
+  writeCachedLatest(newer, disabled);
+  expect(new UpdateService({ env: disabled, command: { command: 'webr', args: [] } }).status().available).toBe(false);
+});
+
+it('starts one update at a time and reports its output when it fails', () => {
+  const { service, exits } = waitingService();
+  expect(service.start().state).toBe('updating');
+  service.start();
+  expect(exits).toHaveLength(1);
+  exits[0]!(1);
+  expect(service.status()).toMatchObject({ state: 'failed', error: 'The update failed.\nboom' });
+});
+
+it('reports a failure when the update succeeds but the server never restarts', async () => {
+  const { service, exits } = waitingService();
+  service.start();
+  exits[0]!(0);
+  expect(service.status().state).toBe('updating');
+  await expect.poll(() => service.status().state).toBe('failed');
+});
+
+it('refreshes the cached latest version from the registry', async () => {
+  const { service } = waitingService({ fetchLatest: async () => '1000.0.0' });
+  await service.refresh();
+  expect(service.status().latest).toBe('1000.0.0');
+});
+
+it('runs the installed webr for global installs and npx for npx runs', () => {
+  expect(updateCommand('/usr/local/lib/node_modules/@pablopunk/webr/package.json', '@pablopunk/webr')?.args.at(-1)).toBe('update');
+  expect(updateCommand('/h/.npm/_npx/abc/node_modules/@pablopunk/webr/package.json', '@pablopunk/webr')).toEqual({ command: 'npx', args: ['--yes', '@pablopunk/webr@latest', 'update'] });
+  expect(updateCommand('/h/code/webr/package.json', '@pablopunk/webr')).toBeUndefined();
 });
