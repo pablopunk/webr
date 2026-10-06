@@ -24,11 +24,21 @@ export function urlAtCell(terminal: Terminal, column: number, row: number) {
   return undefined;
 }
 
+const trimmedLines = (text: string) => text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+const WHOLE_URL = /^https?:\/\/[^\s"'<>`]+$/;
+
+export function urlFromSelection(selection: string) {
+  const joined = trimmedLines(selection).join('').replace(TRAILING_PUNCTUATION, '');
+  return WHOLE_URL.test(joined) ? joined : undefined;
+}
+
+export const openUrlInNewTab = (url: string) => { window.open(url, '_blank', 'noopener,noreferrer'); };
+
 export function openLinkUnderModifierClick(terminal: Terminal, event: MouseEvent) {
   const screen = terminal.element?.querySelector<HTMLElement>('.xterm-screen'); const rect = screen?.getBoundingClientRect();
   if (!hasOpenModifier(event) || !rect?.width || !rect.height) return;
   const column = Math.floor((event.clientX - rect.left) / rect.width * terminal.cols);
   const row = Math.floor((event.clientY - rect.top) / rect.height * terminal.rows) + terminal.buffer.active.viewportY;
   const url = urlAtCell(terminal, column, row);
-  if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  if (url) openUrlInNewTab(url);
 }

@@ -5,7 +5,7 @@ import { TerminalPane } from '../../src/components/TerminalPane';
 const fixture = vi.hoisted(() => ({ onData: vi.fn(), control: vi.fn(), observe: vi.fn(), input: vi.fn(), close: vi.fn(), mount: vi.fn(), selection: '', dimensions: { cols: 90, rows: 31 } as { cols: number; rows: number }, osc: new Map<number, (data: string) => boolean>() }));
 vi.mock('../../src/client/provider', () => ({ useRuntime: () => ({ terminals: fixture }) }));
 vi.mock('@xterm/xterm', () => ({ Terminal: class {
-  options = {}; cols = 80; rows = 24; element?: HTMLElement; onData = fixture.onData;
+  options = {}; cols = 80; rows = 24; element?: HTMLElement; onData = fixture.onData; onSelectionChange = () => ({ dispose() {} }); clearSelection() { fixture.selection = ''; }
   attachCustomWheelEventHandler() {}
   parser = { registerOscHandler: (code: number, handler: (data: string) => boolean) => { fixture.osc.set(code, handler); return { dispose() { fixture.osc.delete(code); } }; } };
   loadAddon() {}
@@ -119,6 +119,13 @@ it('copies the selection when the mouse is released, like Herdr copy on select',
   fixture.selection = 'npm run dev'; fireEvent.mouseUp(view.container.querySelector('.terminal-host')!);
   await waitFor(() => expect(writeText).toHaveBeenCalledWith('npm run dev')); await waitFor(() => expect(view.container.textContent).toContain('Copied to clipboard'));
   writeText.mockClear(); fixture.selection = ''; fireEvent.mouseUp(view.container.querySelector('.terminal-host')!); expect(writeText).not.toHaveBeenCalled();
+});
+it('offers to open or copy a selected link that was broken over several lines', async () => {
+  stubClipboard(); const open = vi.spyOn(window, 'open').mockReturnValue(null); const view = await mountWritablePane();
+  fixture.selection = 'https://example.com/auth?\n  code=1&state=2  '; fireEvent.mouseUp(view.container.querySelector('.terminal-host')!);
+  fireEvent.click(await screen.findByText('Open link'));
+  expect(open).toHaveBeenCalledWith('https://example.com/auth?code=1&state=2', '_blank', 'noopener,noreferrer'); expect(screen.queryByText('Open link')).toBeNull();
+  fixture.selection = 'npm run dev'; fireEvent.mouseUp(view.container.querySelector('.terminal-host')!); expect(screen.queryByText('Open link')).toBeNull();
 });
 it('puts the selection on the clipboard for the copy shortcut', async () => {
   await mountWritablePane(); fixture.selection = 'selected text';

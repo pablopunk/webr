@@ -12,7 +12,8 @@ import { conflictMessage } from '../client/terminal-manager';
 import { ImagePlus } from 'lucide-react';
 import { useImageAttachments } from './useImageAttachments';
 import { imageFilesFrom } from '../client/image-attach';
-import { openLinkUnderModifierClick } from '../client/terminal-links';
+import { openLinkUnderModifierClick, urlFromSelection } from '../client/terminal-links';
+import { TerminalUrlActions, type SelectedUrl } from './TerminalUrlActions';
 import { bindTerminalClipboard, type CopyOutcome } from '../client/terminal-clipboard';
 import { useTerminalNotice } from './useTerminalNotice';
 import { useVoiceInput } from './useVoiceInput';
@@ -57,6 +58,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
   const [inputFocused, setInputFocused] = useState(false);
   const [ctrl, setCtrl] = useState(false);
   const [touch, setTouch] = useState(false);
+  const [selectedUrl, setSelectedUrl] = useState<SelectedUrl | null>(null);
   useEffect(() => setTouch(matchesCoarsePointer()), []);
   const { notice, show } = useTerminalNotice();
   const images = useImageAttachments({ machineId, active, writable: writableRef, show, send: (text) => { control.current?.input(text, true); } });
@@ -88,6 +90,13 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     terminal.loadAddon(new WebLinksAddon(() => {}));
     const openLink = (event: MouseEvent) => openLinkUnderModifierClick(terminal, event);
     const hostElement = host.current; hostElement.addEventListener('mouseup', openLink);
+    const offerSelectedUrl = (event: MouseEvent) => {
+      const url = terminal.hasSelection() ? urlFromSelection(terminal.getSelection()) : undefined;
+      const origin = section.current?.getBoundingClientRect();
+      setSelectedUrl(url && origin ? { url, x: event.clientX - origin.left, y: event.clientY - origin.top } : null);
+    };
+    const withdrawUrlOffer = () => { if (!terminal.hasSelection()) setSelectedUrl(null); };
+    hostElement.addEventListener('mouseup', offerSelectedUrl); const selection = terminal.onSelectionChange(withdrawUrlOffer);
     const estimatedViewport = () => ({ cols: Math.floor((host.current?.clientWidth ?? 640) / 8), rows: Math.floor((host.current?.clientHeight ?? 400) / 20) });
     const measuredViewport = () => { try { return finiteSize(fit.proposeDimensions()); } catch { return undefined; } };
     const hostIsLaidOut = () => !!host.current?.isConnected && host.current.clientWidth > 0 && host.current.clientHeight > 0;
@@ -109,7 +118,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
       writableRef.current = false; gestures();
       window.removeEventListener('focus', claimSize); document.removeEventListener('visibilitychange', claimSize);
       terminal.textarea?.removeEventListener('focus', redirectFocus);
-      clipboard(); hostElement.removeEventListener('mouseup', openLink); links.dispose(); resize.disconnect(); colorObserver.disconnect();
+      clipboard(); hostElement.removeEventListener('mouseup', openLink); hostElement.removeEventListener('mouseup', offerSelectedUrl); selection.dispose(); setSelectedUrl(null); links.dispose(); resize.disconnect(); colorObserver.disconnect();
       terminal.dispose(); term.current = null;
     };
     }).catch(() => setMessage('The terminal could not load.'));
@@ -154,6 +163,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     {message === conflictMessage && <div className="terminal-control-conflict">Another Herdr client controls this terminal.<button type="button" onClick={(event) => { event.stopPropagation(); void confirmDialog('Replace the other Herdr client that controls this terminal? Its input stops working.', { confirmLabel: 'Take over' }).then((accepted) => { if (accepted) control.current?.control(true); }); }}>Take over</button></div>}
     <div ref={host} className="terminal-host" />
     {images.dragging && <div className="terminal-drop-overlay" aria-hidden="true"><ImagePlus size={22} strokeWidth={1.6} /><span>Drop image to attach</span></div>}
+    {selectedUrl && <TerminalUrlActions selected={selectedUrl} onDone={() => { setSelectedUrl(null); term.current?.clearSelection(); }} onCopied={(copied) => showCopyResult.current(copied ? 'copied' : 'blocked')} />}
     {notice && <div className={`terminal-attach-notice is-${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.text}</div>}
     {(canControl || writable) && <TerminalInput onInput={sendInput} onFocusChange={(focused) => { setInputFocused(focused); if (term.current?.modes.sendFocusMode) control.current?.input(focused ? FOCUS_IN : FOCUS_OUT); }} />}
     {canControl && active && touch && inputFocused && <TerminalKeyBar ctrl={ctrl} onToggleCtrl={() => setCtrl((armed) => !armed)} onBytes={(bytes) => control.current?.input(bytes)} voice={voice} />}
