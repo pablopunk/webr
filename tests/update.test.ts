@@ -161,6 +161,13 @@ it('offers an update only when the registry has a newer version and an update co
   expect(new UpdateService({ env: disabled, command: { command: 'webr', args: [] } }).status().available).toBe(false);
 });
 
+it('checks the registry on demand and reports the fresh status', async () => {
+  const home = env();
+  const service = new UpdateService({ env: home, command: { command: 'webr', args: ['update'] }, fetchLatest: async () => newer });
+  expect(service.status().available).toBe(false);
+  expect(await service.check()).toMatchObject({ latest: newer, available: true });
+});
+
 it('starts one update at a time and reports its output when it fails', () => {
   const { service, exits } = waitingService();
   expect(service.start().state).toBe('updating');

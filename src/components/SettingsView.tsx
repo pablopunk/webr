@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ThemeControl } from './ThemeControl';
 import { RemoteAccess } from './RemoteAccess';
+import { UpdateSetting } from './UpdateSetting';
 import { newSessionBehaviorLabels, readNewSessionBehavior, writeNewSessionBehavior, type NewSessionBehavior } from '../client/new-session-behavior';
 import { defaultShortcuts, getShortcuts, isReservedShortcut, keyCombo, shortcutKeys, shortcutLabels, type ShortcutAction } from './shortcuts';
 
@@ -33,6 +34,7 @@ export function SettingsView({ onOpenSidebar }: {
   return <main className="form-page settings-page">
     <button className="mobile-menu" onClick={onOpenSidebar}>Threads</button>
     <h1>Settings</h1>
+    <UpdateSetting />
     <section><h2>Appearance</h2><div className="settings-row"><span>Theme</span><ThemeControl expanded /></div></section>
     <section><h2>New threads</h2><div className="settings-row"><span>New session behavior</span><div className="theme-control theme-control--labels" role="group" aria-label="New session behavior">{(Object.keys(newSessionBehaviorLabels) as NewSessionBehavior[]).map((choice) => <button key={choice} type="button" aria-pressed={behavior === choice} className={behavior === choice ? 'theme-option is-selected' : 'theme-option'} onClick={() => { setBehavior(choice); writeNewSessionBehavior(choice); }}>{newSessionBehaviorLabels[choice]}</button>)}</div></div></section>
     <RemoteAccess />

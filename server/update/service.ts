@@ -72,6 +72,11 @@ export class UpdateService implements Updates {
     if (latest) writeCachedLatest(latest, this.env);
   }
 
+  async check(): Promise<UpdateStatus> {
+    await this.refresh();
+    return this.status();
+  }
+
   status(): UpdateStatus {
     const { version: current } = packageInfo();
     const latest = readCachedLatest(this.env)?.latest ?? current;

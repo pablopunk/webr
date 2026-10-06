@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { UpdateStatus } from '../shared/update';
 import { alertDialog, confirmDialog } from '../components/dialogs';
 
@@ -9,6 +9,12 @@ const GIVE_UP_MS = 3 * 60 * 1000;
 
 const fetchStatus = async (signal: AbortSignal) => {
   const response = await fetch('/api/update', { signal });
+  if (!response.ok) throw new Error('Updates are not available.');
+  return await response.json() as UpdateStatus;
+};
+
+const postCheck = async () => {
+  const response = await fetch('/api/update/check', { method: 'POST' });
   if (!response.ok) throw new Error('Updates are not available.');
   return await response.json() as UpdateStatus;
 };
@@ -33,6 +39,13 @@ export function useUpdate() {
     return () => clearTimeout(timer);
   }, [updatingFrom, stopWaiting]);
 
+  const queryClient = useQueryClient();
+  const [checking, setChecking] = useState(false);
+  const checkNow = useCallback(async () => {
+    setChecking(true);
+    try { queryClient.setQueryData(['update'], await postCheck()); } catch { await alertDialog('Webr could not check for updates.'); } finally { setChecking(false); }
+  }, [queryClient]);
+
   const requestUpdate = useCallback(async () => {
     if (!data || !await confirmDialog(confirmationMessage(data), { confirmLabel: 'Update' })) return;
     const response = await fetch('/api/update', { method: 'POST' }).catch(() => undefined);
@@ -40,5 +53,5 @@ export function useUpdate() {
     else await alertDialog('Webr could not start the update.');
   }, [data]);
 
-  return { status: data, updating: !!updatingFrom, requestUpdate };
+  return { status: data, updating: !!updatingFrom, checking, checkNow, requestUpdate };
 }
