@@ -141,7 +141,7 @@ it('refuses uploads from another origin, non-images, disguised files, oversized 
   expect((await upload(app, headers, Buffer.from('<svg/>'), 'image/png')).json()).toEqual({ error: 'unsupported_image' });
   expect((await upload(app, headers, Buffer.alloc(21 * 1024 * 1024, 1))).json()).toEqual({ error: 'image_too_large' });
   expect((await upload(app, headers, png, 'image/png', 'missing')).json()).toEqual({ error: 'machine_disconnected' });
-  target.acceptsLocalFiles = false; expect((await upload(app, headers, png)).json()).toEqual({ error: 'uploads_unsupported_target' });
+  target.acceptsUploads = false; expect((await upload(app, headers, png)).json()).toEqual({ error: 'uploads_unsupported_target' });
 });
 it('stores any other file privately under a generated name that keeps its extension', async () => {
   const { app, headers, uploadDirectory } = await setup(); const pdf = Buffer.from('%PDF-1.7 hello');

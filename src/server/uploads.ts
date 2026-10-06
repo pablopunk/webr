@@ -24,17 +24,17 @@ export function imageExtension(contentType: string | undefined, bytes: Buffer) {
   return type.extension;
 }
 
+export function uploadFileName(contentType: string | undefined, name: string | undefined, bytes: Buffer) {
+  if (!isFileUpload(contentType)) return `image-${randomUUID()}.${imageExtension(contentType, bytes)}`;
+  if (!bytes.length) throw new Error('empty_file');
+  if (bytes.length > MAX_FILE_BYTES) throw new Error('file_too_large');
+  return `file-${randomUUID()}${extensionOf(name)}`;
+}
+
 export class UploadStore {
   constructor(readonly directory = resolve(process.env.WEBR_UPLOADS ?? '.data/uploads'), private lifetimeMs = UPLOAD_LIFETIME_MS) {}
-  async save(contentType: string | undefined, bytes: Buffer) {
-    return this.write(`image-${randomUUID()}.${imageExtension(contentType, bytes)}`, bytes);
-  }
-  async saveFile(name: string | undefined, bytes: Buffer) {
-    if (!bytes.length) throw new Error('empty_file');
-    if (bytes.length > MAX_FILE_BYTES) throw new Error('file_too_large');
-    return this.write(`file-${randomUUID()}${extensionOf(name)}`, bytes);
-  }
-  private async write(fileName: string, bytes: Buffer) {
+  save(contentType: string | undefined, bytes: Buffer, name?: string) { return this.saveAs(uploadFileName(contentType, name, bytes), bytes); }
+  async saveAs(fileName: string, bytes: Buffer) {
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     const path = join(this.directory, fileName);
     await writeFile(path, bytes, { mode: 0o600, flag: 'wx' });

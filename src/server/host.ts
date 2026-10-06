@@ -14,7 +14,7 @@ import { isTrustedHost } from './auth/access';
 import { registerDevHmrProxy } from './dev-hmr-proxy';
 import { registerVoiceRoutes } from './voice/routes';
 import type { Transcriber } from './voice/transcriber';
-import { MAX_IMAGE_BYTES, UploadStore, isFileUpload, uploadContentTypes } from './uploads';
+import { MAX_IMAGE_BYTES, UploadStore, uploadContentTypes, uploadFileName } from './uploads';
 
 const localOwner = 'local';
 type SsrHandler = (request: FastifyRequest['raw'], response: import('node:http').ServerResponse, next: (error?: unknown) => void, locals: Record<string, unknown>) => void;
@@ -41,6 +41,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     if (status === 413) return reply.code(413).send({ error: 'image_too_large' });
     if (message === 'file_too_large') return reply.code(413).send({ error: message });
     if (message === 'empty_file') return reply.code(400).send({ error: message });
+    if (message === 'upload_failed') return reply.code(502).send({ error: message });
     if (status === 415 || message === 'unsupported_image') return reply.code(415).send({ error: 'unsupported_image' });
     if (status && status >= 400 && status < 500) return reply.code(status).send({ error: 'invalid_request' });
     if (message === 'thread_not_found') return reply.code(404).send({ error: message });
@@ -64,10 +65,10 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     const { machineId, name } = z.object({ machineId: opaqueId, name: z.string().max(255).optional() }).strict().parse(request.query);
     const supervisor = manager.supervisors.get(machineId);
     if (!supervisor?.connected) return reply.code(409).send({ error: 'machine_disconnected' });
-    if (!supervisor.target.acceptsLocalFiles) return reply.code(409).send({ error: 'uploads_unsupported_target' });
+    if (!supervisor.target.acceptsUploads) return reply.code(409).send({ error: 'uploads_unsupported_target' });
     if (!Buffer.isBuffer(request.body)) return reply.code(415).send({ error: 'unsupported_image' });
-    const contentType = request.headers['content-type'];
-    return { path: isFileUpload(contentType) ? await uploads.saveFile(name, request.body) : await uploads.save(contentType, request.body) };
+    const fileName = uploadFileName(request.headers['content-type'], name, request.body);
+    return { path: supervisor.target.storeUpload ? await supervisor.target.storeUpload(fileName, request.body) : await uploads.saveAs(fileName, request.body) };
   });
   app.get('/api/directories', async (request, reply) => {
     const { machineId, prefix } = z.object({ machineId: opaqueId, prefix: z.string().max(1000).refine((path) => !/[\x00-\x1f]/.test(path)) }).strict().parse(request.query);

@@ -5,6 +5,7 @@ import { SocketApi } from '../protocol/socket';
 import { nativeSnapshot, nativeWorkspace, nativeTab, nativePane } from '../protocol/native';
 import { openCliStream } from '../terminal/cli';
 import { boundedProcess } from './process';
+import { uploadOverSsh } from './remote-upload';
 import { SshForward, sshOptions, remoteCommand, quoteShell } from './ssh';
 import type { LaunchInput } from '../../shared/runtime';
 import type { Machine, MachineOs } from '../../lib/machines';
@@ -31,7 +32,8 @@ export class HerdrTarget implements TargetAdapter {
   get enabled() { return this.profile.enabled; }
   get writable() { return this.compatible; }
   get os() { return this.profile.transport === 'local' ? osFromPlatform(process.platform) : this.remoteOs; }
-  get acceptsLocalFiles() { return this.profile.transport === 'local'; }
+  get acceptsUploads() { return this.profile.transport === 'local' || this.remoteOs !== 'windows'; }
+  storeUpload?: (fileName: string, bytes: Buffer) => Promise<string>;
   private api?: SocketApi;
   private forwarding?: SshForward;
   private compatible = false;
@@ -40,6 +42,7 @@ export class HerdrTarget implements TargetAdapter {
   private streams = new Set<ReturnType<typeof openCliStream>>();
   private icons = new Map<string, { expires: number; value: Promise<Icon | undefined> }>();
   constructor(private profile: TargetProfile, private dependencies: Dependencies = { process: boundedProcess, cli: openCliStream }) {
+    if (profile.transport === 'ssh') this.storeUpload = (fileName, bytes) => uploadOverSsh(profile.host!, fileName, bytes);
     this.id = profile.id; this.name = profile.name; this.session = profile.session;
     this.fingerprint = targetFingerprint(profile);
     this.locations = profile.locations.map((location) => ({ ...location, localId: location.projectId, logicalId: location.logicalId ?? location.projectId, projectId: scopedProjectId(profile.id, location.projectId) }));

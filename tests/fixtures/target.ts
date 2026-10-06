@@ -8,7 +8,7 @@ export function snapshot(): NativeSnapshot {
   return nativeSnapshot.parse({ version: '0.9.3', protocol: 22, workspaces: [{ workspace_id: 'w1', label: 'Fixture', worktree: { repo_key: 'fixture', repo_name: 'fixture', repo_root: '/fixture', checkout_path: '/fixture', is_linked_worktree: false } }], tabs: [{ tab_id: 'w1:t1', workspace_id: 'w1', label: 'Fixture tab' }], panes: [{ pane_id: 'w1:p1', terminal_id: 'term_fixture', workspace_id: 'w1', tab_id: 'w1:t1', focused: true, revision: 1, agent_status: 'idle', cwd: '/fixture' }], layouts: [{ workspace_id: 'w1', tab_id: 'w1:t1', area: { x: 0, y: 0, width: 80, height: 24 }, panes: [{ pane_id: 'w1:p1', rect: { x: 0, y: 0, width: 80, height: 24 } }] }], agents: [] });
 }
 export class FakeTarget implements TargetAdapter {
-  id = 'fixture'; name = 'Fixture'; session = 'fixture'; writable = true; acceptsLocalFiles = true;
+  id = 'fixture'; name = 'Fixture'; session = 'fixture'; writable = true; acceptsUploads = true;
   sourceIdentity = 'source-v1'; configVersion = 1; projectPath = '/fixture';
   get fingerprint() { return this.id + ':' + this.sourceIdentity; }
   get locations() { return [{ projectId: this.id + ':project', localId: 'project', logicalId: 'project', path: this.projectPath, workspaceId: 'w1' }]; }

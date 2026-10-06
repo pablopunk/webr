@@ -15,7 +15,8 @@ export type TargetAdapter = {
   locations: LaunchLocation[];
   writable: boolean;
   os?: MachineOs;
-  acceptsLocalFiles?: boolean;
+  acceptsUploads?: boolean;
+  storeUpload?(fileName: string, bytes: Buffer): Promise<string>;
   subscribe(onEvent: () => void, onClose: (reason: string) => void, paneIds?: string[]): Promise<() => void>;
   snapshot(): Promise<NativeSnapshot>;
   catalog(projectId?: string): Promise<Machine>;

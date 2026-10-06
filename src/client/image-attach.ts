@@ -6,7 +6,8 @@ const uploadErrors: Record<string, string> = {
   file_too_large: 'This file is larger than 5 MB.',
   empty_file: 'This file is empty.',
   unsupported_image: 'Only PNG, JPEG, GIF and WebP images can be attached.',
-  uploads_unsupported_target: 'Images can be attached only on the Local machine for now.',
+  uploads_unsupported_target: 'Files cannot be attached on this machine yet.',
+  upload_failed: 'The file could not be sent to the machine.',
   machine_disconnected: 'The machine is not connected.',
 };
 

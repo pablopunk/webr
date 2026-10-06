@@ -111,7 +111,7 @@ it('explains what went wrong instead of silently ignoring a drop', async () => {
   fireEvent.drop(window, { dataTransfer: filesTransfer([new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'big.zip')]) });
   await waitFor(() => expect(view.container.textContent).toContain('This file is larger than 5 MB.'));
   fireEvent.drop(window, { dataTransfer: filesTransfer([image()]) });
-  await waitFor(() => expect(view.container.textContent).toContain('Images can be attached only on the Local machine for now.')); expect(fixture.input).not.toHaveBeenCalled();
+  await waitFor(() => expect(view.container.textContent).toContain('Files cannot be attached on this machine yet.')); expect(fixture.input).not.toHaveBeenCalled();
 });
 const stubClipboard = () => { const writeText = vi.fn(async () => {}); vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } }); return writeText; };
 it('copies the selection when the mouse is released, like Herdr copy on select', async () => {
