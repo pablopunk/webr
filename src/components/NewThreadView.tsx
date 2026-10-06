@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, GitBranch } from 'lucide-react';
+import { ArrowUp, FileText, GitBranch } from 'lucide-react';
 import type { Project } from '../lib/models';
 import { promptWithImages, usePromptImages } from './usePromptImages';
 import { X } from 'lucide-react';
@@ -113,9 +113,9 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
       {!!machineProjects.length && <button className="workspace-cancel" onClick={() => setCreatingWorkspace(false)}>Cancel</button>}
     </> : <>
     <form className={`thread-composer ${images.dragging ? 'is-dropping' : ''}`} onSubmit={submit} aria-busy={busy} {...images.handlers}>
-      {(images.attachments.length > 0 || images.uploading > 0) && <ul className="composer-images" aria-label="Attached images">
-        {images.attachments.map((image) => <li key={image.id}><img src={image.preview} alt={image.name} /><Tooltip label="Remove image"><button type="button" aria-label={`Remove ${image.name}`} onClick={() => images.remove(image.id)}><X size={12} strokeWidth={2.4} /></button></Tooltip></li>)}
-        {Array.from({ length: images.uploading }, (_, index) => <li key={'uploading-' + index} className="is-uploading" aria-label="Uploading image" />)}
+      {(images.attachments.length > 0 || images.uploading > 0) && <ul className="composer-images" aria-label="Attached files">
+        {images.attachments.map((image) => <li key={image.id} className={image.preview ? undefined : 'is-file'}>{image.preview ? <img src={image.preview} alt={image.name} /> : <><FileText size={18} strokeWidth={1.8} /><span>{image.name}</span></>}<Tooltip label="Remove file"><button type="button" aria-label={`Remove ${image.name}`} onClick={() => images.remove(image.id)}><X size={12} strokeWidth={2.4} /></button></Tooltip></li>)}
+        {Array.from({ length: images.uploading }, (_, index) => <li key={'uploading-' + index} className="is-uploading" aria-label="Uploading file" />)}
       </ul>}
       <textarea autoFocus required maxLength={8000} value={prompt} onChange={(event) => setPrompt(event.target.value)}
         onKeyDown={(event) => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}

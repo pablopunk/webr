@@ -1,7 +1,10 @@
 const attachableTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 export const MAX_ATTACHED_IMAGE_BYTES = 20 * 1024 * 1024;
+export const MAX_ATTACHED_FILE_BYTES = 5 * 1024 * 1024;
 const uploadErrors: Record<string, string> = {
   image_too_large: 'This image is larger than 20 MB.',
+  file_too_large: 'This file is larger than 5 MB.',
+  empty_file: 'This file is empty.',
   unsupported_image: 'Only PNG, JPEG, GIF and WebP images can be attached.',
   uploads_unsupported_target: 'Images can be attached only on the Local machine for now.',
   machine_disconnected: 'The machine is not connected.',
@@ -9,6 +12,7 @@ const uploadErrors: Record<string, string> = {
 
 export const isAttachableImage = (file: File) => attachableTypes.includes(file.type);
 export const imageFilesFrom = (data: DataTransfer | null | undefined) => data?.files ? [...data.files].filter(isAttachableImage) : [];
+export const filesFrom = (data: DataTransfer | null | undefined) => data?.files ? [...data.files] : [];
 export const carriesFiles = (data: DataTransfer | null | undefined) => !!data?.types && [...data.types].includes('Files');
 export const escapePathForTerminal = (path: string) => path.replace(/([\s\\'"()&;$`!*?[\]{}<>|#~])/g, '\\$1');
 
@@ -18,6 +22,15 @@ export async function uploadImage(machineId: string, file: File): Promise<string
   const response = await fetch(`/api/uploads?machineId=${encodeURIComponent(machineId)}`, { method: 'POST', headers: { 'Content-Type': file.type }, body: file });
   const result = await response.json().catch(() => ({})) as { path?: string; error?: string };
   if (!response.ok || !result.path) throw new Error(uploadErrors[result.error ?? ''] ?? 'The image could not be attached.');
+  return result.path;
+}
+
+export async function uploadFile(machineId: string, file: File): Promise<string> {
+  if (isAttachableImage(file)) return uploadImage(machineId, file);
+  if (file.size > MAX_ATTACHED_FILE_BYTES) throw new Error(uploadErrors.file_too_large);
+  const response = await fetch(`/api/uploads?machineId=${encodeURIComponent(machineId)}&name=${encodeURIComponent(file.name)}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
+  const result = await response.json().catch(() => ({})) as { path?: string; error?: string };
+  if (!response.ok || !result.path) throw new Error(uploadErrors[result.error ?? ''] ?? 'The file could not be attached.');
   return result.path;
 }
 
@@ -40,8 +53,8 @@ export async function thumbnailDataUrl(file: File): Promise<string> {
   return canvas.toDataURL('image/jpeg', 0.8);
 }
 
-export async function uploadImagesAsTerminalText(machineId: string, files: File[]) {
+export async function uploadFilesAsTerminalText(machineId: string, files: File[]) {
   const paths: string[] = [];
-  for (const file of files) paths.push(await uploadImage(machineId, file));
+  for (const file of files) paths.push(await uploadFile(machineId, file));
   return paths.map(escapePathForTerminal).join(' ') + ' ';
 }

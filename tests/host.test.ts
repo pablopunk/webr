@@ -136,10 +136,18 @@ it('refuses uploads from another origin, non-images, disguised files, oversized 
   const { app, headers, target } = await setup();
   expect((await upload(app, { ...headers, origin: 'http://evil.test' }, png)).statusCode).toBe(403);
   expect((await upload(app, headers, Buffer.from('hello'), 'text/plain')).json()).toEqual({ error: 'unsupported_image' });
+  expect((await upload(app, headers, Buffer.alloc(5 * 1024 * 1024 + 1, 1), 'application/octet-stream')).json()).toEqual({ error: 'file_too_large' });
+  expect((await upload(app, headers, Buffer.alloc(0), 'application/octet-stream')).statusCode).toBe(400);
   expect((await upload(app, headers, Buffer.from('<svg/>'), 'image/png')).json()).toEqual({ error: 'unsupported_image' });
   expect((await upload(app, headers, Buffer.alloc(21 * 1024 * 1024, 1))).json()).toEqual({ error: 'image_too_large' });
   expect((await upload(app, headers, png, 'image/png', 'missing')).json()).toEqual({ error: 'machine_disconnected' });
   target.acceptsLocalFiles = false; expect((await upload(app, headers, png)).json()).toEqual({ error: 'uploads_unsupported_target' });
+});
+it('stores any other file privately under a generated name that keeps its extension', async () => {
+  const { app, headers, uploadDirectory } = await setup(); const pdf = Buffer.from('%PDF-1.7 hello');
+  const response = await app.inject({ method: 'POST', url: '/api/uploads?machineId=fixture&name=' + encodeURIComponent('../My Report.PDF'), headers: { ...headers, 'content-type': 'application/octet-stream' }, payload: pdf });
+  expect(response.statusCode).toBe(200); const { path } = response.json();
+  expect(path).toMatch(new RegExp('^' + uploadDirectory + '/file-[0-9a-f-]{36}\\.pdf$')); expect(await readFile(path)).toEqual(pdf); expect((await stat(path)).mode & 0o777).toBe(0o600);
 });
 it('removes uploaded images after a week but keeps other files', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'hw-expiry-')); cleanups.push(() => rm(directory, { recursive: true, force: true }));

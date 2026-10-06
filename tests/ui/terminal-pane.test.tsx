@@ -96,7 +96,7 @@ it('uploads a dropped image and pastes its path into the terminal, with an overl
   fireEvent.drop(window, { dataTransfer: filesTransfer([image()]) }); expect(view.container.querySelector('.terminal-drop-overlay')).toBeNull();
   await waitFor(() => expect(fixture.input).toHaveBeenCalledWith('/data/uploads/image-1.png ', true));
   expect(upload).toHaveBeenCalledWith('/api/uploads?machineId=local', expect.objectContaining({ method: 'POST', headers: { 'Content-Type': 'image/png' } }));
-  expect(view.container.textContent).toContain('Image attached');
+  expect(view.container.textContent).toContain('File attached');
 });
 it('attaches a pasted screenshot and several images in one paste', async () => {
   let count = 0; vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ path: `/u/image ${++count}.png` }) })));
@@ -108,8 +108,8 @@ it('attaches a pasted screenshot and several images in one paste', async () => {
 it('explains what went wrong instead of silently ignoring a drop', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, json: async () => ({ error: 'uploads_unsupported_target' }) })));
   const view = await mountWritablePane();
-  fireEvent.drop(window, { dataTransfer: filesTransfer([new File(['x'], 'notes.txt', { type: 'text/plain' })]) });
-  await waitFor(() => expect(view.container.textContent).toContain('Only PNG, JPEG, GIF and WebP images can be attached.'));
+  fireEvent.drop(window, { dataTransfer: filesTransfer([new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'big.zip')]) });
+  await waitFor(() => expect(view.container.textContent).toContain('This file is larger than 5 MB.'));
   fireEvent.drop(window, { dataTransfer: filesTransfer([image()]) });
   await waitFor(() => expect(view.container.textContent).toContain('Images can be attached only on the Local machine for now.')); expect(fixture.input).not.toHaveBeenCalled();
 });

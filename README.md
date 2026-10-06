@@ -21,7 +21,7 @@
 - 🎙️ **Dictate from your phone**: tap the mic and your speech is transcribed on your own computer with Parakeet v3, in 25 languages. The model loads only while you use it.
 - 🪟 **Infinite horizontal panes**: niri-style, every pane in a thread sits on one endless strip you slide through.
 - 👀 **Agents at a glance**: threads grouped by project, with live status and a notification when an agent needs you.
-- 🖼️ **Attach images**: paste or drop screenshots into a prompt.
+- 🖼️ **Attach files**: paste or drop screenshots, or drop any file up to 5 MB, into a prompt.
 - 🚀 **Jump anywhere**: a command palette for threads and actions, and projects and worktrees on remote machines.
 
 ## Mobile

@@ -26,9 +26,19 @@ it('shows dropped and pasted images as thumbnails and adds their paths only to t
   fireEvent.click(screen.getByText('Remove first.png')); expect(screen.queryByAltText('first.png')).toBeNull();
   expect(screen.getByLabelText('payload').textContent).toBe('Describe these /u/image\\ 2.png');
 });
-it('leaves text pastes alone and explains a refused file', async () => {
+it('leaves text pastes alone and does not paste non-image files', async () => {
   vi.stubGlobal('fetch', vi.fn()); render(<Composer />);
   fireEvent.paste(screen.getByLabelText('prompt'), { clipboardData: { files: [], getData: () => 'plain text' } }); expect(fetch).not.toHaveBeenCalled();
-  fireEvent.drop(screen.getByLabelText('composer'), { dataTransfer: transfer([new File(['x'], 'a.pdf', { type: 'application/pdf' })]) });
-  await waitFor(() => expect(screen.getByText('Only PNG, JPEG, GIF and WebP images can be attached.')).toBeDefined());
+  fireEvent.paste(screen.getByLabelText('prompt'), { clipboardData: { files: [new File(['x'], 'a.pdf', { type: 'application/pdf' })], getData: () => '' } }); expect(fetch).not.toHaveBeenCalled();
+});
+it('uploads a dropped non-image file as raw bytes with its name and keeps it without a thumbnail', async () => {
+  const upload = vi.fn(async () => ({ ok: true, json: async () => ({ path: '/u/file-1.pdf' }) })); vi.stubGlobal('fetch', upload); render(<Composer />);
+  fireEvent.drop(screen.getByLabelText('composer'), { dataTransfer: transfer([new File(['x'], 'my report.pdf', { type: 'application/pdf' })]) });
+  await waitFor(() => expect(screen.getByLabelText('payload').textContent).toBe('Describe these /u/file-1.pdf'));
+  expect(upload).toHaveBeenCalledWith('/api/uploads?machineId=local&name=my%20report.pdf', expect.objectContaining({ headers: { 'Content-Type': 'application/octet-stream' } }));
+});
+it('refuses a file over 5 MB before uploading it', async () => {
+  vi.stubGlobal('fetch', vi.fn()); render(<Composer />);
+  fireEvent.drop(screen.getByLabelText('composer'), { dataTransfer: transfer([new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'big.zip')]) });
+  await waitFor(() => expect(screen.getByText('This file is larger than 5 MB.')).toBeDefined()); expect(fetch).not.toHaveBeenCalled();
 });
