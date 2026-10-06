@@ -5,7 +5,7 @@ import { NewThreadView } from '../../src/components/NewThreadView';
 
 vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
 vi.mock('../../src/client/catalog', () => ({ useMachineCatalog: (_id: string, _connected: boolean, _version: number, _session: string, projectId: string) => ({
-  data: { harnesses: projectId === 'local:second' ? [
+  data: { isGitRepo: true, harnesses: projectId === 'local:second' ? [
     { id: 'codex', name: 'Codex', models: ['Default'], launchEnabled: true },
     { id: 'claude', name: 'Claude Code', models: ['Default'], launchEnabled: true },
   ] : [
