@@ -1,19 +1,19 @@
 import { readdir, realpath, stat, readFile } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 
-const contentTypes: Record<string, string> = { '.ico': 'image/x-icon', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp' };
-const maxBytes = 2 * 1024 * 1024;
-const directories = ['build/Icon.icon/Assets', '', 'public', 'static', 'assets', 'web', 'web/public', 'app/public', 'src/assets', 'src/app', 'frontend/public'];
+export const contentTypes: Record<string, string> = { '.ico': 'image/x-icon', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp' };
+export const maxBytes = 2 * 1024 * 1024;
+export const directories = ['build/Icon.icon/Assets', '', 'public', 'static', 'assets', 'web', 'web/public', 'app/public', 'src/assets', 'src/app', 'frontend/public'];
 export type Icon = { bytes: Buffer; contentType: string };
-export type IconCandidate = Icon & { name: string; rank: number };
-const maxCandidates = 12;
+export type IconCandidate = { name: string; contentType: string; rank: number; load(): Promise<Buffer> };
+export const maxCandidates = 12;
 
 function withinRoot(root: string, path: string) {
   const part = relative(root, path);
   return part !== '..' && !part.startsWith(`..${sep}`) && !isAbsolute(part);
 }
 
-function rank(name: string) {
+export function rank(name: string) {
   const extension = extname(name).toLowerCase();
   if (!contentTypes[extension]) return Infinity;
   const stem = name.slice(0, -extension.length).toLowerCase();
@@ -26,7 +26,7 @@ function rank(name: string) {
   return Infinity;
 }
 
-async function* iconsInDirectory(root: string, directory: string): AsyncGenerator<IconCandidate> {
+async function* iconsInDirectory(root: string, directory: string): AsyncGenerator<IconCandidate & Icon> {
   let actual: string;
   try { actual = await realpath(directory); } catch { return; }
   if (!withinRoot(root, actual)) return;
@@ -42,7 +42,7 @@ async function* iconsInDirectory(root: string, directory: string): AsyncGenerato
       const info = await stat(file);
       if (!info.isFile() || info.size <= 0 || info.size > maxBytes) continue;
       const bytes = await readFile(file);
-      if (bytes.length <= maxBytes) yield { bytes, contentType: contentTypes[extname(entry.name).toLowerCase()], name: relative(root, file), rank: rank(entry.name) };
+      if (bytes.length <= maxBytes) yield { bytes, contentType: contentTypes[extname(entry.name).toLowerCase()], name: relative(root, file), rank: rank(entry.name), load: async () => bytes };
     } catch {}
   }
 }
@@ -84,7 +84,7 @@ export async function listIconCandidates(path: string): Promise<IconCandidate[]>
   for (const directory of await searchDirectories(root)) {
     for await (const icon of iconsInDirectory(root, directory)) {
       if (seen.has(icon.name)) continue;
-      seen.add(icon.name); found.push(icon);
+      seen.add(icon.name); found.push({ name: icon.name, contentType: icon.contentType, rank: icon.rank, load: icon.load });
     }
   }
   return found.sort((a, b) => a.rank - b.rank).slice(0, maxCandidates);

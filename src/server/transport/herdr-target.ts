@@ -13,6 +13,7 @@ import { harnessName } from '../../lib/models';
 import { acceptsModelFlag, herdrAgentKinds, isHerdrAgentKind } from '../../shared/agent-kinds';
 import { modelListings, parseModelListing } from './model-discovery';
 import { HerdrActions } from '../runtime/herdr-actions';
+import { listRemoteIconCandidates, readRemoteIcon } from './remote-icons';
 import { listIconCandidates, readApprovedIcon, type Icon, type IconCandidate } from './icons';
 import { targetFingerprint } from './identity';
 import { scopedProjectId } from '../../shared/projects';
@@ -127,10 +128,17 @@ export class HerdrTarget implements TargetAdapter {
       .then((models) => this.discoveredModels.set(kind, { models, expires: Date.now() + MODEL_CACHE_TTL_MS }))
       .finally(() => this.pendingModels.delete(kind));
   }
-  private runOnTarget(command: string, args: string[]) {
+  private runOnTarget(command: string, args: string[], timeoutMs = MODEL_LISTING_TIMEOUT_MS, outputLimit = MODEL_LISTING_LIMIT) {
     return this.profile.transport === 'local'
-      ? this.dependencies.process(command, args, undefined, MODEL_LISTING_TIMEOUT_MS, MODEL_LISTING_LIMIT)
-      : this.dependencies.process('ssh', [...sshOptions, this.profile.host!, [command, ...args].map(quoteShell).join(' ')], undefined, MODEL_LISTING_TIMEOUT_MS, MODEL_LISTING_LIMIT);
+      ? this.dependencies.process(command, args, undefined, timeoutMs, outputLimit)
+      : this.dependencies.process('ssh', [...sshOptions, this.profile.host!, [command, ...args].map(quoteShell).join(' ')], undefined, timeoutMs, outputLimit);
+  }
+  private runForIcons = (command: string, args: string[], timeoutMs: number, outputLimit: number) => this.runOnTarget(command, args, timeoutMs, outputLimit);
+  private async findIcon(path: string) {
+    return this.profile.transport === 'local' ? readApprovedIcon(path) : readRemoteIcon(this.runForIcons, await this.expandHome(path));
+  }
+  private async findIconCandidates(path: string) {
+    return this.profile.transport === 'local' ? listIconCandidates(path) : listRemoteIconCandidates(this.runForIcons, await this.expandHome(path));
   }
   private async expandHome(path: string) {
     if (this.profile.transport === 'local') return expandHome(path);
@@ -144,18 +152,18 @@ export class HerdrTarget implements TargetAdapter {
   suggestDirectories(prefix: string) { return suggestDirectories(prefix, this.profile.transport === 'local' ? listLocalDirectories : this.listRemoteDirectories); }
   async icon(projectId: string) {
     const location = this.locations.find((location) => location.projectId === projectId);
-    if (this.profile.transport !== 'local' || !location) return;
+    if (!location) return;
     const cached = this.icons.get(projectId);
     if (cached && cached.expires > Date.now()) return cached.value;
-    const value = readApprovedIcon(location.path);
+    const value = this.findIcon(location.path);
     this.icons.set(projectId, { expires: Date.now() + 60_000, value }); return value;
   }
   async iconCandidates(projectId: string) {
     const location = this.locations.find((location) => location.projectId === projectId);
-    if (this.profile.transport !== 'local' || !location) return [];
+    if (!location) return [];
     const cached = this.candidates.get(projectId);
     if (cached && cached.expires > Date.now()) return cached.value;
-    const value = listIconCandidates(location.path);
+    const value = this.findIconCandidates(location.path);
     this.candidates.set(projectId, { expires: Date.now() + 60_000, value }); return value;
   }
   openTerminal: TargetAdapter['openTerminal'] = (terminalId, mode, cols, rows, takeover, onFrame, onClose) => {

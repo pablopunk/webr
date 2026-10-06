@@ -121,8 +121,10 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     const { machineId, projectId, index } = candidateParams.extend({ index: z.coerce.number().int().min(0).max(99) }).parse(request.params);
     const candidate = (await manager.supervisors.get(machineId)?.target.iconCandidates?.(projectId))?.[index];
     if (!candidate) return reply.code(404).send();
+    const bytes = await candidate.load().catch(() => undefined);
+    if (!bytes) return reply.code(404).send();
     if (candidate.contentType === 'image/svg+xml') reply.header('Content-Security-Policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'");
-    return reply.type(candidate.contentType).send(candidate.bytes);
+    return reply.type(candidate.contentType).send(bytes);
   });
   app.post('/api/threads', async (request, reply) => {
     const input = launchInput.parse(request.body);

@@ -34,7 +34,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   const catalog = useMachineCatalog(machineId, baseMachine.connected, baseMachine.configVersion, baseMachine.session, projectId);
   const machine = { ...baseMachine, harnesses: baseMachine.connected ? catalog.data?.harnesses ?? [] : [] };
   const machineProjects = projects.filter((project) => Object.hasOwn(machine.projectPaths, project.id)).map((project) => ({
-    ...project, path: machine.projectPaths[project.id], iconUrl: machineId === 'local' ? project.iconUrl : undefined,
+    ...project, path: machine.projectPaths[project.id],
   }));
   const canUseWorktree = catalog.data?.isGitRepo === true;
   const selectedHarness = machine.harnesses.find((choice) => choice.id === harness);
