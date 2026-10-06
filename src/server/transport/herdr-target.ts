@@ -102,7 +102,7 @@ export class HerdrTarget implements TargetAdapter {
     const api = await this.connect();
     await api.request('ping');
     const run = (command: string, args: string[]) => this.runOnTarget(command, args);
-    const isPresent = (kind: string) => run('/bin/sh', ['-c', 'command -v "$1" >/dev/null', 'sh', kind]).then(() => true, () => false);
+    const isPresent = (kind: string) => run('/bin/sh', ['-c', 'command -v "$1"', 'sh', kind]).then((path) => path.trim().length > 0, () => false);
     const present = (await Promise.all(herdrAgentKinds.map(async (kind) => (await isPresent(kind)) ? kind : undefined))).filter((kind): kind is string => !!kind);
     present.forEach((kind) => this.discoverModels(kind));
     const modelsPending = present.some((kind) => this.pendingModels.has(kind));
