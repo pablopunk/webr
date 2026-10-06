@@ -19,7 +19,7 @@ magick(resolve(out, 'favicon-16.png'), resolve(out, 'favicon-32.png'), resolve(o
 paddedOnTile(180, 8, resolve(out, 'apple-touch-icon.png'));
 paddedOnTile(192, 9, resolve(out, 'icon-192.png'));
 paddedOnTile(512, 24, resolve(out, 'icon-512.png'));
-paddedOnTile(512, 110, resolve(out, 'icon-maskable-512.png'));
+paddedOnTile(512, 51, resolve(out, 'icon-maskable-512.png'));
 
 writeFileSync(resolve(out, 'manifest.webmanifest'), `${JSON.stringify({
   name: 'Webr', short_name: 'Webr', id: '/', start_url: '/', scope: '/', display: 'standalone', background_color: tile, theme_color: tile,
