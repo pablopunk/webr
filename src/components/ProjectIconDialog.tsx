@@ -7,7 +7,7 @@ import { fetchIconCandidates, resetProjectIcon, setProjectIcon, type IconCandida
 
 const iconSize = 128;
 
-async function squarePng(file: File): Promise<Blob> {
+async function squarePng(file: Blob): Promise<Blob> {
   const bitmap = await createImageBitmap(file);
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = iconSize;
