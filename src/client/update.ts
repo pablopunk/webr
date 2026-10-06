@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { UpdateStatus } from '../shared/update';
 import { alertDialog, confirmDialog } from '../components/dialogs';
 
-const CHECK_MS = 30 * 60 * 1000;
+const CHECK_MS = 15 * 60 * 1000;
 const POLL_MS = 2000;
 const GIVE_UP_MS = 3 * 60 * 1000;
 

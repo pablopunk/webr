@@ -10,7 +10,7 @@ import { updateCheckDisabled } from './hint';
 import { detectPackageManager, installedPackagePath, isNpxRun } from './package-manager';
 import { isNewerVersion } from './versions';
 
-const REFRESH_MS = 6 * 60 * 60 * 1000;
+const REFRESH_MS = 15 * 60 * 1000;
 const RESTART_GRACE_MS = 60 * 1000;
 const LOG_LINES_SHOWN = 4;
 
