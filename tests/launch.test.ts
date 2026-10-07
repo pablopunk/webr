@@ -4,6 +4,7 @@ import { MetadataDatabase } from '../src/server/storage/database';
 import { LaunchJournal } from '../src/server/runtime/launch';
 import { FakeTarget, launch } from './fixtures/target';
 import { reconcile } from '../src/server/runtime/reconcile';
+import { isListedThread } from '../src/lib/launch';
 
 const databases: MetadataDatabase[] = [];
 afterEach(() => { for (const db of databases.splice(0)) db.close(); });
@@ -28,6 +29,14 @@ it('marks an interrupted durable intent as unknown instead of replaying it', () 
   const { db, target } = setup(); const thread = reconcile(db, target, target.state).threads[0];
   const { operation } = db.beginLaunch('owner', randomUUID(), launch, thread);
   new LaunchJournal(db, () => {}); expect(db.operation(operation.id)?.state).toBe('unknown'); expect(target.effects).toEqual([]);
+});
+it('keeps a failed launch listed for ten minutes after the failure, not after its creation', () => {
+  const { db, target } = setup(); const thread = reconcile(db, target, target.state).threads[0];
+  const { operation } = db.beginLaunch('owner', randomUUID(), launch, thread);
+  const row = db.threadRows()[0];
+  db.saveThread({ ...thread, updatedAt: new Date(Date.now() - 15 * 60_000).toISOString() }, row.anchors, row.alias);
+  db.updateOperation(operation.id, 'failed', 'checkout', {});
+  expect(isListedThread({ ...db.threadRows()[0].metadata, panes: [], operation: { id: operation.id, state: 'failed', step: 'checkout' } }, Date.now() + 5 * 60_000)).toBe(true);
 });
 it('stops queued effects during gateway shutdown without starting, prompting or deleting anything', async () => {
   const { target, journal } = setup(); journal.submit('owner', randomUUID(), launch, target);

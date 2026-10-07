@@ -35,9 +35,9 @@ export class LaunchJournal {
       const created = await target.create(input, thread.id);
       result = { ...created };
       this.database.db.transaction(() => {
-        this.database.updateOperation(id, 'running', 'checkout_complete', result);
         thread.tabId = created.tabId;
         this.database.saveThread(thread, [created.terminalId], created.tabId);
+        this.database.updateOperation(id, 'running', 'checkout_complete', result);
       });
       if (this.stopping) throw new Error('gateway_stopping');
       step = 'start'; this.database.updateOperation(id, 'running', step, result); this.publish();
