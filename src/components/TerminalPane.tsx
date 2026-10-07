@@ -12,7 +12,7 @@ import { conflictMessage } from '../client/terminal-manager';
 import { ImagePlus } from 'lucide-react';
 import { useImageAttachments } from './useImageAttachments';
 import { imageFilesFrom } from '../client/image-attach';
-import { openLinkUnderModifierClick, urlFromSelection } from '../client/terminal-links';
+import { openLinkUnderModifierClick, urlFromSelectedCells } from '../client/terminal-links';
 import { TerminalUrlActions, type SelectedUrl } from './TerminalUrlActions';
 import { bindTerminalClipboard, type CopyOutcome } from '../client/terminal-clipboard';
 import { useTerminalNotice } from './useTerminalNotice';
@@ -91,7 +91,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     const openLink = (event: MouseEvent) => openLinkUnderModifierClick(terminal, event);
     const hostElement = host.current; hostElement.addEventListener('mouseup', openLink);
     const offerSelectedUrl = (event: MouseEvent) => {
-      const url = terminal.hasSelection() ? urlFromSelection(terminal.getSelection()) : undefined;
+      const url = terminal.hasSelection() ? urlFromSelectedCells(terminal) : undefined;
       const origin = section.current?.getBoundingClientRect();
       setSelectedUrl(url && origin ? { url, x: event.clientX - origin.left, y: event.clientY - origin.top } : null);
     };

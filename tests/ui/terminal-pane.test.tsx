@@ -5,7 +5,7 @@ import { TerminalPane } from '../../src/components/TerminalPane';
 const fixture = vi.hoisted(() => ({ onData: vi.fn(), control: vi.fn(), observe: vi.fn(), input: vi.fn(), close: vi.fn(), mount: vi.fn(), selection: '', dimensions: { cols: 90, rows: 31 } as { cols: number; rows: number }, osc: new Map<number, (data: string) => boolean>() }));
 vi.mock('../../src/client/provider', () => ({ useRuntime: () => ({ terminals: fixture }) }));
 vi.mock('@xterm/xterm', () => ({ Terminal: class {
-  options = {}; cols = 80; rows = 24; element?: HTMLElement; onData = fixture.onData; onSelectionChange = () => ({ dispose() {} }); clearSelection() { fixture.selection = ''; }
+  options = {}; cols = 80; rows = 24; element?: HTMLElement; onData = fixture.onData; onSelectionChange = () => ({ dispose() {} }); buffer = { active: { getLine: (row: number) => ({ isWrapped: false, translateToString: () => fixture.selection.split('\n')[row] ?? '' }) } }; getSelectionPosition() { const rows = fixture.selection.split('\n'); return fixture.selection ? { start: { x: 0, y: 0 }, end: { x: rows.at(-1)!.length, y: rows.length - 1 } } : undefined; } clearSelection() { fixture.selection = ''; }
   attachCustomWheelEventHandler() {}
   parser = { registerOscHandler: (code: number, handler: (data: string) => boolean) => { fixture.osc.set(code, handler); return { dispose() { fixture.osc.delete(code); } }; } };
   loadAddon() {}

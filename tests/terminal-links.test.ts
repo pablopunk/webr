@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import { expect, test } from 'vitest';
 import { Terminal } from '@xterm/xterm';
-import { urlAtCell, urlFromSelection } from '../src/client/terminal-links';
+import { urlAtCell, urlFromSelectedCells } from '../src/client/terminal-links';
+
+const selecting = (terminal: Terminal, start: { x: number; y: number }, end: { x: number; y: number } | undefined) => {
+  terminal.getSelectionPosition = () => end && { start, end };
+  return terminal;
+};
 
 const terminalShowing = async (text: string, cols = 80) => {
   const terminal = new Terminal({ cols, rows: 5, allowProposedApi: true });
@@ -27,12 +32,18 @@ test('finds a url wrapped over two rows from either row', async () => {
   expect(urlAtCell(terminal, 3, 1)).toBe('https://example.com/a/long/path');
 });
 
-test('rebuilds a url from a selection broken over modal lines', () => {
-  expect(urlFromSelection('https://signin.workos.com/oauth2/authorize?\nresponse_type=code&client_id=abc\n  &state=1  ')).toBe('https://signin.workos.com/oauth2/authorize?response_type=code&client_id=abc&state=1');
+test('rebuilds a modal url from a selection that also covers the text beside the modal', async () => {
+  const terminal = await terminalShowing('background text https://a.com/x?\r\nmore background  y=1&z=2  tail\r\nxx background   &q=3');
+  expect(urlFromSelectedCells(selecting(terminal, { x: 16, y: 0 }, { x: 20, y: 2 }))).toBe('https://a.com/x?y=1&z=2&q=3');
 });
 
-test('ignores selections that are not a single url', () => {
-  expect(urlFromSelection('see https://google.es')).toBeUndefined();
-  expect(urlFromSelection('https://a.com and more')).toBeUndefined();
-  expect(urlFromSelection('')).toBeUndefined();
+test('rebuilds a url wrapped by the terminal itself', async () => {
+  const terminal = await terminalShowing('go https://example.com/a/long/path', 20);
+  expect(urlFromSelectedCells(selecting(terminal, { x: 3, y: 0 }, { x: 14, y: 1 }))).toBe('https://example.com/a/long/path');
+});
+
+test('ignores selections that are not a url', async () => {
+  const terminal = await terminalShowing('npm run dev');
+  expect(urlFromSelectedCells(selecting(terminal, { x: 0, y: 0 }, { x: 11, y: 0 }))).toBeUndefined();
+  expect(urlFromSelectedCells(selecting(terminal, { x: 0, y: 0 }, undefined))).toBeUndefined();
 });

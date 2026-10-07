@@ -24,12 +24,27 @@ export function urlAtCell(terminal: Terminal, column: number, row: number) {
   return undefined;
 }
 
-const trimmedLines = (text: string) => text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 const WHOLE_URL = /^https?:\/\/[^\s"'<>`]+$/;
+const URL_START = /https?:\/\//;
+const firstToken = (text: string) => text.trim().split(/\s+/)[0] ?? '';
 
-export function urlFromSelection(selection: string) {
-  const joined = trimmedLines(selection).join('').replace(TRAILING_PUNCTUATION, '');
-  return WHOLE_URL.test(joined) ? joined : undefined;
+export function urlFromSelectedCells(terminal: Terminal) {
+  const range = terminal.getSelectionPosition();
+  if (!range) return undefined;
+  const buffer = terminal.buffer.active;
+  const rowText = (row: number) => buffer.getLine(row)?.translateToString(false, 0, terminal.cols) ?? '';
+  const urlStart = rowText(range.start.y).slice(range.start.x, range.start.y === range.end.y ? range.end.x : undefined).search(URL_START);
+  if (urlStart < 0) return undefined;
+  const column = range.start.x + urlStart;
+  const pieces: string[] = [];
+  for (let row = range.start.y; row <= range.end.y; row++) {
+    const from = row > range.start.y && buffer.getLine(row)?.isWrapped ? 0 : column;
+    const piece = firstToken(rowText(row).slice(from, row === range.end.y ? range.end.x : undefined));
+    if (!piece) break;
+    pieces.push(piece);
+  }
+  const url = pieces.join('').replace(TRAILING_PUNCTUATION, '');
+  return WHOLE_URL.test(url) ? url : undefined;
 }
 
 export const openUrlInNewTab = (url: string) => { window.open(url, '_blank', 'noopener,noreferrer'); };
