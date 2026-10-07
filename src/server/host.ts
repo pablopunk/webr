@@ -57,6 +57,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
   if (updates) {
     app.get('/api/update', async () => updates.status());
     app.post('/api/update/check', async () => updates.check());
+    app.post('/api/restart', async (_request, reply) => reply.code(202).send(updates.restart()));
     app.post('/api/update', async (_request, reply) => { const status = updates.start(); return reply.code(status.state === 'updating' ? 202 : 409).send(status); });
   }
   app.get('/api/catalog/machines', async () => manager.bootstrap().machines);

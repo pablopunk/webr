@@ -22,6 +22,7 @@ Usage
   webr status                    Show whether Webr is running and where
   webr open                      Open Webr in your browser
   webr update                    Install the latest version and restart the Herdr plugin
+  webr restart                   Restart the Herdr plugin without updating
 
 Options
   --port <port>     Port to listen on (default: first free port from 4444, then remembered)
@@ -108,6 +109,7 @@ export async function main(argv: string[]) {
   if (!command) return printStatusAndHelp(values);
   if (command === 'start') { applyServerFlags(values); await requireHerdr(); return runServer(); }
   if (command === 'update') return void (await runUpdate(realUpdateEnvironment(() => updatePlugin(defaultDeps())))).forEach((line) => console.log(line));
+  if (command === 'restart') return void ((await updatePlugin(defaultDeps())) ?? ['Restart Herdr to restart Webr.']).forEach((line) => console.log(line));
   if (command === 'refresh-update-cache') return refreshLatestVersionCache().catch(() => undefined);
   if (command === 'status') return printStatus(values);
   if (command === 'open') return void (await openWebr(knownPort(values.port ? ['--port', values.port] : []))).forEach((line) => console.log(line));

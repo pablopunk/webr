@@ -17,9 +17,9 @@ const LOG_LINES_SHOWN = 4;
 export type UpdateCommand = { command: string; args: string[] };
 type Exit = (code: number | null) => void;
 
-export function updateCommand(installPath: string, name: string): UpdateCommand | undefined {
-  if (detectPackageManager(installPath)) return { command: process.execPath, args: [installedEntry(), 'update'] };
-  return isNpxRun(installPath) ? { command: 'npx', args: ['--yes', `${name}@latest`, 'update'] } : undefined;
+export function updateCommand(installPath: string, name: string, subcommand = 'update'): UpdateCommand | undefined {
+  if (detectPackageManager(installPath)) return { command: process.execPath, args: [installedEntry(), subcommand] };
+  return isNpxRun(installPath) ? { command: 'npx', args: ['--yes', `${name}@latest`, subcommand] } : undefined;
 }
 
 const logPath = () => join(webrHome(), 'update.log');
@@ -41,6 +41,7 @@ const logTail = () => {
 export type UpdateServiceDeps = {
   env?: NodeJS.ProcessEnv;
   command?: UpdateCommand | undefined;
+  restartCommand?: UpdateCommand | undefined;
   run?: (command: UpdateCommand, onExit: Exit) => void;
   fetchLatest?: (name: string) => Promise<string>;
   tail?: () => string;
@@ -52,11 +53,13 @@ export class UpdateService implements Updates {
   private error: string | undefined;
   private readonly env: NodeJS.ProcessEnv;
   private readonly command: UpdateCommand | undefined;
+  private readonly restartCommand: UpdateCommand | undefined;
   private readonly name = packageInfo().name;
 
   constructor(private readonly deps: UpdateServiceDeps = {}) {
     this.env = deps.env ?? process.env;
     this.command = 'command' in deps ? deps.command : safely(() => updateCommand(installedPackagePath(), this.name));
+    this.restartCommand = 'restartCommand' in deps ? deps.restartCommand : safely(() => updateCommand(installedPackagePath(), this.name, 'restart'));
   }
 
   watch() {
@@ -89,6 +92,12 @@ export class UpdateService implements Updates {
     this.state = 'updating';
     this.error = undefined;
     (this.deps.run ?? spawnDetached)(this.command, (code) => this.finished(code));
+    return this.status();
+  }
+
+  restart(): UpdateStatus {
+    if (this.state === 'updating' || !this.restartCommand) return this.status();
+    (this.deps.run ?? spawnDetached)(this.restartCommand, (code) => { if (code !== 0) this.fail('Webr could not restart.'); });
     return this.status();
   }
 

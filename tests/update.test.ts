@@ -196,3 +196,15 @@ it('runs the installed webr for global installs and npx for npx runs', () => {
   expect(updateCommand('/h/.npm/_npx/abc/node_modules/@pablopunk/webr/package.json', '@pablopunk/webr')).toEqual({ command: 'npx', args: ['--yes', '@pablopunk/webr@latest', 'update'] });
   expect(updateCommand('/h/code/webr/package.json', '@pablopunk/webr')).toBeUndefined();
 });
+
+it('restarts through the restart command even when no update is available', () => {
+  const ran: string[][] = [];
+  const service = new UpdateService({ env: env(), command: undefined, restartCommand: { command: 'webr', args: ['restart'] }, run: ({ args }) => { ran.push(args); } });
+  expect(service.status().available).toBe(false);
+  service.restart();
+  expect(ran).toEqual([['restart']]);
+});
+
+it('builds the restart command from the installed webr', () => {
+  expect(updateCommand('/usr/local/lib/node_modules/@pablopunk/webr/package.json', '@pablopunk/webr', 'restart')?.args.at(-1)).toBe('restart');
+});

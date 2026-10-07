@@ -3,6 +3,7 @@
 .form-error { color: #d16a64; font-size: 14px; }
 .settings-page section { margin-top: 28px; }
 .settings-page h2 { margin: 18px 0 8px; font-size: 16px; font-weight: 600; }
+.settings-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .settings-row { display: flex; align-items: center; justify-content: space-between; min-height: 48px; gap: 12px; font-size: 16px; }
 .settings-section-title { display: flex; align-items: center; justify-content: space-between; }
 .settings-section-title button { padding: 6px 9px; border: 0; border-radius: 5px; background: transparent; color: var(--ink-soft); font-size: 15px; }
