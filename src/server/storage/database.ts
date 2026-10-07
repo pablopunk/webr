@@ -56,7 +56,13 @@ export class MetadataDatabase {
     });
   }
   updateOperation(id: string, state: string, step: string, result: Record<string, unknown>) {
+    const operation = this.db.select().from(schema.operations).where(eq(schema.operations.id, id)).get();
     this.db.update(schema.operations).set({ state, step, result }).where(eq(schema.operations.id, id)).run();
+    const row = operation && this.db.select().from(schema.threads).where(eq(schema.threads.id, operation.threadId)).get();
+    // Launch lifecycle transitions are updates too: they anchor the failed-launch listing window
+    // to the moment of failure instead of the thread's creation. Callers may already hold a
+    // transaction open, so these statements must not open their own.
+    if (row) this.db.update(schema.threads).set({ metadata: { ...row.metadata, updatedAt: new Date().toISOString() } }).where(eq(schema.threads.id, row.id)).run();
   }
   operation(id: string) { return this.db.select().from(schema.operations).where(eq(schema.operations.id, id)).get(); }
   operations() { return this.db.select().from(schema.operations).all(); }

@@ -44,9 +44,18 @@ it('scopes same local project IDs on two hosts without losing logical grouping o
   const groups = groupProjectLocations(projects, '0123-remote:project'); expect(groups).toHaveLength(1); expect(groups[0].project.path).toBe('/srv/project'); expect(groups[0].locations).toHaveLength(2);
   expect((await manager.catalog(remote.id, '0123-remote:project')).projectPaths['0123-remote:project']).toBe('/srv/project'); await expect(manager.catalog(remote.id, 'fixture:project')).rejects.toThrow('unknown_project_location');
 });
-it('publishes meaningful changes once, not busy frame revisions, and advances activity on agent transitions', async () => {
+it('publishes meaningful changes once, not busy frame revisions, and advances activity only when an agent finishes or asks', async () => {
   const { db, target } = setup(); const manager = new RuntimeManager(db, [target]); cleanups.push(() => manager.close()); const publish = vi.fn(); manager.on('projection', publish); manager.start();
   await expect.poll(() => target.reads).toBe(2); const before = manager.bootstrap().threads[0].updatedAt; const count = publish.mock.calls.length;
   target.state.panes[0].revision++; target.event!(); await expect.poll(() => target.reads).toBe(3); expect(publish.mock.calls.length).toBe(count);
-  target.state.panes[0].agent = 'claude'; target.state.panes[0].agent_status = 'working'; target.event!(); await expect.poll(() => manager.bootstrap().threads[0].status).toBe('working'); expect(manager.bootstrap().threads[0].updatedAt).not.toBe(before);
+  target.state.panes[0].title = '⠋ Loading'; target.state.panes[0].terminal_title_stripped = '⠋ Loading'; target.event!();
+  await expect.poll(() => manager.bootstrap().threads[0].panes[0]?.title).toBe('⠋ Loading');
+  expect(manager.bootstrap().threads[0].updatedAt).toBe(before);
+  target.state.panes[0].agent = 'claude'; target.state.panes[0].agent_status = 'working'; target.event!();
+  await expect.poll(() => manager.bootstrap().threads[0].status).toBe('working'); expect(manager.bootstrap().threads[0].updatedAt).toBe(before);
+  target.state.panes[0].agent_status = 'done'; target.event!();
+  await expect.poll(() => manager.bootstrap().threads[0].status).toBe('done');
+  const finished = manager.bootstrap().threads[0].updatedAt; expect(finished).not.toBe(before);
+  target.state.panes[0].agent_status = 'idle'; target.event!();
+  await expect.poll(() => manager.bootstrap().threads[0].status).toBe('idle'); expect(manager.bootstrap().threads[0].updatedAt).toBe(finished);
 });
