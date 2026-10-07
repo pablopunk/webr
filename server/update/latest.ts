@@ -13,7 +13,7 @@ const cachePath = (env: NodeJS.ProcessEnv) => join(webrHome(env), 'update-check.
 const registryUrl = (packageName: string) => `${REGISTRY}/${packageName.replace('/', '%2F')}/latest`;
 
 export async function fetchLatestVersion(packageName: string, request: Fetch = fetch): Promise<string> {
-  const response = await request(registryUrl(packageName), { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  const response = await request(registryUrl(packageName), { headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' }, cache: 'no-store', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
   if (!response.ok) throw new Error(`The npm registry answered ${response.status}.`);
   const { version } = await response.json() as { version?: unknown };
   if (typeof version !== 'string') throw new Error('The npm registry sent no version.');

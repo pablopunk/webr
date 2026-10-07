@@ -208,3 +208,9 @@ it('restarts through the restart command even when no update is available', () =
 it('builds the restart command from the installed webr', () => {
   expect(updateCommand('/usr/local/lib/node_modules/@pablopunk/webr/package.json', '@pablopunk/webr', 'restart')?.args.at(-1)).toBe('restart');
 });
+
+it('reports a failed manual check instead of keeping the stale version', async () => {
+  const { service } = waitingService({ fetchLatest: async () => { throw new Error('offline'); } });
+  await expect(service.check()).rejects.toThrow('offline');
+  await expect(service.refresh()).resolves.toBeUndefined();
+});

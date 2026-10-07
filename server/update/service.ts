@@ -71,13 +71,16 @@ export class UpdateService implements Updates {
   }
 
   async refresh() {
-    const latest = await (this.deps.fetchLatest ?? fetchLatestVersion)(this.name).catch(() => undefined);
-    if (latest) writeCachedLatest(latest, this.env);
+    await this.fetchAndCache().catch(() => undefined);
   }
 
   async check(): Promise<UpdateStatus> {
-    await this.refresh();
+    await this.fetchAndCache();
     return this.status();
+  }
+
+  private async fetchAndCache() {
+    writeCachedLatest(await (this.deps.fetchLatest ?? fetchLatestVersion)(this.name), this.env);
   }
 
   status(): UpdateStatus {
