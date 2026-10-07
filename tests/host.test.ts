@@ -126,6 +126,13 @@ it('shares one terminal control stream between two browser instances and release
 
 const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32, 7)]);
 const upload = (app: Awaited<ReturnType<typeof createHost>>, headers: Record<string, string>, body: Buffer, type = 'image/png', machineId = 'fixture') => app.inject({ method: 'POST', url: '/api/uploads?machineId=' + machineId, headers: { ...headers, 'content-type': type }, payload: body });
+it('defaults uploaded files to a temporary directory outside the project', () => {
+  const configuredDirectory = process.env.WEBR_UPLOADS;
+  delete process.env.WEBR_UPLOADS;
+  try { expect(new UploadStore().directory).toBe(join(tmpdir(), 'webr-uploads')); }
+  finally { if (configuredDirectory !== undefined) process.env.WEBR_UPLOADS = configuredDirectory; }
+});
+
 it('stores a pasted or dropped image privately and returns its absolute path', async () => {
   const { app, headers, uploadDirectory } = await setup();
   const response = await upload(app, headers, png); expect(response.statusCode).toBe(200);

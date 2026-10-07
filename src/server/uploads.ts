@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
@@ -32,7 +33,7 @@ export function uploadFileName(contentType: string | undefined, name: string | u
 }
 
 export class UploadStore {
-  constructor(readonly directory = resolve(process.env.WEBR_UPLOADS ?? '.data/uploads'), private lifetimeMs = UPLOAD_LIFETIME_MS) {}
+  constructor(readonly directory = resolve(process.env.WEBR_UPLOADS ?? join(tmpdir(), 'webr-uploads')), private lifetimeMs = UPLOAD_LIFETIME_MS) {}
   save(contentType: string | undefined, bytes: Buffer, name?: string) { return this.saveAs(uploadFileName(contentType, name, bytes), bytes); }
   async saveAs(fileName: string, bytes: Buffer) {
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
