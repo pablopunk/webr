@@ -17,7 +17,7 @@
 
 - 📱 **Pair by QR code**: scan a one-time code, approve the device from your computer, and revoke it any time.
 - 🔒 **Private HTTPS over Tailscale**: Webr picks up your tailnet address automatically, so it works away from home and unlocks the microphone.
-- ⌨️ **Real terminal, touch-friendly**: flick to scroll, plus a key bar with Ctrl, Tab and arrows that keeps the keyboard open.
+- ⌨️ **Real terminal, touch-friendly**: click in mouse-aware TUIs, flick to scroll, plus a key bar with Ctrl, Tab and arrows that keeps the keyboard open.
 - 🎙️ **Dictate from your phone**: tap the mic and your speech is transcribed on your own computer with Parakeet v3, in 25 languages. The model loads only while you use it.
 - 🪟 **Infinite horizontal panes**: niri-style, every pane in a thread sits on one endless strip you slide through.
 - 👀 **Agents at a glance**: threads grouped by project, with live status and a notification when an agent needs you.

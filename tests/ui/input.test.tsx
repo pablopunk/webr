@@ -30,15 +30,24 @@ it('does not send incomplete IME input and sends a completed Unicode composition
   fireEvent.compositionEnd(field, { data: '漢字🙂' }); fireEvent.change(field, { target: { value: '漢字🙂' } }); expect(native).toHaveBeenCalledExactlyOnceWith('漢字🙂');
   fireEvent.keyDown(field, { key: 'a' }); fireEvent.change(field, { target: { value: 'a' } }); expect(native.mock.calls.at(-1)).toEqual(['a']);
 });
-it('reserves plain or Shift pointer gestures for selection and only forwards deliberate Alt gestures while writable', () => {
+it('forwards plain clicks to mouse-aware apps while preserving drag selection and Alt gestures', () => {
   const host = document.createElement('div'); document.body.append(host); const mouse = vi.fn(); const scroll = vi.fn(); let writable = true;
   vi.spyOn(host, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 800, height: 240 } as DOMRect);
   const dispose = bindTerminalGestures(host, () => ({ element: host, cols: 80, rows: 24 }), () => ({ mouse, scroll }), () => writable);
-  const pointer = (altKey: boolean, shiftKey = false) => host.dispatchEvent(new MouseEvent('pointerdown', { clientX: 125, clientY: 55, buttons: 1, altKey, shiftKey, cancelable: true }));
-  pointer(false); pointer(true, true); expect(mouse).not.toHaveBeenCalled();
-  pointer(true); expect(mouse).toHaveBeenCalledExactlyOnceWith('down', 'left', 12, 5, 0);
+  const pointer = (type: string, options: { x?: number; y?: number; button?: number; buttons?: number; altKey?: boolean; shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean } = {}) => host.dispatchEvent(new MouseEvent(type, {
+    clientX: options.x ?? 125, clientY: options.y ?? 55, button: options.button ?? 0, buttons: options.buttons ?? 1,
+    altKey: options.altKey, shiftKey: options.shiftKey, ctrlKey: options.ctrlKey, metaKey: options.metaKey, cancelable: true,
+  }));
+  pointer('pointerdown'); pointer('pointerup', { buttons: 0 });
+  expect(mouse.mock.calls).toEqual([['down', 'left', 12, 5, 0], ['up', 'left', 12, 5, 0]]);
+  mouse.mockClear();
+  pointer('pointerdown'); pointer('pointermove', { x: 150, buttons: 1 }); pointer('pointerup', { x: 150, buttons: 0 });
+  pointer('pointerdown', { shiftKey: true }); pointer('pointerup', { shiftKey: true, buttons: 0 });
+  expect(mouse).not.toHaveBeenCalled();
+  pointer('pointerdown', { altKey: true }); pointer('pointerup', { altKey: true, buttons: 0 });
+  expect(mouse.mock.calls).toEqual([['down', 'left', 12, 5, 0], ['up', 'left', 12, 5, 0]]);
   let tick = () => {}; vi.stubGlobal('requestAnimationFrame', (run: () => void) => { tick = run; return 1; }); vi.stubGlobal('cancelAnimationFrame', () => {});
   host.dispatchEvent(new WheelEvent('wheel', { deltaY: -25, cancelable: true })); host.dispatchEvent(new WheelEvent('wheel', { deltaY: -20, cancelable: true })); tick(); expect(scroll).toHaveBeenCalledExactlyOnceWith('up', 62, 1, 1);
-  writable = false; pointer(true); host.dispatchEvent(new WheelEvent('wheel', { deltaY: 40 })); expect(mouse).toHaveBeenCalledTimes(1); expect(scroll).toHaveBeenCalledTimes(1);
+  writable = false; pointer('pointerdown'); pointer('pointerup', { buttons: 0 }); pointer('pointerdown', { altKey: true }); host.dispatchEvent(new WheelEvent('wheel', { deltaY: 40 })); expect(mouse).toHaveBeenCalledTimes(2); expect(scroll).toHaveBeenCalledTimes(1);
   dispose(); host.remove();
 });
