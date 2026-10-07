@@ -50,6 +50,15 @@ npx @pablopunk/webr install
 
 This installs the Herdr plugin, starts Webr and opens the dashboard, with Tailscale HTTPS configured automatically when it's available.
 
+## Update
+
+For a global install, run `webr update`. For an npx install, refresh the plugin with:
+
+```sh
+npx @pablopunk/webr@latest install
+```
+
+
 ## LICENSE
 
 AGPL-3.0-or-later

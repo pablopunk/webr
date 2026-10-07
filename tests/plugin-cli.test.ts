@@ -6,10 +6,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { realRun } from '../server/command';
 import { enterPluginDevMode, stopProductionWebr } from '../server/plugin/dev';
-import { installPlugin, uninstallWebrPlugin, updatePlugin, type PluginDeps } from '../server/plugin';
+import { defaultDeps, installPlugin, uninstallWebrPlugin, updatePlugin, type PluginDeps } from '../server/plugin';
 import { isPortOpen } from '../server/plugin/probe';
 import { modeLines, pluginMode } from '../server/plugin/mode';
 import { PLUGIN_ID, PLUGIN_SOURCE } from '../server/plugin/herdr';
+import { installedEntry } from '../server/entry';
 
 const roots: string[] = [];
 const realHome = process.env.WEBR_HOME;
@@ -97,11 +98,20 @@ it('stops the running Webr when the plugin is uninstalled', async () => {
   expect(existsSync(join(herdr.state, 'webr.pid'))).toBe(false);
 });
 
-it('updates the plugin by stopping the running Webr and letting the new webr reinstall it', async () => {
+it('updates the plugin using its package-local launcher when webr is absent from PATH', async () => {
   const herdr = fakeHerdr('github');
   const webr = await startFakeWebr(herdr);
-  expect(await updatePlugin(herdr.deps())).toEqual(['refreshed']);
-  expect(herdr.webrCalls()).toEqual(['install --no-open']);
+  rmSync(join(herdr.root, 'bin', 'webr'));
+  const path = `${join(herdr.root, 'bin')}:/usr/bin:/bin`;
+  const run: PluginDeps['run'] = (command, args, env) => {
+    if (command !== process.execPath) return herdr.run(command, args, env);
+    const result = spawnSync(command, args, { encoding: 'utf8', env: { ...process.env, ...env, PATH: path } });
+    return { ok: result.status === 0, output: `${result.stdout ?? ''}${result.stderr ?? ''}${result.error?.message ?? ''}` };
+  };
+  expect(defaultDeps().launcher).toEqual({ node: process.execPath, entry: installedEntry() });
+  expect((await updatePlugin(herdr.deps({ run })))?.join('\n')).toContain('Installed the Webr plugin.');
+  expect(herdr.calls()).toContain(`plugin install ${PLUGIN_SOURCE} --yes`);
+  expect(herdr.webrCalls()).toEqual([]);
   await webr.exited;
 });
 

@@ -1,5 +1,6 @@
-import { realpathSync, rmSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { installedEntry } from '../entry';
 import { realRun, type RunCommand } from '../command';
 import { readPluginConfig, writePluginConfig, type PluginConfig, type SavedLauncher } from './config';
 import { pluginStateDir } from './files';
@@ -15,14 +16,9 @@ export type PluginDeps = {
   launcher?: SavedLauncher;
 };
 
-function runningLauncher(): SavedLauncher | undefined {
-  try {
-    const entry = realpathSync(process.argv[1]!);
-    return basename(entry) === 'webr.mjs' ? { node: process.execPath, entry } : undefined;
-  } catch { return undefined; }
-}
+const currentLauncher = (): SavedLauncher => ({ node: process.execPath, entry: installedEntry() });
 
-export const defaultDeps = (): PluginDeps => ({ run: realRun, stateDir: pluginStateDir(), launcher: runningLauncher() });
+export const defaultDeps = (): PluginDeps => ({ run: realRun, stateDir: pluginStateDir(), launcher: currentLauncher() });
 
 export const startNow = (root: string, configDir: string, deps: PluginDeps) =>
   deps.run(process.execPath, [join(root, 'launch.mjs')], { HERDR_PLUGIN_CONFIG_DIR: configDir, HERDR_PLUGIN_STATE_DIR: deps.stateDir }).output.trim();
@@ -61,8 +57,8 @@ export async function updatePlugin(deps: PluginDeps) {
   if (!deps.run('herdr', ['--version']).ok) return undefined;
   if (!installedPlugin(deps.run)) return undefined;
   const address = probeAddress(readPluginConfig(pluginConfigDir(deps.run)));
-  if ((await isPortOpen(address)) && !(await stopPluginWebr(deps.stateDir, address))) return [`Webr is running on port ${address.port} but the plugin did not start it. Stop it and run "webr install" to use the new version.`];
-  const [command, ...args] = deps.launcher ? [deps.launcher.node, deps.launcher.entry] : ['webr'];
-  const refreshed = deps.run(command!, [...args, 'install', '--no-open']);
-  return refreshed.ok ? quiet(refreshed.output) : [`The new Webr could not refresh the plugin. Run "webr install". ${quiet(refreshed.output).join(' ')}`];
+  if ((await isPortOpen(address)) && !(await stopPluginWebr(deps.stateDir, address))) return [`Webr is running on port ${address.port} but the plugin did not start it. Stop it and run "npx @pablopunk/webr@latest install" to use the new version.`];
+  const launcher = deps.launcher ?? currentLauncher();
+  const refreshed = deps.run(launcher.node, [launcher.entry, 'install', '--no-open']);
+  return refreshed.ok ? quiet(refreshed.output) : [`The new Webr could not refresh the plugin. Run "npx @pablopunk/webr@latest install". ${quiet(refreshed.output).join(' ')}`];
 }
