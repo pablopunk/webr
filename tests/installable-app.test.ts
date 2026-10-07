@@ -4,7 +4,7 @@ import { createHost } from '../src/server/host';
 import { RuntimeManager } from '../src/server/runtime/manager';
 import { FakeTarget } from './fixtures/target';
 import { pairPage } from '../src/server/auth/pair-page';
-import { mkdtemp, mkdir, copyFile, readdir, readFile, rm } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -20,8 +20,7 @@ async function setupHost() {
   const database = new MetadataDatabase(':memory:'); cleanups.push(() => database.close());
   const manager = new RuntimeManager(database, [new FakeTarget()]);
   const dist = await mkdtemp(join(tmpdir(), 'webr-dist-')); cleanups.push(() => rm(dist, { recursive: true, force: true }));
-  await mkdir(join(dist, 'client'), { recursive: true });
-  for (const file of await readdir(publicDirectory)) await copyFile(join(publicDirectory, file), join(dist, 'client', file));
+  await cp(publicDirectory, join(dist, 'client'), { recursive: true });
   process.env.WEBR_DIST = dist;
   const app = await createHost(manager, 'http://' + lan, (_request, response) => { response.statusCode = 200; response.end('page'); });
   cleanups.push(() => app.close());
@@ -46,6 +45,13 @@ it('serves the favicon as an icon without a session', async () => {
   const response = await fetchAsStranger('/favicon.ico');
   expect(response.statusCode).toBe(200);
   expect(response.headers['content-type']).toMatch(/icon/);
+});
+
+it('serves harness icons inside the app while keeping them behind the session gate', async () => {
+  const local = await (await setupHost()).inject({ url: '/harness-icons/claude.png' });
+  expect(local.statusCode).toBe(200);
+  expect(local.headers['content-type']).toBe('image/png');
+  expect((await fetchAsStranger('/harness-icons/claude.png')).statusCode).toBe(401);
 });
 
 it('still locks threads and unknown paths behind a session', async () => {

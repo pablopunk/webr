@@ -201,6 +201,10 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
       return reply.sendFile(path, resolve(clientRoot, '_astro'));
     });
     app.get('/:file(^[a-z0-9-]+\\.(?:png|ico|webmanifest)$)', async (request, reply) => reply.sendFile((request.params as { file: string }).file, clientRoot));
+    app.get('/harness-icons/:file(^[a-z0-9-]+\\.png$)', async (request, reply) => {
+      const { file } = z.object({ file: z.string() }).parse(request.params);
+      return reply.sendFile(file, resolve(clientRoot, 'harness-icons'));
+    });
     app.get('/*', async (request, reply) => {
       reply.hijack();
       if (perfLogEnabled) reply.raw.setHeader('Document-Policy', 'js-profiling');

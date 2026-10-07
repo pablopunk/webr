@@ -46,6 +46,7 @@
     "check": "astro check && tsc --noEmit",
     "test": "vitest run",
     "icons": "tsx scripts/build-icons.ts",
+    "harness-icons": "tsx scripts/fetch-harness-icons.ts",
     "validate:offline": "tsx scripts/validate-protocol.ts",
     "prepack": "astro build",
     "smoke:install": "tsx scripts/smoke-install.ts",

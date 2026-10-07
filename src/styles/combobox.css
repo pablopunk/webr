@@ -3,7 +3,7 @@
 .composer-select-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; }
 .composer-select-icon .thread-project { width: 14px; height: 14px; }
 .harness-icon { display: inline-grid; flex: none; place-items: center; color: var(--ink); }
-.harness-icon svg { width: 100%; height: 100%; }
+.harness-icon img { width: 100%; height: 100%; display: block; }
 .harness-icon-letter { font: 700 10px var(--font-mono); }
 .composer-select-label { overflow: hidden; min-width: 0; white-space: nowrap; text-overflow: ellipsis; }
 .composer-select-caret { flex: none; margin-left: 8px; }
