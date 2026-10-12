@@ -4,7 +4,6 @@ import { MetadataDatabase } from '../src/server/storage/database';
 import { createHost } from '../src/server/host';
 import { RuntimeManager } from '../src/server/runtime/manager';
 import { FakeTarget, launch, frame } from './fixtures/target';
-import { isListedThread } from '../src/lib/launch';
 import { decodeFrame } from '../src/shared/frame';
 import { WebSocket } from 'ws';
 import { mkdtemp, readFile, rm, stat, utimes, writeFile, readdir } from 'node:fs/promises';
@@ -121,7 +120,7 @@ it('creates and exposes a terminal-only tab before returning its direct URL data
     requested = { path, label };
     target.state.workspaces.push({ workspace_id: workspaceId, label, worktree: null });
     target.state.tabs.push({ tab_id: tabId, workspace_id: workspaceId, label });
-    target.state.panes.push({ ...firstPane, pane_id: paneId, terminal_id: terminalId, workspace_id: workspaceId, tab_id: tabId, agent: null, cwd: path });
+    target.state.panes.push({ ...firstPane, pane_id: paneId, terminal_id: terminalId, workspace_id: workspaceId, tab_id: tabId, agent: null, title: 'Shell', cwd: path });
     target.state.layouts.push({ workspace_id: workspaceId, tab_id: tabId, area: layout.area, panes: [{ pane_id: paneId, rect: layout.panes[0]!.rect }] });
     return { workspaceId, tabId, terminalId };
   };
@@ -130,9 +129,16 @@ it('creates and exposes a terminal-only tab before returning its direct URL data
   expect(response.statusCode).toBe(201);
   expect(requested).toMatchObject({ path: '~/', label: 'Terminal' });
   expect(response.json()).toMatchObject({ workspaceId, tabId, terminalId });
-  const thread = manager.bootstrap().threads.find((item) => item.tabId === tabId)!;
-  expect(thread).toMatchObject({ bindingState: 'attached', panes: [{ id: paneId, terminalId, kind: 'shell' }] });
-  expect(isListedThread(thread)).toBe(false);
+  expect(manager.bootstrap().threads.some((item) => item.tabId === tabId)).toBe(false);
+  const tab = manager.bootstrap().projections.find((projection) => projection.machineId === target.id)?.availableTabs?.find((item) => item.tabId === tabId);
+  expect(tab).toMatchObject({ bound: false, panes: [{ id: paneId, terminalId, title: 'Shell' }] });
+  expect(manager.terminalBinding(target.id, terminalId, { tabId })).toBe(target);
+  expect(() => manager.terminalBinding(target.id, terminalId, { tabId: 'unknown' })).toThrow('binding_invalid');
+  const sockets = await pair(app, headers);
+  sockets.terminal.send(JSON.stringify({ type: 'open', streamId: 1, generation: 1, machineId: target.id, tabId, terminalId, mode: 'control', takeover: false, cols: 80, rows: 24 }));
+  await expect.poll(() => target.streams.length).toBe(1);
+  expect(target.streams[0]?.closed).toBe(false);
+  sockets.metadata.close();
 });
 it('shares one terminal control stream between two browser instances and releases it with the last one', async () => {
   const { app, headers, manager, target } = await setup();

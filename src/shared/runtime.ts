@@ -21,8 +21,9 @@ export type Projection = {
 };
 export type Bootstrap = { projections: Projection[]; machines: Machine[]; projects: Project[]; threads: Thread[] };
 const streamRef = { streamId: z.number().int().min(1).max(0xffffffff), generation: z.number().int().min(1).max(0xffffffff) };
-export const terminalAction = z.discriminatedUnion('type', [
+export const terminalAction = z.union([
   z.object({ type: z.literal('open'), ...streamRef, machineId: opaqueId, threadId: z.uuid(), terminalId: opaqueId, cols: z.number().int().min(2).max(500), rows: z.number().int().min(1).max(300), mode: z.enum(['observe', 'control']), takeover: z.boolean() }).strict(),
+  z.object({ type: z.literal('open'), ...streamRef, machineId: opaqueId, tabId: opaqueId, terminalId: opaqueId, cols: z.number().int().min(2).max(500), rows: z.number().int().min(1).max(300), mode: z.enum(['observe', 'control']), takeover: z.boolean() }).strict(),
   z.object({ type: z.literal('ack'), ...streamRef, seq: z.number().int().nonnegative() }).strict(),
   z.object({ type: z.literal('release'), ...streamRef }).strict(),
   z.object({ type: z.literal('input'), ...streamRef, text: z.string().min(1).max(8192), paste: z.boolean() }).strict(),

@@ -6,7 +6,7 @@ import { retryDelay } from '../shared/retry';
 import { count, gauge, perfNow, time } from './perf';
 import { uuid } from '../lib/uuid';
 
-type VisiblePane = { machineId: string; threadId: string; terminalId: string; terminal: Terminal; mode: 'observe' | 'control'; generation: number; sequence: FrameSequence; renderer?: TerminalRenderer; writable: boolean; accepted: boolean; baseline: boolean; pending: number; resizing: boolean; reason?: string; cols: number; rows: number; onState: (message: string, writable: boolean) => void; attempts: number };
+type VisiblePane = { machineId: string; threadId?: string; tabId?: string; terminalId: string; terminal: Terminal; mode: 'observe' | 'control'; generation: number; sequence: FrameSequence; renderer?: TerminalRenderer; writable: boolean; accepted: boolean; baseline: boolean; pending: number; resizing: boolean; reason?: string; cols: number; rows: number; onState: (message: string, writable: boolean) => void; attempts: number };
 export const conflictMessage = 'Another controller owns this terminal.';
 export class BrowserTerminalManager {
   private metadata?: WebSocket;
@@ -74,7 +74,7 @@ export class BrowserTerminalManager {
     });
     pane.onState(pane.mode === 'control' ? 'Waiting for terminal control.' : pane.reason ?? 'Read-only', false);
     this.openedAt.set(id, perfNow());
-    this.send({ type: 'open', streamId: id, generation: pane.generation, machineId: pane.machineId, threadId: pane.threadId, terminalId: pane.terminalId, mode: pane.mode, cols: pane.cols, rows: pane.rows, takeover });
+    this.send({ type: 'open', streamId: id, generation: pane.generation, machineId: pane.machineId, ...(pane.threadId ? { threadId: pane.threadId } : { tabId: pane.tabId! }), terminalId: pane.terminalId, mode: pane.mode, cols: pane.cols, rows: pane.rows, takeover });
   }
   private connect() {
     if (this.stopped) return;

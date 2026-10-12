@@ -46,7 +46,7 @@ function loadGlyphRenderer(terminal: Terminal, create: () => { onContextLoss(lis
   try { const renderer = create(); renderer.onContextLoss(() => renderer.dispose()); terminal.loadAddon(renderer as never); } catch { /* DOM renderer stays active */ }
 }
 
-export function TerminalPane({ pane, machineId, threadId, active, canControl, onFocus }: { pane: Pane; machineId: string; threadId: string; active: boolean; canControl: boolean; onFocus: () => void }) {
+export function TerminalPane({ pane, machineId, threadId, tabId, active, canControl, onFocus }: { pane: Pane; machineId: string; threadId?: string; tabId?: string; active: boolean; canControl: boolean; onFocus: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const section = useRef<HTMLElement>(null);
   const term = useRef<Terminal | null>(null);
@@ -101,7 +101,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     const measuredViewport = () => { try { return finiteSize(fit.proposeDimensions()); } catch { return undefined; } };
     const hostIsLaidOut = () => !!host.current?.isConnected && host.current.clientWidth > 0 && host.current.clientHeight > 0;
     const viewport = () => { const { cols, rows } = measuredViewport() ?? estimatedViewport(); return { cols: Math.max(2, Math.min(500, cols)), rows: Math.max(1, Math.min(300, rows)) }; };
-    control.current = terminals.mount({ machineId, threadId, terminalId: pane.terminalId, terminal, mode: canControl ? 'control' : 'observe', ...viewport(), onState: (message, writable) => { setMessage(message); setWritable(writable); writableRef.current = writable; } });
+    control.current = terminals.mount({ machineId, ...(threadId ? { threadId } : { tabId }), terminalId: pane.terminalId, terminal, mode: canControl ? 'control' : 'observe', ...viewport(), onState: (message, writable) => { setMessage(message); setWritable(writable); writableRef.current = writable; } });
     const gestures = bindTerminalGestures(host.current, () => ({ element: terminal.element?.querySelector<HTMLElement>('.xterm-screen') ?? undefined, cols: terminal.cols, rows: terminal.rows }), () => control.current, () => writableRef.current);
     let timer: ReturnType<typeof setTimeout>;
     const resize = new ResizeObserver(() => {
@@ -123,7 +123,7 @@ export function TerminalPane({ pane, machineId, threadId, active, canControl, on
     };
     }).catch(() => setMessage('The terminal could not load.'));
     return () => { disposed = true; cleanup(); };
-  }, [pane.id, pane.terminalId, machineId, threadId, terminals, canControl]);
+  }, [pane.id, pane.terminalId, machineId, threadId, tabId, terminals, canControl]);
 
 
   const sendInput = (text: string, paste?: boolean) => {

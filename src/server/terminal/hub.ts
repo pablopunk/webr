@@ -6,7 +6,8 @@ import type { TerminalFrame, TerminalStream } from './cli';
 import { encodeUserInput } from './writer';
 import { perfLog } from '../perf-log';
 
-type Lease = { id: number; generation: number; terminalId: string; machineId: string; threadId: string; mode: string; stream?: TerminalStream; outstanding: Map<number, number>; bytes: number; sequence: FrameSequence; baselineReady: boolean; outputSeq: number; started: boolean; baselineSeq?: number; expectedSize?: [number, number]; timer?: ReturnType<typeof setTimeout>; scrollAt?: number; scrollMode?: { value: 'scrollback' | 'app'; checkedAt: number } };
+type TerminalRef = { threadId: string } | { tabId: string };
+type Lease = { id: number; generation: number; terminalId: string; machineId: string; ref: TerminalRef; mode: string; stream?: TerminalStream; outstanding: Map<number, number>; bytes: number; sequence: FrameSequence; baselineReady: boolean; outputSeq: number; started: boolean; baselineSeq?: number; expectedSize?: [number, number]; timer?: ReturnType<typeof setTimeout>; scrollAt?: number; scrollMode?: { value: 'scrollback' | 'app'; checkedAt: number } };
 const MAX_WHEEL_TICKS = 30;
 const SCROLL_MODE_CHECK_MS = 1000;
 type SharedControl = { stream: TerminalStream; sequence: FrameSequence; members: Map<Lease, string>; closed: boolean };
@@ -15,9 +16,9 @@ export class TerminalHub {
   private controllers = new Map<string, SharedControl>();
   private expiry: ReturnType<typeof setInterval>;
   constructor(private manager: RuntimeManager, private streamBudget = 512 * 1024, private totalBudget = 2 * 1024 * 1024) {
-    this.expiry = setInterval(() => { for (const [owner, viewer] of this.viewers) for (const lease of viewer.leases.values()) if (lease.mode === 'control') { try { if (!manager.binding(lease.machineId, lease.threadId, lease.terminalId).writable) this.release(owner, lease.id, 'capability_revoked'); } catch { this.release(owner, lease.id, 'binding_invalid'); } } }, 250);
+    this.expiry = setInterval(() => { for (const [owner, viewer] of this.viewers) for (const lease of viewer.leases.values()) if (lease.mode === 'control') { try { if (!this.binding(lease).writable) this.release(owner, lease.id, 'capability_revoked'); } catch { this.release(owner, lease.id, 'binding_invalid'); } } }, 250);
     this.expiry.unref();
-    manager.on('projection', () => { for (const [owner, viewer] of this.viewers) for (const lease of viewer.leases.values()) { try { manager.binding(lease.machineId, lease.threadId, lease.terminalId); } catch { this.release(owner, lease.id, 'binding_invalid'); } } });
+    manager.on('projection', () => { for (const [owner, viewer] of this.viewers) for (const lease of viewer.leases.values()) { try { this.binding(lease); } catch { this.release(owner, lease.id, 'binding_invalid'); } } });
   }
   close() { clearInterval(this.expiry); for (const owner of this.viewers.keys()) this.detach(owner); }
   attach(owner: string, socket: WebSocket) { if (this.viewers.has(owner)) throw new Error('duplicate_terminal_socket'); this.viewers.set(owner, { socket, leases: new Map(), bytes: 0 }); }
@@ -27,10 +28,11 @@ export class TerminalHub {
     if (!viewer) throw new Error('viewer_missing');
     if (action.type === 'open') {
       if (viewer.leases.size >= 16 || viewer.leases.has(action.streamId)) throw new Error('stream_limit');
-      const target = this.manager.binding(action.machineId, action.threadId, action.terminalId);
+      const ref: TerminalRef = 'threadId' in action ? { threadId: action.threadId } : { tabId: action.tabId };
+      const target = this.manager.terminalBinding(action.machineId, action.terminalId, ref);
       if (action.mode === 'control' && !target.writable) throw new Error('read_only_target');
       const controllerKey = action.machineId + '\0' + action.terminalId;
-      const lease: Lease = { id: action.streamId, generation: action.generation, machineId: action.machineId, threadId: action.threadId, terminalId: action.terminalId, mode: action.mode, outstanding: new Map(), bytes: 0, sequence: new FrameSequence(), baselineReady: false, outputSeq: 0, started: false };
+      const lease: Lease = { id: action.streamId, generation: action.generation, machineId: action.machineId, ref, terminalId: action.terminalId, mode: action.mode, outstanding: new Map(), bytes: 0, sequence: new FrameSequence(), baselineReady: false, outputSeq: 0, started: false };
       viewer.leases.set(lease.id, lease);
       try {
         lease.stream = action.mode === 'control'
@@ -52,7 +54,7 @@ export class TerminalHub {
       clearTimeout(lease.timer); lease.timer = lease.outstanding.size ? setTimeout(() => this.release(owner, lease.id, 'ack_timeout'), 5000) : undefined;
       return;
     }
-    const target = this.manager.binding(lease.machineId, lease.threadId, lease.terminalId);
+    const target = this.binding(lease);
     if (lease.mode !== 'control') throw new Error('observer_read_only');
     if (!target.writable) { this.release(owner, lease.id, 'capability_revoked'); throw new Error('read_only_target'); }
     if (action.type !== 'resize' && !lease.baselineReady) throw new Error('baseline_not_acknowledged');
@@ -122,6 +124,7 @@ export class TerminalHub {
     lease.scrollMode = { value: lease.scrollMode?.value ?? 'scrollback', checkedAt: Date.now() };
     void target.scrollMode(lease.terminalId).then((value) => { lease.scrollMode = { value, checkedAt: Date.now() }; }, () => undefined);
   }
+  private binding(lease: Lease) { return this.manager.terminalBinding(lease.machineId, lease.terminalId, lease.ref); }
   private logScrollReply(lease: Lease, full: boolean, bytes: number, buffered: number) {
     if (lease.scrollAt === undefined) return;
     perfLog('server', { event: 'scroll.reply', herdrRoundTripMs: performance.now() - lease.scrollAt, full, bytes, socketBufferedBytes: buffered });

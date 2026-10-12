@@ -71,6 +71,14 @@ export class RuntimeManager extends EventEmitter {
     if (!supervisor?.connected || !thread || thread.bindingFingerprint !== supervisor.target.fingerprint || thread.bindingConfigVersion !== supervisor.target.configVersion || thread.session !== supervisor.target.session || thread.bindingState !== 'attached' || !thread.panes.some((pane) => pane.terminalId === terminalId)) throw new Error('binding_invalid');
     return supervisor.target;
   }
+  terminalBinding(machineId: string, terminalId: string, ref: { threadId?: string; tabId?: string }) {
+    if (ref.threadId) return this.binding(machineId, ref.threadId, terminalId);
+    const supervisor = this.supervisors.get(machineId);
+    const projection = this.projections.get(machineId);
+    const tab = ref.tabId && projection?.availableTabs?.find((item) => item.tabId === ref.tabId && !item.bound && item.panes.some((pane) => pane.terminalId === terminalId));
+    if (!supervisor?.connected || !projection?.connected || !tab) throw new Error('binding_invalid');
+    return supervisor.target;
+  }
   async adopt(machineId: string, threadId: string, terminalIds: string[]) {
     const supervisor = this.supervisors.get(machineId);
     const row = this.database.threadRows(machineId).find((row) => row.id === threadId);

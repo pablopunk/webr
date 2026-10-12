@@ -10,12 +10,14 @@ import { Sidebar, type SidebarMode } from './Sidebar';
 import { UpdateButton } from './UpdateButton';
 import { applyTheme } from './ThemeControl';
 import { ThreadView } from './ThreadView';
+import { TerminalTabView } from './TerminalTabView';
 import { getShortcuts } from './shortcuts';
 import { navigate } from 'astro:transitions/client';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from 'zustand';
 import { RuntimeProvider, useRuntime, useRuntimeSelector } from '../client/provider';
 import type { Bootstrap } from '../shared/runtime';
+import type { Pane } from '../lib/models';
 import { appShortcutAction } from '../client/keyboard';
 import { perfAvailable, startPerf } from '../client/perf';
 import { closeThreadPane, openThreadTerminal } from '../client/thread-actions';
@@ -28,9 +30,11 @@ import { carriesFiles } from '../client/image-attach';
 import { trackVisualViewport } from '../client/visual-viewport';
 
 type Props = {
-  page: 'thread' | 'new' | 'settings' | 'missing';
+  page: 'thread' | 'terminal' | 'new' | 'settings' | 'missing';
   bootstrap: Bootstrap;
   threadId?: string;
+  machineId?: string;
+  tabId?: string;
   projectId?: string;
 };
 
@@ -40,7 +44,7 @@ export default function App(props: Props) {
   return <CrashReport><RuntimeProvider bootstrap={props.bootstrap}><RuntimeApp {...props} /></RuntimeProvider></CrashReport>;
 }
 
-function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
+function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId }: Props) {
   const { ui, terminals } = useRuntime();
   const projects = useRuntimeSelector(useShallow((state) => state.projectIds.map((id) => state.projects[id])));
   const threads = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id]).filter((item) => !item.archivedAt && isListedThread(item))));
@@ -48,6 +52,8 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
   const thread = useRuntimeSelector((state) => state.threads[threadId ?? '']);
   const projections = useRuntimeSelector((state) => state.projections);
   const gatewayConnected = useRuntimeSelector((state) => state.connected);
+  const standaloneTab = useRuntimeSelector((state) => page === 'terminal' ? state.projections[machineId ?? '']?.availableTabs?.find((tab) => tab.tabId === tabId && !tab.bound) : undefined);
+  const terminalPanes: Pane[] = standaloneTab?.panes.map((pane) => ({ ...pane, kind: 'shell' })) ?? [];
   const machines = Object.values(projections).flatMap((projection) => { const machine = projection.machine ?? bootstrap.machines.find((machine) => machine.id === projection.machineId); return machine ? [{ ...machine, connected: gatewayConnected && projection.connected, error: projection.error }] : []; });
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -55,9 +61,10 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
   useEffect(startPerf, []);
   useEffect(trackVisualViewport, []);
   const [mode, setMode] = useState<SidebarMode>('threads');
-  const scope = `${thread?.machineId ?? ''}:${thread?.id ?? ''}`;
+  const scope = page === 'terminal' ? `${machineId ?? ''}:tab:${tabId ?? ''}` : `${thread?.machineId ?? ''}:${thread?.id ?? ''}`;
   const storedFocus = useStore(ui, (state) => state.focusedPanes[scope]);
-  const focusedPane = thread?.panes.some((pane) => pane.id === storedFocus) ? storedFocus! : thread?.panes[0]?.id ?? '';
+  const activePanes = page === 'terminal' ? terminalPanes : thread?.panes ?? [];
+  const focusedPane = activePanes.some((pane) => pane.id === storedFocus) ? storedFocus! : activePanes[0]?.id ?? '';
   const setFocusedPane = useCallback((paneId: string) => ui.getState().focus(scope, paneId), [ui, scope]);
   useClearDoneOnVisit(page === 'thread' ? thread : undefined, focusedPane, gatewayConnected && !!machines.find((machine) => machine.id === thread?.machineId)?.writable);
 
@@ -85,7 +92,7 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
   }, []);
 
   const reportPaneFailure = (error: unknown) => void alertDialog(error instanceof Error ? error.message : 'Herdr could not change the pane.');
-  const paneIds = thread?.panes.map((pane) => pane.id) ?? [];
+  const paneIds = activePanes.map((pane) => pane.id);
   const windowStart = usePaneWindowStart(ui, scope, paneIds, focusedPane);
   const narrow = useNarrowScreen();
   const openTerminal = useCallback(() => {
@@ -150,16 +157,17 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [thread, threads, paletteOpen, toggleSidebar, openTerminal, closePane, focusedPane, setFocusedPane]);
 
-  return <div className={`app-shell ${page === 'thread' ? 'is-thread' : ''}`}>
-    <Sidebar projects={projects} threads={threads} archived={archived} machines={machines} currentId={thread?.id} currentMachineId={thread?.machineId} mode={mode} onModeChange={changeMode} collapsed={collapsed}
+  return <div className={`app-shell ${page === 'thread' || page === 'terminal' ? 'is-thread' : ''}`}>
+    <Sidebar projects={projects} threads={threads} archived={archived} machines={machines} currentId={thread?.id} currentMachineId={page === 'terminal' ? machineId : thread?.machineId} mode={mode} onModeChange={changeMode} collapsed={collapsed}
       mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} updateAction={<UpdateButton />} />
     <div className="main-panel">
       {page === 'thread' && thread && <ThreadView thread={thread} connected={gatewayConnected && !!projections[thread.machineId]?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} />}
+      {page === 'terminal' && machineId && tabId && <TerminalTabView machineId={machineId} tabId={tabId} panes={terminalPanes} connected={gatewayConnected && !!projections[machineId]?.connected} canControl={!!machines.find((machine) => machine.id === machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} />}
       {page === 'new' && <NewThreadView key={projectId} projects={projects} machines={machines} selectedProjectId={projectId} onOpenSidebar={toggleSidebar} />}
       {page === 'settings' && <SettingsView onOpenSidebar={toggleSidebar} />}
       {page === 'missing' && <main className="not-found"><h1>Thread not found</h1><a href="/">Open a thread</a></main>}
     </div>
-    {page === 'thread' && <div className="mobile-controls"><button aria-label="Open sidebar" onPointerDown={keepTerminalFocus} onClick={toggleSidebar}><PanelLeft size={22} /></button><button aria-label="Open command palette" onPointerDown={keepTerminalFocus} onClick={() => setPaletteOpen(true)}><Command size={22} /></button></div>}
+    {(page === 'thread' || page === 'terminal') && <div className="mobile-controls"><button aria-label="Open sidebar" onPointerDown={keepTerminalFocus} onClick={toggleSidebar}><PanelLeft size={22} /></button><button aria-label="Open command palette" onPointerDown={keepTerminalFocus} onClick={() => setPaletteOpen(true)}><Command size={22} /></button></div>}
     {perfAvailable && <PerfOverlay />}
     <PairingPrompt />
     <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projects={projects} threads={threads} thread={thread} focusedPane={focusedPane}

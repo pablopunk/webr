@@ -26,6 +26,14 @@ it('keeps terminals free of control bars and leaves right-click to the browser',
   await act(async () => fixture.mount.mock.calls[0][0].onState('Input control is active.', true)); expect(screen.getByLabelText('Terminal input')).toBeDefined();
   view.unmount(); expect(fixture.close).toHaveBeenCalledTimes(1);
 });
+it('mounts a standalone terminal with its tab identity instead of a thread id', async () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
+  render(<TerminalPane pane={{ id: 'w2:p1', terminalId: 'term_shell', title: 'Shell', kind: 'shell' }} machineId="fixture" tabId="w2:t1" active canControl onFocus={() => {}} />);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
+  expect(fixture.mount.mock.calls[0][0]).toMatchObject({ machineId: 'fixture', tabId: 'w2:t1', terminalId: 'term_shell' });
+  expect(fixture.mount.mock.calls[0][0]).not.toHaveProperty('threadId');
+});
 it('requests control only for an approved active pane and passes typed keys to the terminal', async () => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
