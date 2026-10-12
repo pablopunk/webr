@@ -1,0 +1,36 @@
+.thread-states-page { min-height: 100dvh; padding: 44px clamp(20px, 6vw, 88px); background: var(--surface); color: var(--ink); }
+.thread-states-heading { max-width: 720px; margin: 0 auto 28px; }
+.thread-states-eyebrow { margin: 0 0 8px; color: var(--ink-muted); font: 11px var(--font-mono); letter-spacing: .08em; }
+.thread-states-heading h1 { margin: 0; font-size: clamp(25px, 4vw, 34px); letter-spacing: -.035em; }
+.thread-states-heading > p:last-child { margin: 8px 0 0; color: var(--ink-soft); font-size: 14px; }
+.thread-states-layout { display: grid; grid-template-columns: minmax(280px, 340px) minmax(220px, 360px); justify-content: center; align-items: start; gap: 28px; }
+.thread-states-sidebar { position: static; width: 100%; height: auto; min-height: 0; max-height: calc(100dvh - 170px); flex-basis: auto; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--card-shadow); }
+.thread-states-sidebar .thread-navigation { flex: 1; padding: 8px; overflow-y: auto; }
+.thread-states-section-label { padding: 12px 16px 0; color: var(--ink-muted); font: 10px var(--font-mono); letter-spacing: .06em; }
+.thread-state-example { margin-bottom: 5px; }
+.thread-state-caption { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 0 3px 3px; color: var(--ink-muted); font-size: 10px; }
+.thread-state-caption strong { flex: none; color: var(--ink-soft); font-size: 11px; font-weight: 600; }
+.thread-state-caption span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread-state-example .thread-row { min-height: 54px; }
+.thread-states-sidebar .thread-row.status-unknown { border-color: var(--card-edge); background: var(--surface-raised); box-shadow: var(--card-shadow); }
+.thread-states-sidebar .thread-row.status-unknown:hover { border-color: var(--card-edge); background: var(--card-hover); box-shadow: var(--card-shadow-hover); }
+.thread-states-sidebar .thread-row.needs-attention.status-blocked, .thread-states-sidebar .thread-row.needs-attention.status-blocked:hover { border-color: color-mix(in srgb, var(--blocked) 42%, var(--card-edge)); }
+.thread-states-sidebar .thread-row.needs-attention.status-done, .thread-states-sidebar .thread-row.needs-attention.status-done:hover { border-color: color-mix(in srgb, var(--done) 42%, var(--card-edge)); }
+.thread-states-sidebar .thread-item:hover .thread-archive, .thread-states-sidebar .thread-item:focus-within .thread-archive { opacity: 1; pointer-events: auto; }
+.thread-states-sidebar .thread-item:hover .thread-time, .thread-states-sidebar .thread-item:focus-within .thread-time { visibility: hidden; }
+.thread-states-sidebar .thread-archive { right: 9px; color: var(--ink-soft); }
+.thread-states-archived { max-height: none; padding: 8px; }
+.thread-states-archived .group-header { position: static; }
+.thread-states-archived .group-title { padding: 5px 3px 8px; }
+.thread-states-notes { padding: 16px 2px; color: var(--ink-soft); font-size: 14px; line-height: 1.6; }
+.thread-states-notes h2 { margin: 0 0 12px; color: var(--ink); font-size: 16px; }
+.thread-states-notes ul { margin: 0; padding-left: 19px; }
+.thread-states-notes li + li { margin-top: 8px; }
+.thread-states-notes b { color: var(--ink); }
+.thread-states-notes p { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--ink-muted); font-size: 12px; }
+@media (max-width: 680px) {
+  .thread-states-page { padding: 26px 14px; }
+  .thread-states-layout { grid-template-columns: minmax(0, 360px); gap: 8px; }
+  .thread-states-sidebar { max-height: none; }
+  .thread-states-notes { padding: 12px 4px; }
+}
