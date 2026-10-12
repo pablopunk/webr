@@ -5,15 +5,14 @@
 .brand { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 700; letter-spacing: -.02em; }
 .sidebar-collapse { width: 26px; height: 26px; }
 .sidebar-actions { display: flex; align-items: center; gap: 5px; flex: none; margin: 12px 8px 4px; }
-.sidebar-new-thread { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 10px; border: 1px solid var(--card-edge); border-radius: 7px; background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); font-size: 13px; font-weight: 600; transition: background-color .2s, box-shadow .2s; }
-.sidebar-new-thread span { transform: translateY(1px); }
-.sidebar-new-thread:hover { background: var(--card-hover); box-shadow: var(--card-shadow-hover); }
+.sidebar-new-thread { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border: 1px solid transparent; border-radius: 7px; background: var(--action-blue); box-shadow: var(--card-shadow); color: #fff; transition: filter .2s, box-shadow .2s; }
+.sidebar-new-thread:hover { filter: brightness(1.12); box-shadow: var(--card-shadow-hover); }
 .sidebar.is-collapsed .sidebar-actions { justify-content: center; margin: 10px 0 0; }
 .sidebar.is-collapsed .sidebar-new-thread { width: 28px; height: 28px; padding: 0; }
-.sidebar-open-worktree { display: grid; flex: none; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid var(--card-edge); border-radius: 7px; background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink-soft); }
-.sidebar-open-worktree:hover:not(:disabled) { background: var(--card-hover); box-shadow: var(--card-shadow-hover); color: var(--ink); }
+.sidebar-action-icon { display: grid; flex: none; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid var(--card-edge); border-radius: 7px; background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink-soft); }
+.sidebar-action-icon:hover:not(:disabled) { background: var(--card-hover); box-shadow: var(--card-shadow-hover); color: var(--ink); }
 .sidebar.is-collapsed .sidebar-actions { flex-direction: column; }
-.sidebar.is-collapsed .sidebar-open-worktree { width: 28px; height: 28px; }
+.sidebar.is-collapsed .sidebar-action-icon { width: 28px; height: 28px; }
 .sidebar-view-switch { display: flex; flex: none; gap: 2px; width: 70px; height: 34px; margin-left: auto; padding: 2px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-muted); }
 .sidebar-view-switch button { display: grid; flex: 1; place-items: center; min-width: 0; padding: 0; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--ink-soft); }
 .sidebar-view-switch button:hover { color: var(--ink); background: var(--surface-hover); }
@@ -51,8 +50,8 @@
 .thread-row.needs-attention.status-blocked { --attention-bg: color-mix(in srgb, var(--blocked) 10%, var(--sidebar)); border-color: var(--card-edge); background: var(--attention-bg); box-shadow: var(--card-shadow); }
 .thread-row.needs-attention.status-done { --attention-bg: color-mix(in srgb, var(--done) 10%, var(--sidebar)); border-color: var(--card-edge); background: var(--attention-bg); box-shadow: var(--card-shadow); }
 .thread-row.needs-attention .thread-status, .thread-row.needs-attention .thread-avatar-harness { background: var(--attention-bg); }
-.thread-row.is-current { border-color: var(--card-edge); background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); }
-.thread-row.is-current:hover { background: var(--card-hover); box-shadow: var(--card-shadow-hover); }
+.thread-row.is-current { border-color: var(--card-edge); border-left: 3px solid var(--accent); padding-left: 8px; background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); }
+.thread-row.is-current:hover { border-left: 3px solid var(--accent); background: var(--card-hover); box-shadow: var(--card-shadow-hover); }
 .thread-copy { display: flex; grid-column: 2; grid-row: 1 / 3; flex-direction: column; justify-content: center; gap: 4px; min-width: 0; }
 .thread-context { display: flex; align-items: center; gap: 5px; color: var(--ink-soft); font-size: 12px; }
 .thread-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); }

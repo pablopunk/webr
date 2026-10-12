@@ -1,6 +1,6 @@
 import { memo, useRef, useState, type ReactNode } from 'react';
 import { ContextMenu } from '@base-ui/react/context-menu';
-import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, GitBranch, LayoutList, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Settings2, SquarePen, ImageUp, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, GitBranch, LayoutList, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Settings2, SquarePen, SquareTerminal, ImageUp, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { type Project, type Thread, harnessName, relativeTime } from '../lib/models';
 import { isLaunching, launchFailed, launchLabel } from '../lib/launch';
 import type { Machine } from '../lib/machines';
@@ -16,8 +16,9 @@ import { useFlipList } from './useFlipList';
 import { navigate } from 'astro:transitions/client';
 import { groupProjectLocations } from '../client/project-groups';
 import { withTildeHome } from '../client/home-path';
+import { uuid } from '../lib/uuid';
 import { alertDialog, confirmDialog } from './dialogs';
-import { deleteArchivedThreads, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
+import { createTerminalTab, deleteArchivedThreads, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
 
 export type SidebarMode = 'projects' | 'threads';
 
@@ -27,6 +28,7 @@ type Props = {
   archived?: Thread[];
   machines: Machine[];
   currentId?: string;
+  currentMachineId?: string;
   mode: SidebarMode;
   onModeChange: (mode: SidebarMode) => void;
   collapsed: boolean;
@@ -46,6 +48,27 @@ const statusBadges: Partial<Record<Thread['status'], typeof CircleHelp>> = {
 
 const reportFailure = (error: unknown) => alertDialog(error instanceof Error ? error.message : 'Herdr could not complete this action.');
 const confirmDelete = async (thread: Thread) => { if (await confirmDialog(deleteWarning([thread]), { confirmLabel: 'Delete', danger: true })) await deleteThreadPermanently(thread).catch(reportFailure); };
+const openTerminalAt = async (machine: Machine, path: string, key: string) => {
+  const { tabId } = await createTerminalTab(machine.id, path, key);
+  await navigate(`/sessions/${encodeURIComponent(machine.session)}/tabs/${encodeURIComponent(tabId)}?machine=${encodeURIComponent(machine.id)}`);
+};
+
+function NewTerminalButton({ machine }: { machine?: Machine }) {
+  const [busy, setBusy] = useState(false);
+  const operation = useRef<{ payload: string; key: string } | null>(null);
+  const open = async () => {
+    if (!machine || !machine.connected || !machine.writable || busy) return;
+    const path = '~/';
+    const payload = JSON.stringify({ machineId: machine.id, path });
+    const key = operation.current?.payload === payload ? operation.current.key : uuid();
+    operation.current = { payload, key };
+    setBusy(true);
+    try { await openTerminalAt(machine, path, key); operation.current = null; }
+    catch (error) { reportFailure(error); }
+    finally { setBusy(false); }
+  };
+  return <Tooltip label="New Terminal"><button type="button" className="sidebar-action-icon" aria-label="New Terminal" disabled={!machine || !machine.connected || !machine.writable || busy} onClick={() => void open()}><SquareTerminal size={16} aria-hidden="true" /></button></Tooltip>;
+}
 
 const ThreadRow = memo(function ThreadRow({ thread, project, machineName, current, showProject }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean }) {
   const archived = !!thread.archivedAt;
@@ -78,9 +101,21 @@ function ThreadLink({ thread, project, machineName, current, showProject, editor
   </Row></Tooltip>;
 }
 
-function ProjectGroupHeader({ project, closed, onToggle }: { project: Project; closed: boolean; onToggle: () => void }) {
+function ProjectGroupHeader({ project, closed, onToggle, machine }: { project: Project; closed: boolean; onToggle: () => void; machine?: Machine }) {
   const [renaming, setRenaming] = useState(false);
   const [changingIcon, setChangingIcon] = useState(false);
+  const [terminalBusy, setTerminalBusy] = useState(false);
+  const terminalOperation = useRef<{ payload: string; key: string } | null>(null);
+  const openTerminalHere = async () => {
+    if (!machine || !machine.connected || !machine.writable || terminalBusy) return;
+    const payload = JSON.stringify({ machineId: machine.id, path: project.path });
+    const key = terminalOperation.current?.payload === payload ? terminalOperation.current.key : uuid();
+    terminalOperation.current = { payload, key };
+    setTerminalBusy(true);
+    try { await openTerminalAt(machine, project.path, key); terminalOperation.current = null; }
+    catch (error) { reportFailure(error); }
+    finally { setTerminalBusy(false); }
+  };
   const Title = renaming ? 'div' : 'button';
   const label = renaming ? <ProjectNameEditor project={project} onDone={() => setRenaming(false)} onError={reportFailure} /> : <span className="group-name">{project.name}</span>;
   return <><ContextMenu.Root>
@@ -90,6 +125,7 @@ function ProjectGroupHeader({ project, closed, onToggle }: { project: Project; c
       </Title>
     </ContextMenu.Trigger>
     <ContextMenu.Portal><ContextMenu.Positioner className="thread-menu-positioner"><ContextMenu.Popup className="thread-menu">
+      <ContextMenu.Item className="thread-menu-item" disabled={!machine || !machine.connected || !machine.writable || terminalBusy} onClick={() => void openTerminalHere()}><SquareTerminal size={14} aria-hidden="true" />New Terminal</ContextMenu.Item>
       <ContextMenu.Item className="thread-menu-item" onClick={() => void navigate(`/new?project=${encodeURIComponent(project.id)}`)}><Plus size={14} aria-hidden="true" />New thread</ContextMenu.Item>
       <ContextMenu.Item className="thread-menu-item" onClick={() => setRenaming(true)}><Pencil size={14} aria-hidden="true" />Rename project</ContextMenu.Item>
       <ContextMenu.Item className="thread-menu-item" onClick={() => setChangingIcon(true)}><ImageUp size={14} aria-hidden="true" />Change icon</ContextMenu.Item>
@@ -118,10 +154,13 @@ function ArchivedThreads({ threads, renderThread }: { threads: Thread[]; renderT
   </section>;
 }
 
-export function Sidebar({ projects, threads, archived = [], machines, currentId, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile, onOpenPalette, updateAction }: Props) {
+export function Sidebar({ projects, threads, archived = [], machines, currentId, currentMachineId, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile, onOpenPalette, updateAction }: Props) {
   const [closedProjects, setClosedProjects] = useState<string[]>([]);
   const currentProjectId = threads.find((thread) => thread.id === currentId)?.projectId;
   const projectGroups = groupProjectLocations(projects, currentProjectId);
+  const terminalMachine = currentMachineId
+    ? machines.find((machine) => machine.id === currentMachineId && machine.connected && machine.writable)
+    : machines.find((machine) => machine.id === 'local' && machine.connected && machine.writable) ?? machines.find((machine) => machine.connected && machine.writable);
   const navigation = useRef<HTMLElement>(null);
   useFlipList(navigation);
   const threadLink = (thread: Thread, showProject: boolean) => {
@@ -140,8 +179,9 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
       </div>
       <div className="sidebar-actions">
         <Tooltip label="New thread"><a className="sidebar-new-thread" href={`/new${currentProjectId ? `?project=${encodeURIComponent(currentProjectId)}` : ''}`} aria-label="New thread">
-          <SquarePen size={16} aria-hidden="true" />{!collapsed && <span>New thread</span>}
+          <SquarePen size={16} aria-hidden="true" />
         </a></Tooltip>
+        <NewTerminalButton machine={terminalMachine} />
         <OpenWorktree projects={projects} />
         {!collapsed && <div className="sidebar-view-switch" role="group" aria-label="Sidebar layout">
           <Tooltip label="Show threads"><button type="button" aria-label="Show threads" aria-pressed={mode === 'threads'} onClick={() => onModeChange('threads')}><LayoutList size={16} aria-hidden="true" /></button></Tooltip>
@@ -151,7 +191,7 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
       {!collapsed && <>
         <nav ref={navigation} className="thread-navigation" aria-label="Agent threads">
           {mode === 'projects' ? projectGroups.filter((group) => threads.some((thread) => group.locations.includes(thread.projectId))).sort((a, b) => (threads.find((thread) => b.locations.includes(thread.projectId))?.updatedAt ?? '').localeCompare(threads.find((thread) => a.locations.includes(thread.projectId))?.updatedAt ?? '')).map(({ id, project, locations }) => <section key={id} className="thread-group">
-            <ProjectGroupHeader project={project} closed={closedProjects.includes(id)} onToggle={() => setClosedProjects((value) => value.includes(id) ? value.filter((item) => item !== id) : [...value, id])} />
+            <ProjectGroupHeader project={project} machine={machines.find((machine) => machine.id === (project.machineId ?? 'local'))} closed={closedProjects.includes(id)} onToggle={() => setClosedProjects((value) => value.includes(id) ? value.filter((item) => item !== id) : [...value, id])} />
             {!closedProjects.includes(id) && threads.filter((thread) => locations.includes(thread.projectId)).map((thread) => threadLink(thread, false))}
           </section>) : threads.map((thread) => threadLink(thread, true))}
           {!threads.length && !archived.length && <p className="sidebar-empty">No agents yet. Press ⌘K to start one.</p>}

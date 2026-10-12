@@ -100,6 +100,16 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     supervisor.invalidate();
     return reply.code(result.state === 'unknown' ? 202 : 201).send(result);
   });
+  app.post('/api/terminals', async (request, reply) => {
+    const input = z.object({ machineId: opaqueId, path: z.string().regex(/^(\/|~\/)/).max(1000).refine((path) => !/[\x00-\x1f]/.test(path)) }).strict().parse(request.body);
+    const key = z.uuid().parse(request.headers['idempotency-key']);
+    const supervisor = manager.supervisors.get(input.machineId);
+    if (!supervisor?.connected) return reply.code(409).send({ error: 'machine_disconnected' });
+    const result = await createWorkspace(manager.database, supervisor.target, key, input.path, 'Terminal');
+    if ('state' in result && result.state === 'unknown') return reply.code(202).send(result);
+    await supervisor.readFresh();
+    return reply.code(201).send(result);
+  });
   const projectIconTarget = z.object({ machineId: opaqueId, logicalId: z.string().min(1).max(1000) }).strict();
   app.put('/api/projects/icon', { bodyLimit: MAX_PROJECT_ICON_BYTES }, async (request, reply) => {
     const { machineId, logicalId } = projectIconTarget.parse(request.query);

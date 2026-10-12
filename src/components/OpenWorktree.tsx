@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Menu } from '@base-ui/react/menu';
 import { useQuery } from '@tanstack/react-query';
 import { navigate } from 'astro:transitions/client';
-import { ChevronRight, GitBranch, Search } from 'lucide-react';
+import { ChevronRight, FolderGit2, GitBranch, Search } from 'lucide-react';
 import type { Project } from '../lib/models';
 import { ProjectIcon } from './ProjectIcon';
 import { alertDialog } from './dialogs';
@@ -50,8 +50,8 @@ function WorktreeSearch({ project }: { project: Project }) {
 
 export function OpenWorktree({ projects }: { projects: Project[] }) {
   return <Menu.Root>
-    <Tooltip label="Open existing worktree"><Menu.Trigger className="sidebar-open-worktree" aria-label="Open existing worktree" disabled={!projects.length}>
-      <Search size={16} aria-hidden="true" />
+    <Tooltip label="Open existing worktree"><Menu.Trigger className="sidebar-action-icon" aria-label="Open existing worktree" disabled={!projects.length}>
+      <FolderGit2 size={16} aria-hidden="true" />
     </Menu.Trigger></Tooltip>
     <Menu.Portal><Menu.Positioner className="thread-menu-positioner" sideOffset={6} align="start"><Menu.Popup className="thread-menu">
       {projects.map((project) => <Menu.SubmenuRoot key={`${project.machineId}:${project.id}`}>

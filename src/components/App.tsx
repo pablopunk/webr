@@ -151,7 +151,7 @@ function RuntimeApp({ page, bootstrap, threadId, projectId }: Props) {
   }, [thread, threads, paletteOpen, toggleSidebar, openTerminal, closePane, focusedPane, setFocusedPane]);
 
   return <div className={`app-shell ${page === 'thread' ? 'is-thread' : ''}`}>
-    <Sidebar projects={projects} threads={threads} archived={archived} machines={machines} currentId={thread?.id} mode={mode} onModeChange={changeMode} collapsed={collapsed}
+    <Sidebar projects={projects} threads={threads} archived={archived} machines={machines} currentId={thread?.id} currentMachineId={thread?.machineId} mode={mode} onModeChange={changeMode} collapsed={collapsed}
       mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} updateAction={<UpdateButton />} />
     <div className="main-panel">
       {page === 'thread' && thread && <ThreadView thread={thread} connected={gatewayConnected && !!projections[thread.machineId]?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} />}

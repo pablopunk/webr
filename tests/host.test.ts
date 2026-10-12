@@ -4,6 +4,7 @@ import { MetadataDatabase } from '../src/server/storage/database';
 import { createHost } from '../src/server/host';
 import { RuntimeManager } from '../src/server/runtime/manager';
 import { FakeTarget, launch, frame } from './fixtures/target';
+import { isListedThread } from '../src/lib/launch';
 import { decodeFrame } from '../src/shared/frame';
 import { WebSocket } from 'ws';
 import { mkdtemp, readFile, rm, stat, utimes, writeFile, readdir } from 'node:fs/promises';
@@ -109,6 +110,29 @@ it('validates strict actions and rejects an idempotency key reused for another p
   const repeated = await post(launch); expect(repeated.json().id).toBe(first.json().id);
   expect((await post({ ...launch, prompt: 'Different' })).statusCode).toBe(409);
   expect((await post({ ...launch, shell: 'unsafe' })).statusCode).toBe(400);
+});
+it('creates and exposes a terminal-only tab before returning its direct URL data', async () => {
+  const { app, headers, manager, target } = await setup();
+  const workspaceId = 'w2'; const tabId = 'w2:t1'; const paneId = 'w2:p1'; const terminalId = 'term_terminal';
+  const layout = target.state.layouts[0]!;
+  const firstPane = target.state.panes[0]!;
+  let requested: { path: string; label: string } | undefined;
+  target.createWorkspace = async (path, label, _requestId) => {
+    requested = { path, label };
+    target.state.workspaces.push({ workspace_id: workspaceId, label, worktree: null });
+    target.state.tabs.push({ tab_id: tabId, workspace_id: workspaceId, label });
+    target.state.panes.push({ ...firstPane, pane_id: paneId, terminal_id: terminalId, workspace_id: workspaceId, tab_id: tabId, agent: null, cwd: path });
+    target.state.layouts.push({ workspace_id: workspaceId, tab_id: tabId, area: layout.area, panes: [{ pane_id: paneId, rect: layout.panes[0]!.rect }] });
+    return { workspaceId, tabId, terminalId };
+  };
+  const key = randomUUID();
+  const response = await app.inject({ method: 'POST', url: '/api/terminals', headers: { ...headers, 'Idempotency-Key': key }, payload: { machineId: target.id, path: '~/' } });
+  expect(response.statusCode).toBe(201);
+  expect(requested).toMatchObject({ path: '~/', label: 'Terminal' });
+  expect(response.json()).toMatchObject({ workspaceId, tabId, terminalId });
+  const thread = manager.bootstrap().threads.find((item) => item.tabId === tabId)!;
+  expect(thread).toMatchObject({ bindingState: 'attached', panes: [{ id: paneId, terminalId, kind: 'shell' }] });
+  expect(isListedThread(thread)).toBe(false);
 });
 it('shares one terminal control stream between two browser instances and releases it with the last one', async () => {
   const { app, headers, manager, target } = await setup();

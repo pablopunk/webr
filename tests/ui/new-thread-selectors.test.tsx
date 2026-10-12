@@ -53,16 +53,16 @@ it('restores the last harness independently for each project', async () => {
   expect(localStorage.getItem('webr-last-harness:local:local:second')).toBe('claude');
 });
 
-it('updates the worktree tooltip when the checkout mode changes', async () => {
+it('updates the worktree tooltip immediately when the checkout mode changes', async () => {
   show();
   const user = userEvent.setup();
   const checkbox = screen.getByRole('checkbox', { name: 'Create a new worktree' });
   await user.hover(checkbox);
-  expect(await screen.findByText('new worktree')).toBeTruthy();
+  expect(screen.getByText('new worktree')).toBeTruthy();
   await user.click(checkbox); await user.unhover(checkbox); await user.hover(checkbox);
-  expect(await screen.findByText('current checkout')).toBeTruthy();
+  expect(screen.getByText('current checkout')).toBeTruthy();
   await user.click(checkbox); await user.unhover(checkbox); await user.hover(checkbox);
-  expect(await screen.findByText('new worktree')).toBeTruthy();
+  expect(screen.getByText('new worktree')).toBeTruthy();
 });
 
 it('creates a thread with the default model without exposing model selection', async () => {

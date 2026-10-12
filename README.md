@@ -22,7 +22,7 @@
 - 🪟 **Infinite horizontal panes**: niri-style, every pane in a thread sits on one endless strip you slide through.
 - 👀 **Agents at a glance**: threads grouped by project, with live status and a notification when an agent needs you.
 - 🖼️ **Attach files**: paste or drop screenshots, or drop any file up to 5 MB, into a prompt. Uploads use temporary storage, not project directories. Works on remote machines too: webr copies the file over SSH.
-- 🚀 **Jump anywhere**: a command palette for threads and actions, and projects and worktrees on remote machines.
+- 🚀 **Jump anywhere**: a command palette for threads and actions, plus shell-only terminals at home or in a project folder and existing worktrees on remote machines.
 
 ## Mobile
 

@@ -16,6 +16,7 @@ export class FakeTarget implements TargetAdapter {
   event?: () => void; lost?: (reason: string) => void;
   readHook?: () => Promise<NativeSnapshot>;
   effects: string[] = [];
+  createWorkspace?: TargetAdapter['createWorkspace'];
   failure?: string;
   streams: { onFrame: (frame: TerminalFrame) => void; onClose: (reason: string) => void; closed: boolean; commands: Record<string, unknown>[] }[] = [];
   private listeners = new Set<() => void>();
