@@ -46,9 +46,17 @@
 .archived-delete-all:hover:not(:disabled) { border-color: var(--line); background: var(--surface-hover); color: var(--danger); }
 .archived-delete-all:disabled { opacity: .6; }
 .thread-avatar { display: inline-flex; grid-column: 1; grid-row: 1 / 3; align-self: center; align-items: center; justify-content: center; position: relative; width: 25px; height: 25px; }
+.thread-bot-avatar { display: inline-flex; transition: opacity 200ms ease, transform 200ms ease; }
+.thread-row.is-current .has-project-avatar .thread-bot-avatar { opacity: 0; transform: scale(.8); }
+.thread-project-slot { display: inline-flex; flex: none; width: 17px; height: 17px; }
+.thread-project-slot > .thread-project { z-index: 1; transition: transform 200ms ease; }
+.thread-row.is-current .thread-project-slot > .thread-project { transform: translate(var(--project-offset-x, 0px), var(--project-offset-y, 0px)) scale(1.4); }
+.thread-selected-project { position: absolute; display: inline-flex; opacity: 0; transform: scale(.8); transition: opacity 200ms ease, transform 200ms ease; }
+.thread-row.is-current .thread-selected-project { opacity: 1; transform: scale(1.4); }
+.has-project-avatar .thread-status, .has-project-avatar .thread-avatar-harness { z-index: 2; }
 .thread-row:hover, .thread-row.is-current:hover { border-color: var(--card-edge); background: var(--card-hover); box-shadow: var(--card-shadow-hover); color: var(--ink); }
-.thread-row.needs-attention.status-blocked { --attention-bg: color-mix(in srgb, var(--blocked) 10%, var(--sidebar)); border-color: color-mix(in srgb, var(--blocked) 42%, var(--card-edge)); background: var(--attention-bg); box-shadow: var(--card-shadow); }
-.thread-row.needs-attention.status-done { --attention-bg: color-mix(in srgb, var(--done) 10%, var(--sidebar)); border-color: color-mix(in srgb, var(--done) 42%, var(--card-edge)); background: var(--attention-bg); box-shadow: var(--card-shadow); }
+.thread-row.needs-attention.status-blocked { --attention-bg: color-mix(in srgb, var(--blocked) 10%, var(--sidebar)); border-color: color-mix(in srgb, var(--blocked) 25%, var(--card-edge)); background: var(--attention-bg); box-shadow: var(--card-shadow); }
+.thread-row.needs-attention.status-done { --attention-bg: color-mix(in srgb, var(--done) 10%, var(--sidebar)); border-color: color-mix(in srgb, var(--done) 25%, var(--card-edge)); background: var(--attention-bg); box-shadow: var(--card-shadow); }
 .thread-row.needs-attention .thread-status, .thread-row.needs-attention .thread-avatar-harness { background: var(--attention-bg); }
 .thread-row.is-current { border-color: var(--card-edge); background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); }
 .thread-row.is-current:hover { background: var(--card-hover); box-shadow: var(--card-shadow-hover); }

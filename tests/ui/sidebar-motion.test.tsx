@@ -14,7 +14,35 @@ const positions = new Map<string, number>();
 const animate = vi.fn();
 const originalAnimate = Object.getOwnPropertyDescriptor(Element.prototype, 'animate');
 
-const sidebar = (threads: Thread[]) => <Sidebar projects={projects} threads={threads} machines={[]} mode="projects" onModeChange={() => {}} collapsed={false} mobileOpen={false} onCollapse={() => {}} onCloseMobile={() => {}} />;
+const sidebar = (threads: Thread[], currentId?: string, mode: 'projects' | 'threads' = 'projects') => <Sidebar projects={projects} threads={threads} machines={[]} currentId={currentId} mode={mode} onModeChange={() => {}} collapsed={false} mobileOpen={false} onCollapse={() => {}} onCloseMobile={() => {}} />;
+
+it('keeps the same project icon mounted when selecting and deselecting a thread', () => {
+  const threads = exampleThreads();
+  const { rerender } = render(sidebar(threads, undefined, 'threads'));
+  const row = document.querySelector<HTMLAnchorElement>(`a[href="/threads/${threads[0].id}"]`)!;
+  const icon = row.querySelector('.thread-project-slot > .thread-project');
+  expect(icon).not.toBeNull();
+  expect(row.querySelector('.has-project-avatar .thread-bot-avatar')).not.toBeNull();
+
+  rerender(sidebar(threads, threads[0].id, 'threads'));
+  expect(row.classList.contains('is-current')).toBe(true);
+  expect(row.querySelector('.thread-project-slot > .thread-project')).toBe(icon);
+  const slot = row.querySelector<HTMLElement>('.thread-project-slot')!;
+  expect(slot.style.getPropertyValue('--project-offset-x')).toBe('0px');
+  expect(slot.style.getPropertyValue('--project-offset-y')).toBe('0px');
+
+  rerender(sidebar(threads, undefined, 'threads'));
+  expect(row.classList.contains('is-current')).toBe(false);
+  expect(row.querySelector('.thread-project-slot > .thread-project')).toBe(icon);
+});
+
+it('provides a project avatar in grouped mode without adding an inline project icon', () => {
+  const threads = exampleThreads();
+  render(sidebar(threads, threads[0].id));
+  const row = document.querySelector(`a[href="/threads/${threads[0].id}"]`)!;
+  expect(row.querySelector('.thread-selected-project > .thread-project')).not.toBeNull();
+  expect(row.querySelector('.thread-project-slot')).toBeNull();
+});
 
 it('keeps thread avatars still', () => {
   render(sidebar(exampleThreads()));

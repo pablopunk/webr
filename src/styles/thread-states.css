@@ -14,8 +14,6 @@
 .thread-state-example .thread-row { min-height: 54px; }
 .thread-states-sidebar .thread-row.status-unknown { border-color: var(--card-edge); background: var(--surface-raised); box-shadow: var(--card-shadow); }
 .thread-states-sidebar .thread-row.status-unknown:hover { border-color: var(--card-edge); background: var(--card-hover); box-shadow: var(--card-shadow-hover); }
-.thread-states-sidebar .thread-row.needs-attention.status-blocked, .thread-states-sidebar .thread-row.needs-attention.status-blocked:hover { border-color: color-mix(in srgb, var(--blocked) 42%, var(--card-edge)); }
-.thread-states-sidebar .thread-row.needs-attention.status-done, .thread-states-sidebar .thread-row.needs-attention.status-done:hover { border-color: color-mix(in srgb, var(--done) 42%, var(--card-edge)); }
 .thread-states-sidebar .thread-item:hover .thread-archive, .thread-states-sidebar .thread-item:focus-within .thread-archive { opacity: 1; pointer-events: auto; }
 .thread-states-sidebar .thread-item:hover .thread-time, .thread-states-sidebar .thread-item:focus-within .thread-time { visibility: hidden; }
 .thread-states-sidebar .thread-archive { right: 9px; color: var(--ink-soft); }
