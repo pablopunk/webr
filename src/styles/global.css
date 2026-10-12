@@ -10,5 +10,6 @@
 @import './pairing.css';
 @import './perf.css';
 @import './tooltip.css';
+@import './thread-states.css';
 
 ::view-transition-group(root), ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
