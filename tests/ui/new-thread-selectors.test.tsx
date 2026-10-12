@@ -21,7 +21,7 @@ const projects = [
 const machines = [{ id: 'local', name: 'Local', connected: true, writable: true, session: 'default', projectPaths: { 'local:first': '/first', 'local:second': '/second' }, harnesses: [] }];
 const show = () => render(<NewThreadView projects={projects} machines={machines} onOpenSidebar={() => {}} />);
 
-afterEach(() => { cleanup(); localStorage.clear(); });
+afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 
 it('keeps Add project inside the project menu and opens a cancelable form', async () => {
   show();
@@ -63,4 +63,16 @@ it('updates the worktree tooltip when the checkout mode changes', async () => {
   expect(await screen.findByText('current checkout')).toBeTruthy();
   await user.click(checkbox); await user.unhover(checkbox); await user.hover(checkbox);
   expect(await screen.findByText('new worktree')).toBeTruthy();
+});
+
+it('creates a thread with the default model without exposing model selection', async () => {
+  const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ id: 'thread-1' }) } as Response);
+  show();
+  const user = userEvent.setup();
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Harness: Claude Code' })).toBeDefined());
+  expect(screen.queryByRole('combobox', { name: /^Model:/ })).toBeNull();
+  await user.type(screen.getByRole('textbox', { name: 'Thread prompt' }), 'Fix the bug');
+  await user.click(screen.getByRole('button', { name: 'Create thread' }));
+  await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+  expect(JSON.parse(fetch.mock.calls[0][1]?.body as string)).toMatchObject({ agent: 'claude', model: 'Default' });
 });

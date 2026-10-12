@@ -21,7 +21,6 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   const [projectId, setProjectId] = useState(projects.find((project) => project.id === selectedProjectId)?.id ?? projects[0]?.id ?? '');
   const [machineId, setMachineId] = useState(machines.find((machine) => selectedProjectId && Object.hasOwn(machine.projectPaths, selectedProjectId))?.id ?? machines[0]?.id ?? '');
   const [harness, setHarness] = useState('');
-  const [model, setModel] = useState('Default');
   const [worktree, setWorktree] = useState(true);
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
@@ -38,7 +37,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   }));
   const canUseWorktree = catalog.data?.isGitRepo === true;
   const selectedHarness = machine.harnesses.find((choice) => choice.id === harness);
-  const canSubmit = !!(prompt.trim() && !images.uploading && model.trim() && machine.connected && machineProjects.some((project) => project.id === projectId) && selectedHarness?.launchEnabled) && !busy;
+  const canSubmit = !!(prompt.trim() && !images.uploading && machine.connected && machineProjects.some((project) => project.id === projectId) && selectedHarness?.launchEnabled) && !busy;
   const harnessIds = catalog.data?.harnesses.map((choice) => choice.id).join(',');
   const draftRestored = useRef(false);
   useEffect(() => {
@@ -55,7 +54,6 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     const choices = catalog.data.harnesses;
     const previous = localStorage.getItem(harnessPreference(machineId, projectId));
     setHarness(choices.find((choice) => choice.id === previous)?.id ?? choices.find((choice) => choice.launchEnabled)?.id ?? choices[0]?.id ?? '');
-    setModel('Default');
   }, [machineId, projectId, harnessIds]);
   useEffect(() => {
     const known = projectIdsBeforeCreate.current;
@@ -73,12 +71,11 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     setMachineId(id);
     if (!Object.hasOwn(next.projectPaths, projectId)) setProjectId(projects.find((project) => Object.hasOwn(next.projectPaths, project.id))?.id ?? '');
     setHarness('');
-    setModel('Default');
     setError('');
   };
-  const changeProject = (id: string) => { setProjectId(id); setHarness(''); setModel('Default'); setError(''); };
+  const changeProject = (id: string) => { setProjectId(id); setHarness(''); setError(''); };
   const changeHarness = (id: string) => {
-    setHarness(id); setModel('Default');
+    setHarness(id);
     if (projectId) localStorage.setItem(harnessPreference(machineId, projectId), id);
   };
 
@@ -86,7 +83,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     event.preventDefault();
     if (!canSubmit) return;
     setBusy(true); setError('');
-    const payload = JSON.stringify({ prompt: promptWithImages(prompt, images.attachments), projectId, machineId, agent: harness, model: model.trim(), worktree: worktree && canUseWorktree });
+    const payload = JSON.stringify({ prompt: promptWithImages(prompt, images.attachments), projectId, machineId, agent: harness, model: 'Default', worktree: worktree && canUseWorktree });
     if (operation.current?.payload !== payload) operation.current = { payload, key: uuid() };
     try {
       const result = await fetch('/api/threads', {
@@ -121,8 +118,8 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
         onKeyDown={(event) => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
         aria-label="Thread prompt" placeholder="Write a prompt, or drop an image…" />
       <div className="composer-toolbar">
-        <LaunchSelectors machine={machine} machines={machines} projects={machineProjects} projectId={projectId} harness={harness} model={model}
-          onMachineChange={changeMachine} onProjectChange={changeProject} onHarnessChange={changeHarness} onModelChange={setModel}
+        <LaunchSelectors machine={machine} machines={machines} projects={machineProjects} projectId={projectId} harness={harness}
+          onMachineChange={changeMachine} onProjectChange={changeProject} onHarnessChange={changeHarness}
           onAddProject={machine.connected && machine.writable ? () => setCreatingWorkspace(true) : undefined} />
         {canUseWorktree && <Tooltip label={worktree ? 'new worktree' : 'current checkout'}><label className="worktree-option"><input type="checkbox" checked={worktree} onChange={(event) => setWorktree(event.target.checked)} aria-label="Create a new worktree" /><GitBranch size={15} aria-hidden="true" /></label></Tooltip>}
         <div className="composer-actions">
