@@ -8,16 +8,19 @@ const contentTops = (container: HTMLElement) => {
   return new Map([...container.querySelectorAll<HTMLElement>(itemSelector)].map((element) => [element.dataset.flipId!, { element, top: element.getBoundingClientRect().top - origin }]));
 };
 
-export function useFlipList(container: RefObject<HTMLElement | null>) {
-  const previous = useRef(new Map<string, number>());
+export function useFlipList(container: RefObject<HTMLElement | null>, resetKey?: unknown) {
+  const previous = useRef<{ resetKey?: unknown; tops: Map<string, number> }>({ resetKey, tops: new Map() });
   useLayoutEffect(() => {
     if (!container.current) return;
     const current = contentTops(container.current);
-    for (const [id, { element, top }] of current) {
-      const before = previous.current.get(id);
-      if (before === undefined || Math.abs(before - top) < 1) continue;
-      element.animate([{ transform: `translateY(${before - top}px)` }, { transform: 'none' }], { duration: durationMs, easing: 'cubic-bezier(.2, .8, .2, 1)' });
+    const prior = previous.current;
+    if (prior.resetKey === resetKey) {
+      for (const [id, { element, top }] of current) {
+        const before = prior.tops.get(id);
+        if (before === undefined || Math.abs(before - top) < 1) continue;
+        element.animate([{ transform: `translateY(${before - top}px)` }, { transform: 'none' }], { duration: durationMs, easing: 'cubic-bezier(.2, .8, .2, 1)' });
+      }
     }
-    previous.current = new Map([...current].map(([id, { top }]) => [id, top]));
+    previous.current = { resetKey, tops: new Map([...current].map(([id, { top }]) => [id, top])) };
   });
 }

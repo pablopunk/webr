@@ -162,7 +162,7 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
     ? machines.find((machine) => machine.id === currentMachineId && machine.connected && machine.writable)
     : machines.find((machine) => machine.id === 'local' && machine.connected && machine.writable) ?? machines.find((machine) => machine.connected && machine.writable);
   const navigation = useRef<HTMLElement>(null);
-  useFlipList(navigation);
+  useFlipList(navigation, closedProjects);
   const threadLink = (thread: Thread, showProject: boolean) => {
     const project = projects.find((item) => item.id === thread.projectId);
     return <ThreadRow key={thread.id} thread={thread} project={project} machineName={machines.find((machine) => machine.id === thread.machineId)?.name ?? thread.machineId} current={currentId === thread.id} showProject={showProject} />;
