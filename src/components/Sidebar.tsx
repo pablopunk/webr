@@ -1,4 +1,4 @@
-import { memo, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ContextMenu } from '@base-ui/react/context-menu';
 import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, GitBranch, LayoutList, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Settings2, SquarePen, SquareTerminal, ImageUp, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { type Project, type Thread, harnessName, relativeTime } from '../lib/models';
@@ -21,6 +21,7 @@ import { alertDialog, confirmDialog } from './dialogs';
 import { createTerminalTab, deleteArchivedThreads, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
 
 export type SidebarMode = 'projects' | 'threads';
+const closedProjectsStorageKey = 'webr-sidebar-closed-projects';
 
 type Props = {
   projects: Project[];
@@ -156,6 +157,17 @@ function ArchivedThreads({ threads, renderThread }: { threads: Thread[]; renderT
 
 export function Sidebar({ projects, threads, archived = [], machines, currentId, currentMachineId, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile, onOpenPalette, updateAction }: Props) {
   const [closedProjects, setClosedProjects] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      const stored: unknown = JSON.parse(localStorage.getItem(closedProjectsStorageKey) ?? '[]');
+      if (Array.isArray(stored)) setClosedProjects(stored.filter((id): id is string => typeof id === 'string'));
+    } catch {}
+  }, []);
+  const toggleProject = (id: string) => {
+    const next = closedProjects.includes(id) ? closedProjects.filter((item) => item !== id) : [...closedProjects, id];
+    setClosedProjects(next);
+    try { localStorage.setItem(closedProjectsStorageKey, JSON.stringify(next)); } catch {}
+  };
   const currentProjectId = threads.find((thread) => thread.id === currentId)?.projectId;
   const projectGroups = groupProjectLocations(projects, currentProjectId);
   const terminalMachine = currentMachineId
@@ -191,7 +203,7 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
       {!collapsed && <>
         <nav ref={navigation} className="thread-navigation" aria-label="Agent threads">
           {mode === 'projects' ? projectGroups.filter((group) => threads.some((thread) => group.locations.includes(thread.projectId))).sort((a, b) => (threads.find((thread) => b.locations.includes(thread.projectId))?.updatedAt ?? '').localeCompare(threads.find((thread) => a.locations.includes(thread.projectId))?.updatedAt ?? '')).map(({ id, project, locations }) => <section key={id} className="thread-group">
-            <ProjectGroupHeader project={project} machine={machines.find((machine) => machine.id === (project.machineId ?? 'local'))} closed={closedProjects.includes(id)} onToggle={() => setClosedProjects((value) => value.includes(id) ? value.filter((item) => item !== id) : [...value, id])} />
+            <ProjectGroupHeader project={project} machine={machines.find((machine) => machine.id === (project.machineId ?? 'local'))} closed={closedProjects.includes(id)} onToggle={() => toggleProject(id)} />
             {!closedProjects.includes(id) && threads.filter((thread) => locations.includes(thread.projectId)).map((thread) => threadLink(thread, false))}
           </section>) : threads.map((thread) => threadLink(thread, true))}
           {!threads.length && !archived.length && <p className="sidebar-empty">No agents yet. Press ⌘K to start one.</p>}
