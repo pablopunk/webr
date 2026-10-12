@@ -4,7 +4,7 @@
 * Leverage existing primitives, formatters, and OS capabilities instead of creating one-off helpers.
 * Respect manual file changes to prevent overwrites.
 * Commit frequently and use history to guide changes.
-* Do not fix symptoms, fix diseases. After two successive symptom patches in the same code path, stop patching and audit the architecture.
+* Do not fix symptoms, fix diseases. After two successive symptom patches in the same code path, stop patching and audit the architecture. For rejected visual changes, clarify the target against the user's reference before another edit; a passing build does not verify appearance.
 * To measure UI responsiveness, have the user exercise `pnpm dev` (reload the page first), then read `.data/perf.jsonl` (`client.second` stats, `main.stalled`, `slow.*`) instead of guessing.
 
 ## Other rules
