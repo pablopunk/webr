@@ -1,7 +1,5 @@
 export type MachineHarness = {
   id: string; name: string; models: string[]; customModels?: boolean; launchEnabled?: boolean; reason?: string;
-  integrationState?: 'current' | 'outdated' | 'not_installed' | 'unavailable' | 'unknown';
-  recoveryWarning?: string;
 };
 export type MachineOs = 'macos' | 'linux' | 'windows';
 export type Machine = {

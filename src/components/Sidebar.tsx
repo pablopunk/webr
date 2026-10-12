@@ -12,7 +12,6 @@ import { ProjectNameEditor } from './ProjectNameEditor';
 import { ProjectIconDialog } from './ProjectIconDialog';
 import { ThreadAvatar } from './ThreadAvatar';
 import { Tooltip } from './Tooltip';
-import { threadRecoveryPresentation } from './ThreadRecovery';
 import { useFlipList } from './useFlipList';
 import { navigate } from 'astro:transitions/client';
 import { groupProjectLocations } from '../client/project-groups';
@@ -91,17 +90,15 @@ const ThreadRow = memo(function ThreadRow({ thread, project, machineName, curren
 
 function ThreadLink({ thread, project, machineName, current, showProject, editor }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean; editor?: ReactNode }) {
   const launching = isLaunching(thread); const failed = launchFailed(thread);
-  const recovery = threadRecoveryPresentation(thread);
-  const warning = failed || !launching && !!recovery?.attention;
+  const warning = failed;
   const StatusIcon = warning ? TriangleAlert : launching ? undefined : statusBadges[thread.status];
   const needsAttention = warning || thread.status === 'blocked' || thread.status === 'done';
   const status = launching ? launchLabel(thread) : failed ? 'Launch stopped' : statusLabel[thread.status];
   const context = launching || failed ? status : showProject ? project?.name : harnessName(thread.agent);
-  const recoverySummary = recovery ? ` · ${recovery.label} · ${recovery.reason}` : '';
   const Row = editor ? 'div' : 'a';
-  return <Tooltip label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}${recoverySummary}`} side="right"><Row className={`thread-row ${current ? 'is-current' : ''} ${needsAttention ? `needs-attention status-${warning ? 'blocked' : thread.status}` : ''}`} href={editor ? undefined : `/threads/${encodeURIComponent(thread.id)}`} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${status}${recoverySummary}`}>
+  return <Tooltip label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`} side="right"><Row className={`thread-row ${current ? 'is-current' : ''} ${needsAttention ? `needs-attention status-${warning ? 'blocked' : thread.status}` : ''}`} href={editor ? undefined : `/threads/${encodeURIComponent(thread.id)}`} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${status}`}>
     <span className="thread-avatar" aria-hidden="true"><ThreadAvatar thread={thread} working={thread.status === 'working' || launching} size={24} />{StatusIcon && <StatusIcon className={`thread-status status-${warning ? 'blocked' : thread.status}`} size={14} strokeWidth={2.2} />}<span className="thread-avatar-harness"><HarnessIcon harness={thread.agent} size={14} /></span></span>
-    <span className="thread-copy"><span className="thread-context">{showProject && project && !launching && !failed && <ProjectIcon project={project} />}{thread.worktree && !launching && !failed && <GitBranch className="thread-worktree" size={11} aria-label="Worktree" />}{context}</span>{editor ?? <span className="thread-name">{thread.title}</span>}{recovery && !launching && <span className={`thread-recovery is-${recovery.state}`}>{recovery.label}<span className="thread-recovery-reason"> · {recovery.reason}</span></span>}</span>
+    <span className="thread-copy"><span className="thread-context">{showProject && project && !launching && !failed && <ProjectIcon project={project} />}{thread.worktree && !launching && !failed && <GitBranch className="thread-worktree" size={11} aria-label="Worktree" />}{context}</span>{editor ?? <span className="thread-name">{thread.title}</span>}</span>
     <span className="thread-time">{relativeTime(thread.updatedAt)}</span>
   </Row></Tooltip>;
 }

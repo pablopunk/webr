@@ -6,11 +6,11 @@ import { NewThreadView } from '../../src/components/NewThreadView';
 vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
 vi.mock('../../src/client/catalog', () => ({ useMachineCatalog: (_id: string, _connected: boolean, _version: number, _session: string, projectId: string) => ({
   data: { isGitRepo: true, harnesses: projectId === 'local:second' ? [
-    { id: 'codex', name: 'Codex', models: ['Default'], launchEnabled: true },
-    { id: 'claude', name: 'Claude Code', models: ['Default'], launchEnabled: true },
+    { id: 'codex', name: 'Codex', models: ['Default'], launchEnabled: true, integrationState: 'not_installed', recoveryWarning: 'Herdr integration is not installed. Conversation recovery may be unavailable.' },
+    { id: 'claude', name: 'Claude Code', models: ['Default'], launchEnabled: true, integrationState: 'current' },
   ] : [
-    { id: 'claude', name: 'Claude Code', models: ['Default'], launchEnabled: true },
-    { id: 'codex', name: 'Codex', models: ['Default'], launchEnabled: true },
+    { id: 'claude', name: 'Claude Code', models: ['Default'], launchEnabled: true, integrationState: 'current' },
+    { id: 'codex', name: 'Codex', models: ['Default'], launchEnabled: true, integrationState: 'not_installed', recoveryWarning: 'Herdr integration is not installed. Conversation recovery may be unavailable.' },
   ] }, isError: false,
 }) }));
 
@@ -75,4 +75,13 @@ it('creates a thread with the default model without exposing model selection', a
   await user.click(screen.getByRole('button', { name: 'Create thread' }));
   await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
   expect(JSON.parse(fetch.mock.calls[0][1]?.body as string)).toMatchObject({ agent: 'claude', model: 'Default' });
+});
+it('keeps harness options and composer free of integration and recovery status', async () => {
+  show();
+  const user = userEvent.setup();
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Harness: Claude Code' })).toBeDefined());
+  expect(screen.queryByText(/integration is current|conversation recovery|integration is not installed/i)).toBeNull();
+  await user.click(screen.getByRole('combobox', { name: 'Harness: Claude Code' }));
+  expect((await screen.findByRole('option', { name: 'Claude Code' })).textContent).toBe('Claude Code');
+  expect(screen.queryByText(/integration (current|missing|not installed|outdated|unavailable)|recovery/i)).toBeNull();
 });

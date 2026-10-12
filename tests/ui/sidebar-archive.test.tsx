@@ -38,3 +38,10 @@ it('renames a thread in place after a double click and keeps the old name on Esc
   fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
   expect(screen.queryByRole('textbox')).toBeNull(); expect(fetch).toHaveBeenCalledOnce();
 });
+it('keeps internal recovery state out of sidebar labels', () => {
+  const thread = { ...exampleThreads()[0], providerSession: { source: 'herdr', agent: 'claude', kind: 'id' as const, value: 'session-1' }, recovery: { state: 'needs_attention' as const, reason: 'conversation_missing' } };
+  renderSidebar([thread], []);
+  const row = screen.getByRole('link', { name: /Build the web terminal bridge/ });
+  expect(row.getAttribute('aria-label')).not.toMatch(/session|recovery|provider|checkout/i);
+  expect(screen.queryByText(/Session verified|Session unverified|Recovery needs attention/i)).toBeNull();
+});

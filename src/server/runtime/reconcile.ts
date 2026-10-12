@@ -24,7 +24,7 @@ const threadTitle = (label: string | null | undefined, panes: NativeSnapshot['pa
   const namedTab = label?.trim();
   if (namedTab && !/^\d+$/.test(namedTab)) return namedTab;
   const agent = panes.find((pane) => pane.agent && pane.focused) ?? panes.find((pane) => pane.agent);
-  return agent?.title?.trim() || agent?.terminal_title_stripped?.trim() || namedTab || fallback;
+  return agent?.terminal_title_stripped?.trim() || agent?.title?.trim() || namedTab || fallback;
 };
 
 function projectIconUrl(database: MetadataDatabase, target: TargetAdapter, id: string, logicalId: string, located: boolean) {

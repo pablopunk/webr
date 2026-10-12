@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import type { TargetAdapter, LaunchLocation, TerminalDirection } from '../runtime/target';
 import type { TargetProfile } from './registry';
 import { localSocket } from './registry';
@@ -26,7 +25,6 @@ import { expandHome, listLocalDirectories, suggestDirectories } from '../directo
 const MODEL_LISTING_TIMEOUT_MS = 15_000;
 const MODEL_CACHE_TTL_MS = 10 * 60_000;
 const MODEL_LISTING_LIMIT = 4 * 1024 * 1024;
-const integrationList = z.object({ type: z.literal('integration_list'), integrations: z.array(z.object({ target: z.string(), command: z.string(), available: z.boolean(), state: z.enum(['current', 'outdated', 'not_installed']) })) });
 const osFromPlatform = (platform: string): MachineOs | undefined => platform === 'darwin' || platform === 'Darwin' ? 'macos' : platform === 'win32' || /^(MINGW|MSYS|CYGWIN)/i.test(platform) ? 'windows' : platform.toLowerCase() === 'linux' ? 'linux' : undefined;
 type Dependencies = { process: typeof boundedProcess; cli: typeof openCliStream };
 export class HerdrTarget implements TargetAdapter {
@@ -108,18 +106,8 @@ export class HerdrTarget implements TargetAdapter {
     const present = (await Promise.all(herdrAgentKinds.map(async (kind) => (await isPresent(kind)) ? kind : undefined))).filter((kind): kind is string => !!kind);
     present.forEach((kind) => this.discoverModels(kind));
     const modelsPending = present.some((kind) => this.pendingModels.has(kind));
-    const integrations = integrationList.safeParse(await api.request('integration.list').catch(() => undefined)).data?.integrations;
     const isGitRepo = await this.isGitRepo(projectId);
-    return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, modelsPending, isGitRepo, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id) => {
-      const integration = integrations?.find((entry) => entry.target === id || entry.command === id);
-      const integrationState = !integrations ? 'unknown' as const : !integration || !integration.available ? 'unavailable' as const : integration.state;
-      const recoveryWarning = integrationState === 'current' ? undefined
-        : integrationState === 'not_installed' ? 'Herdr integration is not installed. Conversation recovery may be unavailable.'
-        : integrationState === 'outdated' ? 'Herdr integration is outdated. Update it for reliable conversation recovery.'
-        : integrationState === 'unavailable' ? 'No available Herdr integration for this harness. Conversation recovery may be unavailable.'
-        : 'Herdr integration health could not be checked. Conversation recovery is not verified.';
-      return { id, name: harnessName(id), models: ['Default', ...(this.discoveredModels.get(id)?.models ?? [])], customModels: acceptsModelFlag(id), launchEnabled: true, integrationState, recoveryWarning };
-    }) };
+    return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, modelsPending, isGitRepo, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id) => ({ id, name: harnessName(id), models: ['Default', ...(this.discoveredModels.get(id)?.models ?? [])], customModels: acceptsModelFlag(id), launchEnabled: true })) };
   }
   private async detectRemoteOs() {
     this.remoteOs = await this.runOnTarget('uname', ['-s']).then((output) => osFromPlatform(output.trim()), () => undefined);

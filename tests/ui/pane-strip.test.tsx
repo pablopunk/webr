@@ -41,3 +41,9 @@ it('keeps a detached thread whose launch failed so the failure is shown', () => 
   render(<ThreadView thread={{ ...thread, panes: [], bindingState: 'detached', operation: { id: 'o', state: 'failed', step: 'prompt' } }} connected canControl focusedPane="" onFocusPane={vi.fn()} windowStart={0} narrow={false} />);
   expect(navigate).not.toHaveBeenCalled();
 });
+it('keeps provider recovery status out of the thread view', () => {
+  const detached = { ...thread, bindingState: 'detached' as const, providerSession: { source: 'herdr', agent: 'claude', kind: 'id' as const, value: 'session-1' }, recovery: { state: 'needs_attention' as const, reason: 'conversation_missing' } };
+  render(<ThreadView thread={detached} connected canControl focusedPane="" onFocusPane={vi.fn()} windowStart={0} narrow={false} />);
+  expect(screen.getByText('No live panes are available for this thread.')).toBeDefined();
+  expect(screen.queryByText(/Session verified|Session unverified|Recovery needs attention|conversation_missing/i)).toBeNull();
+});
