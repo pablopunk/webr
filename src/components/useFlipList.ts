@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react';
 
-const durationMs = 220;
+const durationMs = 160;
 const itemSelector = '[data-flip-id]';
 
 const contentTops = (container: HTMLElement) => {
@@ -14,11 +14,13 @@ export function useFlipList(container: RefObject<HTMLElement | null>, resetKey?:
     if (!container.current) return;
     const current = contentTops(container.current);
     const prior = previous.current;
-    if (prior.resetKey === resetKey) {
+    const sameItems = prior.tops.size === current.size && [...current.keys()].every((id) => prior.tops.has(id));
+    const reset = prior.resetKey !== resetKey && prior.tops.size > 0;
+    if (sameItems || reset) {
       for (const [id, { element, top }] of current) {
         const before = prior.tops.get(id);
         if (before === undefined || Math.abs(before - top) < 1) continue;
-        element.animate([{ transform: `translateY(${before - top}px)` }, { transform: 'none' }], { duration: durationMs, easing: 'cubic-bezier(.2, .8, .2, 1)' });
+        element.animate([{ transform: `translateY(${before - top}px)` }, { transform: 'none' }], { duration: durationMs, easing: 'ease-out' });
       }
     }
     previous.current = { resetKey, tops: new Map([...current].map(([id, { top }]) => [id, top])) };

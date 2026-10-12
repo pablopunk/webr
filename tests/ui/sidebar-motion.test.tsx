@@ -1,16 +1,25 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { Sidebar } from '../../src/components/Sidebar';
 import { exampleThreads, projects } from '../../src/lib/models';
 import type { Thread } from '../../src/lib/models';
 
 vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
+vi.mock('bot-avatars', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('bot-avatars')>();
+  return { ...actual, BotAvatar: ({ paused }: { paused?: boolean }) => <span data-testid="thread-avatar" data-paused={String(!!paused)} /> };
+});
 
 const positions = new Map<string, number>();
 const animate = vi.fn();
 const originalAnimate = Object.getOwnPropertyDescriptor(Element.prototype, 'animate');
 
 const sidebar = (threads: Thread[]) => <Sidebar projects={projects} threads={threads} machines={[]} mode="projects" onModeChange={() => {}} collapsed={false} mobileOpen={false} onCollapse={() => {}} onCloseMobile={() => {}} />;
+
+it('keeps thread avatars still', () => {
+  render(sidebar(exampleThreads()));
+  expect(screen.getAllByTestId('thread-avatar').every((avatar) => avatar.getAttribute('data-paused') === 'true')).toBe(true);
+});
 
 beforeEach(() => {
   positions.clear();
@@ -29,21 +38,22 @@ afterEach(() => {
   else Reflect.deleteProperty(Element.prototype, 'animate');
 });
 
-it('does not animate neighboring threads when a project is collapsed or expanded', () => {
+it('animates neighboring threads when a project is collapsed or expanded', () => {
   const threads = exampleThreads();
   threads.forEach((thread, index) => positions.set(thread.id, index * 80));
   render(sidebar(threads));
 
   positions.set('fix-editor-loading', 60);
   fireEvent.click(document.querySelector('.group-title')!);
-  expect(animate).not.toHaveBeenCalled();
+  expect(animate).toHaveBeenCalled();
 
+  animate.mockClear();
   positions.set('fix-editor-loading', 240);
   fireEvent.click(document.querySelector('.group-title')!);
-  expect(animate).not.toHaveBeenCalled();
+  expect(animate).toHaveBeenCalled();
 });
 
-it('animates thread ordering, additions, and removals', () => {
+it('animates thread ordering but not additions or removals', () => {
   const threads = exampleThreads();
   threads.forEach((thread, index) => positions.set(thread.id, index * 80));
   const { rerender } = render(sidebar(threads));
@@ -58,10 +68,10 @@ it('animates thread ordering, additions, and removals', () => {
   const withAdded = [threads[0], addedThread, ...threads.slice(1)];
   withAdded.forEach((thread, index) => positions.set(thread.id, index * 80));
   rerender(sidebar(withAdded));
-  expect(animate).toHaveBeenCalled();
+  expect(animate).not.toHaveBeenCalled();
 
   animate.mockClear();
   threads.forEach((thread, index) => positions.set(thread.id, index * 80));
   rerender(sidebar(threads));
-  expect(animate).toHaveBeenCalled();
+  expect(animate).not.toHaveBeenCalled();
 });

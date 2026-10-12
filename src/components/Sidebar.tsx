@@ -158,6 +158,7 @@ function ArchivedThreads({ threads, renderThread }: { threads: Thread[]; renderT
 
 export function Sidebar({ projects, threads, archived = [], machines, currentId, currentMachineId, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile, onOpenPalette, updateAction }: Props) {
   const [closedProjects, setClosedProjects] = useState<string[]>([]);
+  const [collapseMotionVersion, setCollapseMotionVersion] = useState(0);
   useEffect(() => {
     try {
       const stored: unknown = JSON.parse(localStorage.getItem(closedProjectsStorageKey) ?? '[]');
@@ -167,6 +168,7 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
   const toggleProject = (id: string) => {
     const next = closedProjects.includes(id) ? closedProjects.filter((item) => item !== id) : [...closedProjects, id];
     setClosedProjects(next);
+    setCollapseMotionVersion((version) => version + 1);
     try { localStorage.setItem(closedProjectsStorageKey, JSON.stringify(next)); } catch {}
   };
   const currentProjectId = threads.find((thread) => thread.id === currentId)?.projectId;
@@ -175,7 +177,7 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
     ? machines.find((machine) => machine.id === currentMachineId && machine.connected && machine.writable)
     : machines.find((machine) => machine.id === 'local' && machine.connected && machine.writable) ?? machines.find((machine) => machine.connected && machine.writable);
   const navigation = useRef<HTMLElement>(null);
-  useFlipList(navigation, closedProjects);
+  useFlipList(navigation, collapseMotionVersion);
   const threadLink = (thread: Thread, showProject: boolean) => {
     const project = projects.find((item) => item.id === thread.projectId);
     return <ThreadRow key={thread.id} thread={thread} project={project} machineName={machines.find((machine) => machine.id === thread.machineId)?.name ?? thread.machineId} current={currentId === thread.id} showProject={showProject} />;
