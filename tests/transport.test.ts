@@ -5,6 +5,7 @@ import { HerdrTarget } from '../src/server/transport/herdr-target';
 import { validateInstalledSchema } from '../src/server/protocol/validate';
 import { openCliStream } from '../src/server/terminal/cli';
 import { frame } from './fixtures/target';
+import { schemaFixture } from './fixtures/schema';
 
 it('quotes target-host argv without using --machine or an interactive PTY and requires strict host keys', () => {
   expect(quoteShell("a'b")).toBe("'a'\\''b'");
@@ -29,4 +30,13 @@ it('rejects unsupported schemas and keeps real control and launch effects disabl
   const target = new HerdrTarget({ id: 'test', name: 'Test', session: 'default', enabled: true, transport: 'local', locations: [] });
   expect(target.writable).toBe(false); expect(() => target.openTerminal('term_unknown', 'control', 80, 24, false, () => {}, () => {})).toThrow('terminal_control_unavailable');
   await expect(target.create({ machineId: 'test', projectId: 'none', agent: 'claude', model: 'Default', prompt: 'must not send', worktree: true }, '00000000-0000-4000-8000-000000000001')).rejects.toThrow('launch_unavailable');
+});
+it('requires the installed recovery and integration API contracts without requiring every pane to report a session', () => {
+  expect(validateInstalledSchema(schemaFixture())).toEqual([]);
+  const missingMethod = schemaFixture();
+  missingMethod.schemas.request.oneOf = missingMethod.schemas.request.oneOf.filter((variant) => variant.properties.method.const !== 'pane.report_metadata');
+  expect(validateInstalledSchema(missingMethod)).toContain('Missing method: pane.report_metadata');
+  const missingField = schemaFixture();
+  delete missingField.schemas.success_response.$defs.PaneInfo.properties.agent_session;
+  expect(validateInstalledSchema(missingField)).toContain('Missing recovery response field: PaneInfo.agent_session');
 });

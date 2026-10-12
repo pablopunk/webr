@@ -1,6 +1,7 @@
 import { CircleAlert, CircleCheck, Circle, LoaderCircle } from 'lucide-react';
 import type { Thread } from '../lib/models';
 import { launchFailed, launchStepIndex, launchSteps } from '../lib/launch';
+import { ThreadRecoveryNotice } from './ThreadRecovery';
 
 export function LaunchProgress({ thread }: { thread: Thread }) {
   const failed = launchFailed(thread);
@@ -8,6 +9,7 @@ export function LaunchProgress({ thread }: { thread: Thread }) {
   return <main className="launch-progress" aria-label="Launch progress" role="status">
     <h1>{failed ? 'The launch stopped' : 'Starting your agent'}</h1>
     <blockquote className="launch-prompt">{thread.prompt || thread.title}</blockquote>
+    {failed && <ThreadRecoveryNotice thread={thread} />}
     <ol className="launch-steps">
       {launchSteps.map((step, index) => {
         const state = index < current ? 'done' : index === current ? (failed ? 'failed' : 'active') : 'waiting';
@@ -16,7 +18,7 @@ export function LaunchProgress({ thread }: { thread: Thread }) {
       })}
     </ol>
     {failed && <div className="launch-failure" role="alert">
-      <p>Herdr stopped while {launchSteps[current].label.toLowerCase()}. The worktree may already exist, so check it in Herdr before you try again.</p>
+      <p>Herdr stopped while {launchSteps[current].label.toLowerCase()}. The worktree or agent may already exist. Webr will not automatically resend an initial prompt whose delivery is uncertain; check the session in Herdr before starting another thread.</p>
       <a className="launch-retry" href={`/new?project=${encodeURIComponent(thread.projectId)}`}>Start a new thread</a>
     </div>}
   </main>;

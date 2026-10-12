@@ -128,6 +128,8 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
       </div>
     </form>
     {(selectedHarness?.reason || !machines.length || machine.error || catalog.isError) && <p className="composer-preview-note">{selectedHarness?.reason ?? (!machines.length ? 'No target is configured.' : machine.error ? `Machine is not connected: ${machine.error.replaceAll('_', ' ')}.` : 'The machine catalog is not available.')}</p>}
+    {selectedHarness?.recoveryWarning && <p className="composer-recovery-warning" role="status">{selectedHarness.recoveryWarning}</p>}
+    {selectedHarness?.integrationState === 'current' && !selectedHarness.recoveryWarning && <p className="composer-preview-note" role="status">Herdr integration is current. Durable recovery still requires the agent to report its provider session identity.</p>}
     {images.error && <p className="form-error" role="alert">{images.error}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     </>}

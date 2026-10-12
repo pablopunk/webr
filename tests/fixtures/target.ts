@@ -43,9 +43,18 @@ export class FakeTarget implements TargetAdapter {
     const pane = { ...this.state.panes[0], pane_id: 'w1:p2', terminal_id: terminalId, tab_id: 'w1:t2', agent: null };
     this.state.tabs.push({ tab_id: 'w1:t2', workspace_id: 'w1', label: input.prompt }); this.state.panes.push(pane);
     this.state.layouts.push({ workspace_id: 'w1', tab_id: 'w1:t2', area: { x: 0, y: 0, width: 80, height: 24 }, panes: [{ pane_id: pane.pane_id, rect: { x: 0, y: 0, width: 80, height: 24 } }] });
-    return { tabId: 'w1:t2', paneId: pane.pane_id, terminalId, workspaceId: 'w1' };
+    const worktree = this.state.workspaces.find((workspace) => workspace.workspace_id === pane.workspace_id)?.worktree;
+    const expectedCwd = pane.foreground_cwd ?? pane.cwd ?? undefined;
+    return { tabId: 'w1:t2', paneId: pane.pane_id, terminalId, workspaceId: 'w1', ...(expectedCwd ? { expectedCwd, observedCwd: expectedCwd } : {}),
+      ...(worktree ? { expectedRepository: worktree.repo_key, expectedCheckout: worktree.checkout_path } : {}) };
   }
-  async start(_input: LaunchInput, paneId: string) { this.effect('start'); this.state.panes.find((pane) => pane.pane_id === paneId)!.agent = 'claude'; }
+  async start(_input: LaunchInput, paneId: string, _threadId?: string, ownerToken?: string) {
+    this.effect('start');
+    const pane = this.state.panes.find((pane) => pane.pane_id === paneId)!;
+    pane.agent = 'claude';
+    if (ownerToken) pane.tokens = { ...pane.tokens, webr_owner: ownerToken };
+    return {};
+  }
   async prompt(paneId: string, _prompt: string, terminalId: string) { if (!this.state.panes.some((pane) => pane.pane_id === paneId && pane.terminal_id === terminalId && pane.agent === 'claude')) throw new Error('occupant_changed'); this.effect('prompt'); }
   focused: string[] = [];
   splits = 0;

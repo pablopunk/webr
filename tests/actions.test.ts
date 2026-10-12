@@ -5,8 +5,8 @@ import { randomUUID } from 'node:crypto';
 
 it('uses the worktree-created initial tab and never creates a second tab', async () => {
   const calls: string[] = []; const state = snapshot();
-  const actions = new HerdrActions({ request: async (method) => { calls.push(method); return { type: 'worktree_created', root_pane: state.panes[0], tab: state.tabs[0] }; } }, new FakeTarget().locations, () => {});
-  expect((await actions.create(launch, randomUUID())).tabId).toBe('w1:t1'); expect(calls).toEqual(['worktree.create']);
+  const actions = new HerdrActions({ request: async (method) => { calls.push(method); return { type: 'worktree_created', root_pane: state.panes[0], tab: state.tabs[0], workspace: state.workspaces[0] }; } }, new FakeTarget().locations, () => {});
+  expect(await actions.create(launch, randomUUID())).toMatchObject({ tabId: 'w1:t1', expectedCwd: '/fixture', expectedRepository: 'fixture', expectedCheckout: '/fixture' }); expect(calls).toEqual(['worktree.create']);
 });
 it('creates a tab only in the selected workspace when worktree is off', async () => {
   const state = snapshot(); let params: unknown;
@@ -86,4 +86,44 @@ it('lists worktrees of the workspace and opens one by path without focusing it',
   const actions = new HerdrActions({ request: async (method, params) => { calls.push([method, params]); return { type: 'worktree_list', worktrees: [entry] }; } }, new FakeTarget().locations, () => {});
   expect(await actions.worktrees('w1')).toEqual([entry]); await actions.openWorktree('w1', '/fixture/wt');
   expect(calls).toEqual([['worktree.list', { workspace_id: 'w1' }], ['worktree.open', { workspace_id: 'w1', path: '/fixture/wt', focus: false }]]);
+});
+it('emits a separate owner token before agent start and captures an immediately reported provider session', async () => {
+  const id = randomUUID(); const calls: { method: string; params?: Record<string, unknown> }[] = [];
+  const providerSession = { source: 'herdr:omp', agent: 'omp', kind: 'path' as const, value: '/provider/session.jsonl' };
+  const agent = { name: agentName(id), terminal_id: 'term_1', pane_id: 'w1:p1', agent: 'omp', agent_status: 'idle', agent_session: providerSession, cwd: '/fixture', foreground_cwd: '/fixture/checkout' };
+  const actions = new HerdrActions({ request: async (method, params) => {
+    calls.push({ method, params });
+    if (method === 'pane.process_info') return { process_info: { shell_pid: 10, foreground_processes: [{ pid: 10 }] } };
+    if (method === 'pane.report_metadata') return { type: 'ok' };
+    return { type: 'agent_started', agent };
+  } }, new FakeTarget().locations, () => {});
+  expect(await actions.start({ ...launch, agent: 'omp' }, 'w1:p1', id, 'durable-owner')).toEqual({ providerSession, observedCwd: '/fixture/checkout' });
+  expect(calls.map((call) => call.method)).toEqual(['pane.process_info', 'pane.report_metadata', 'agent.start']);
+  expect(calls[1].params).toEqual({ pane_id: 'w1:p1', source: 'webr', tokens: { webr_owner: 'durable-owner' } });
+});
+it('returns an unreported provider safely without waiting for a provider session', async () => {
+  const id = randomUUID(); const calls: string[] = [];
+  const actions = new HerdrActions({ request: async (method) => {
+    calls.push(method);
+    return method === 'pane.process_info' ? { process_info: { shell_pid: 10, foreground_processes: [{ pid: 10 }] } }
+      : { type: 'agent_started', agent: { name: agentName(id), terminal_id: 'term_1', pane_id: 'w1:p1', agent: 'opencode', agent_status: 'idle', cwd: '/fixture' } };
+  } }, new FakeTarget().locations, () => {});
+  expect(await actions.start({ ...launch, agent: 'opencode' }, 'w1:p1', id)).toEqual({ observedCwd: '/fixture' });
+  expect(calls).toEqual(['pane.process_info', 'agent.start']);
+});
+it('captures the authoritative report returned by normal readiness detection', async () => {
+  const id = randomUUID(); const base = { name: agentName(id), terminal_id: 'term_1', pane_id: 'w1:p1' };
+  const providerSession = { source: 'herdr:claude', agent: 'claude', kind: 'id' as const, value: 'provider-id' };
+  const actions = new HerdrActions({ request: async (method) => {
+    if (method === 'pane.process_info') return { process_info: { shell_pid: 10, foreground_processes: [{ pid: 10 }] } };
+    if (method === 'agent.start') return { type: 'agent_started', agent: { ...base, agent: null, agent_status: 'unknown' } };
+    return { type: 'agent_info', agent: { ...base, agent: 'claude', agent_status: 'idle', agent_session: providerSession } };
+  } }, new FakeTarget().locations, () => {});
+  expect(await actions.start(launch, 'w1:p1', id)).toEqual({ providerSession });
+});
+it('rejects a session report for another provider rather than persisting its identity', async () => {
+  const id = randomUUID();
+  const actions = new HerdrActions({ request: async (method) => method === 'pane.process_info' ? { process_info: { shell_pid: 10, foreground_processes: [{ pid: 10 }] } }
+    : { type: 'agent_started', agent: { name: agentName(id), terminal_id: 'term_1', pane_id: 'w1:p1', agent: 'claude', agent_status: 'idle', agent_session: { source: 'herdr:omp', agent: 'omp', kind: 'path', value: '/wrong/session' } } } }, new FakeTarget().locations, () => {});
+  await expect(actions.start(launch, 'w1:p1', id)).rejects.toThrow('agent_session_mismatch');
 });

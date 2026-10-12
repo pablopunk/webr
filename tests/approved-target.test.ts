@@ -18,6 +18,7 @@ async function setup(automatic = false, empty = false) {
   const directory = await mkdtemp(join(tmpdir(), 'hc-')); cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const path = join(directory, 'api.sock'); const sockets = new Set<Socket>(); const calls: { method: string; params: Record<string, unknown> }[] = [];
   const state = snapshot(); let agent: Record<string, unknown> = {};
+  const health: Record<string, unknown> = { type: 'integration_list', integrations: [{ target: 'claude', command: 'claude', available: true, state: 'current' }, { target: 'pi', command: 'pi', available: true, state: 'not_installed' }] };
   if (empty) { state.workspaces = []; state.tabs = []; state.panes = []; state.layouts = []; state.agents = []; }
   const server = createServer((socket) => {
     sockets.add(socket); socket.on('close', () => sockets.delete(socket));
@@ -27,6 +28,8 @@ async function setup(automatic = false, empty = false) {
       if (record.method === 'ping') result = { type: 'pong', version: '0.9.3', protocol: 22 };
       if (record.method === 'session.snapshot') result = { type: 'session_snapshot', snapshot: state };
       if (record.method === 'events.subscribe') result = { type: 'subscription_started' };
+      if (record.method === 'integration.list') result = health;
+      if (record.method === 'pane.report_metadata') { state.panes[0].tokens = record.params.tokens as Record<string, string>; result = { type: 'ok' }; }
       if (record.method === 'workspace.create') {
         Object.assign(state, snapshot());
         result = { type: 'workspace_created', workspace: state.workspaces[0], tab: state.tabs[0], root_pane: state.panes[0] };
@@ -46,7 +49,7 @@ async function setup(automatic = false, empty = false) {
   const process = vi.fn(async (_command: string, args: string[]) => args[0] === '--version' ? 'herdr 0.9.3\n' : args[0] === 'api' ? JSON.stringify(schemaFixture()) : args[1] === 'command -v "$1"' ? (args[3] === 'gemini' ? '' : '/bin/' + args[3] + '\n') : '');
   const cli = vi.fn((..._args: Parameters<typeof openCliStream>) => ({ send: vi.fn(), close: vi.fn() }));
   const target = new HerdrTarget(profile, { process, cli }); cleanup.push(() => target.close());
-  return { target, profile, process, cli, calls };
+  return { target, profile, process, cli, calls, health, state };
 }
 it('connects a standalone approved application without HERDR_ENV using only owned fake sockets and process adapters', async () => {
   const { target, process } = await setup(); const unsubscribe = await target.subscribe(() => {}, () => {}); expect((await target.snapshot()).panes[0].terminal_id).toBe('term_fixture');
@@ -78,7 +81,7 @@ it('connects automatic Local without a registry opt-in and discovers native proj
   expect(target.writable).toBe(true);
   expect(target.canLaunch({ ...launch, machineId: target.id, projectId: target.locations[0].projectId })).toBe(true);
   expect((await target.catalog()).projectPaths).toEqual({ [target.locations[0].projectId]: target.locations[0].path });
-  expect(calls.every((call) => ['ping', 'session.snapshot'].includes(call.method))).toBe(true);
+  expect(calls.every((call) => ['ping', 'session.snapshot', 'integration.list'].includes(call.method))).toBe(true);
 });
 it('accepts a connected empty session and creates its first workspace through Herdr with no source or focus change', async () => {
   const { target, calls } = await setup(true, true); vi.stubEnv('WEBR_CONNECT', undefined);
@@ -87,4 +90,23 @@ it('accepts a connected empty session and creates its first workspace through He
   expect(result).toMatchObject({ workspaceId: 'w1', terminalId: 'term_fixture' });
   expect(calls.find((call) => call.method === 'workspace.create')?.params).toEqual({ cwd: '/fixture', label: 'Project', focus: false });
   expect((await target.snapshot()).workspaces).toHaveLength(1); expect(target.locations).toHaveLength(1);
+});
+it('reports integration health per harness without disabling launch when recovery is unavailable', async () => {
+  const { target, health, calls } = await setup();
+  const harnesses = (await target.catalog()).harnesses;
+  expect(harnesses.find((harness) => harness.id === 'claude')).toMatchObject({ launchEnabled: true, integrationState: 'current', recoveryWarning: undefined });
+  expect(harnesses.find((harness) => harness.id === 'pi')).toMatchObject({ launchEnabled: true, integrationState: 'not_installed', recoveryWarning: expect.stringContaining('not installed') });
+  expect(harnesses.find((harness) => harness.id === 'agy')).toMatchObject({ launchEnabled: true, integrationState: 'unavailable', recoveryWarning: expect.any(String) });
+  Object.assign(health, { integrations: [{ target: 'claude', command: 'claude', available: true, state: 'outdated' }] });
+  expect((await target.catalog()).harnesses.find((harness) => harness.id === 'claude')).toMatchObject({ launchEnabled: true, integrationState: 'outdated', recoveryWarning: expect.stringContaining('outdated') });
+  Object.assign(health, { integrations: 'invalid' });
+  expect((await target.catalog()).harnesses.find((harness) => harness.id === 'claude')).toMatchObject({ launchEnabled: true, integrationState: 'unknown', recoveryWarning: expect.any(String) });
+  expect(calls.filter((call) => call.method === 'integration.list')).toHaveLength(3);
+});
+it('captures native cwd and worktree identity before agent startup', async () => {
+  const { target, state } = await setup(); await target.snapshot();
+  state.panes[0].foreground_cwd = '/fixture/checkout';
+  state.workspaces[0].worktree!.checkout_path = '/fixture/checkout';
+  const input = { ...launch, machineId: target.id, projectId: '0123-fixture:project' };
+  expect(await target.create(input, randomUUID())).toMatchObject({ expectedCwd: '/fixture/checkout', expectedRepository: 'fixture', expectedCheckout: '/fixture/checkout' });
 });

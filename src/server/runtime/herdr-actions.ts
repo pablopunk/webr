@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import { acceptsModelFlag, isHerdrAgentKind } from '../../shared/agent-kinds';
 import type { LaunchInput } from '../../shared/runtime';
-import type { LaunchLocation, TerminalDirection } from './target';
-import { nativePane, nativeTab, type NativeSnapshot } from '../protocol/native';
+import type { LaunchCapture, LaunchLocation, TerminalDirection } from './target';
+import { nativePane, nativeTab, nativeWorkspace, type NativeSnapshot } from '../protocol/native';
 import { AGENT_READY_TIMEOUT_MS, SCREEN_SETTLE_TIMEOUT_MS, SHELL_READY_TIMEOUT_MS, requestDeadline, type RpcOptions } from '../protocol/deadlines';
 
 type Api = { request(method: string, params?: Record<string, unknown>, options?: RpcOptions): Promise<Record<string, unknown>> };
-const agentShape = { name: z.string(), terminal_id: z.string(), pane_id: z.string(), agent_status: z.enum(['idle', 'done', 'working', 'blocked', 'unknown']) };
+const agentShape = { name: z.string(), terminal_id: z.string(), pane_id: z.string(), agent_status: z.enum(['idle', 'done', 'working', 'blocked', 'unknown']), agent_session: nativePane.shape.agent_session, cwd: nativePane.shape.cwd, foreground_cwd: nativePane.shape.foreground_cwd };
 const startedAgent = z.object({ ...agentShape, agent: z.string() });
 const detectingAgent = z.object({ ...agentShape, agent: z.string().nullable().optional() });
 const processInfo = z.object({ shell_pid: z.number().int().positive(), foreground_processes: z.array(z.object({ pid: z.number().int().positive() })) });
@@ -36,18 +36,33 @@ export class HerdrActions {
     if (result.type !== (input.worktree ? 'worktree_created' : 'tab_created')) throw new Error('unexpected_create_result');
     const pane = nativePane.parse(result.root_pane); const tab = nativeTab.parse(result.tab);
     if (pane.tab_id !== tab.tab_id || pane.workspace_id !== tab.workspace_id) throw new Error('inconsistent_create_result');
-    return { paneId: pane.pane_id, terminalId: pane.terminal_id, tabId: tab.tab_id, workspaceId: pane.workspace_id };
+    const workspace = result.workspace === undefined ? undefined : nativeWorkspace.parse(result.workspace);
+    if (workspace && workspace.workspace_id !== pane.workspace_id) throw new Error('inconsistent_create_result');
+    const observedCwd = pane.foreground_cwd ?? pane.cwd ?? undefined;
+    const expectedCwd = workspace?.worktree?.checkout_path ?? observedCwd;
+    return { paneId: pane.pane_id, terminalId: pane.terminal_id, tabId: tab.tab_id, workspaceId: pane.workspace_id,
+      ...(expectedCwd ? { expectedCwd } : {}), ...(observedCwd ? { observedCwd } : {}), ...(workspace?.worktree ? { expectedRepository: workspace.worktree.repo_key, expectedCheckout: workspace.worktree.checkout_path } : {}) };
   }
-  async start(input: LaunchInput, paneId: string, threadId: string) {
+  async start(input: LaunchInput, paneId: string, threadId: string, ownerToken?: string): Promise<LaunchCapture> {
     this.requireCapability(input);
+    const args = modelArguments(input.agent, input.model);
     await this.untilShellReady(paneId);
-    const params = { name: agentName(threadId), kind: input.agent, pane_id: paneId, args: modelArguments(input.agent, input.model), timeout_ms: AGENT_READY_TIMEOUT_MS };
+    // Display metadata is isolated from the official provider lifecycle source.
+    // Herdr 0.9.3 retains this while live, but does not persist it across restarts.
+    if (ownerToken) await this.api.request('pane.report_metadata', { pane_id: paneId, source: 'webr', tokens: { webr_owner: ownerToken } });
+    const params = { name: agentName(threadId), kind: input.agent, pane_id: paneId, args, timeout_ms: AGENT_READY_TIMEOUT_MS };
     const result = await this.startWhenPromptReady(params);
     if (result.type !== 'agent_started') throw new Error('agent_not_ready');
     const isReady = (agent: z.infer<typeof detectingAgent>) => agent.name === params.name && agent.pane_id === paneId && agent.agent === input.agent && ['idle', 'done'].includes(agent.agent_status);
-    const started = detectingAgent.parse(result.agent);
+    let started = detectingAgent.parse(result.agent);
     if (started.name !== params.name || started.pane_id !== paneId) throw new Error('agent_not_ready');
-    if (!isReady(started)) await this.untilReady(params.name, isReady);
+    if (!isReady(started)) started = await this.untilReady(params.name, isReady);
+    const providerSession = started.agent_session ?? undefined;
+    if (providerSession && providerSession.agent !== input.agent) throw new Error('agent_session_mismatch');
+    const observedCwd = started.foreground_cwd ?? started.cwd ?? undefined;
+    // A provider need not publish a session until its first prompt. Do not wait
+    // for that report or fabricate a reference; reconciliation captures it later.
+    return { ...(providerSession ? { providerSession } : {}), ...(observedCwd ? { observedCwd } : {}) };
   }
   private async startWhenPromptReady(params: Record<string, unknown>) {
     const end = Date.now() + SHELL_READY_TIMEOUT_MS;
@@ -73,7 +88,7 @@ export class HerdrActions {
     const end = Date.now() + AGENT_READY_TIMEOUT_MS;
     do {
       const current = detectingAgent.safeParse((await this.api.request('agent.get', { target: name })).agent);
-      if (current.success && isReady(current.data)) return;
+      if (current.success && isReady(current.data)) return current.data;
       await pause(250);
     } while (Date.now() < end);
     throw new Error('agent_not_ready');

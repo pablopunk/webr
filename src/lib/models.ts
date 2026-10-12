@@ -27,6 +27,9 @@ export type Pane = {
   terminalId?: string;
 };
 
+export type ProviderSession = { source: string; agent: string; kind: 'id' | 'path'; value: string };
+export type ThreadRecovery = { state: 'unbound' | 'known' | 'restoring' | 'active' | 'needs_attention'; reason?: string };
+
 export type Thread = {
   id: string;
   avatarIndex: number;
@@ -51,6 +54,13 @@ export type Thread = {
   semanticSignature?: string;
   archivedAt?: string;
   paneOrder?: string[];
+  providerSession?: ProviderSession;
+  ownerToken?: string;
+  observedCwd?: string;
+  expectedCwd?: string;
+  expectedRepository?: string;
+  expectedCheckout?: string;
+  recovery?: ThreadRecovery;
 };
 
 export const projects: Project[] = [

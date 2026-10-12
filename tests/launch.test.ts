@@ -48,3 +48,48 @@ it('keeps catalogs and custom model choices isolated to the selected host', asyn
   await expect.poll(() => db.operation(result.operationId)?.state).toBe('ready');
   expect(target.effects).toEqual([]); expect(db.operation(result.operationId)?.input.model).toBe('remote/custom-model');
 });
+it.each(['startup', 'reconciliation'])('persists provider identity from %s before the first prompt without clobbering concurrent capture', async (source) => {
+  const { db, target, journal } = setup();
+  const providerSession = { source: 'herdr:claude', agent: 'claude', kind: 'id' as const, value: 'durable-provider-id' };
+  const originalStart = target.start.bind(target); const originalPrompt = target.prompt.bind(target);
+  target.start = async (input, paneId, threadId, ownerToken) => {
+    const before = db.threadRows(target.id).find((row) => row.id === threadId)!;
+    expect(before.metadata.ownerToken).toBe(ownerToken); expect(ownerToken).toMatch(/^[0-9a-f-]{36}$/);
+    expect(before.metadata).toMatchObject({ expectedCwd: '/fixture', expectedRepository: 'fixture', expectedCheckout: '/fixture' });
+    await originalStart(input, paneId, threadId, ownerToken);
+    if (source === 'startup') return { providerSession, observedCwd: '/fixture' };
+    db.saveThread({ ...before.metadata, providerSession, recovery: { state: 'active' } }, before.anchors, before.alias);
+    return {};
+  };
+  target.prompt = async (paneId, prompt, terminalId) => {
+    const saved = db.threadRows(target.id).find((row) => row.anchors.includes(terminalId))!;
+    expect(saved.metadata.providerSession).toEqual(providerSession); expect(saved.metadata.recovery?.state).toBe('active'); expect(saved.metadata.observedCwd).toBe('/fixture');
+    await originalPrompt(paneId, prompt, terminalId);
+  };
+  const operation = journal.submit('owner', randomUUID(), launch, target);
+  await expect.poll(() => db.operation(operation.operationId)?.state).toBe('ready');
+  expect(target.effects).toEqual(['checkout', 'start', 'prompt']);
+  expect(db.threadRows(target.id).find((row) => row.id === operation.id)?.metadata.providerSession).toEqual(providerSession);
+});
+it('keeps missing startup reports unbound without delaying or replaying the initial prompt', async () => {
+  const { db, target, journal } = setup();
+  const key = randomUUID(); const operation = journal.submit('owner', key, launch, target);
+  await expect.poll(() => db.operation(operation.operationId)?.state).toBe('ready');
+  const thread = db.threadRows(target.id).find((row) => row.id === operation.id)!.metadata;
+  expect(thread.providerSession).toBeUndefined(); expect(thread.recovery?.state).toBe('unbound');
+  journal.submit('owner', key, launch, target);
+  expect(target.effects).toEqual(['checkout', 'start', 'prompt']);
+});
+
+it('does not send the first prompt when the started agent reports a different checkout', async () => {
+  const { db, target, journal } = setup();
+  const originalStart = target.start.bind(target);
+  target.start = async (input, paneId, threadId, ownerToken) => {
+    await originalStart(input, paneId, threadId, ownerToken);
+    return { observedCwd: '/different-checkout' };
+  };
+  const operation = journal.submit('owner', randomUUID(), launch, target);
+  await expect.poll(() => db.operation(operation.operationId)?.state).toBe('unknown');
+  expect(target.effects).toEqual(['checkout', 'start']);
+  expect(db.threadRows(target.id).find((row) => row.id === operation.id)?.metadata.expectedCwd).toBe('/fixture');
+});

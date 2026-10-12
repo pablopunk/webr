@@ -18,6 +18,8 @@ vi.mock('node:net', async () => {
       write(raw: string) {
         const record = JSON.parse(raw) as RequestRecord; fixture.calls.push(record);
         let result: Record<string, unknown> = { type: 'pong', version: '0.9.3', protocol: 22 };
+        if (record.method === 'session.snapshot') result = { type: 'session_snapshot', snapshot: snapshot() };
+        if (record.method === 'integration.list') result = { type: 'integration_list', integrations: [{ target: 'claude', command: 'claude', available: true, state: 'current' }] };
         if (record.method === 'pane.read') result = { type: 'pane_read', read: { text: 'agent ready' } };
         if (record.method === 'pane.process_info') result = { type: 'process_info', process_info: { pane_id: 'w1:p1', shell_pid: 10, foreground_processes: [{ pid: 10, name: 'zsh' }] } };
         if (record.method === 'worktree.create') result = { type: 'worktree_created', root_pane: snapshot().panes[0], tab: snapshot().tabs[0] };

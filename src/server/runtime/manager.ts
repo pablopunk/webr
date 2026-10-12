@@ -10,6 +10,7 @@ import type { MetadataDatabase } from '../storage/database';
 import type { Bootstrap, Projection } from '../../shared/runtime';
 import type { Machine } from '../../lib/machines';
 import { LaunchJournal } from './launch';
+import { sameSession } from './recovery';
 
 const CATALOG_TTL_MS = 5 * 60_000;
 const MODELS_PENDING_TTL_MS = 500;
@@ -79,7 +80,15 @@ export class RuntimeManager extends EventEmitter {
     const tab = panes[0]?.tab_id;
     if (panes.length !== terminalIds.length || !tab || panes.some((pane) => pane.tab_id !== tab) || snapshot.panes.filter((pane) => pane.tab_id === tab).length !== panes.length) throw new Error('invalid_adoption');
     if (this.projections.get(machineId)?.threads.some((other) => other.id !== threadId && other.bindingState === 'attached' && other.tabId === tab)) throw new Error('binding_conflict');
-    this.database.saveThread({ ...row.metadata, session: supervisor.target.session, tabId: tab, bindingFingerprint: supervisor.target.fingerprint, bindingConfigVersion: supervisor.target.configVersion, semanticSignature: undefined }, terminalIds, tab); this.publish(supervisor);
+    const reports = panes.filter((pane) => pane.agent_session);
+    if (row.metadata.providerSession && (reports.length !== 1 || !sameSession(row.metadata.providerSession, reports[0].agent_session!))) throw new Error('conversation_changed');
+    if (reports.length > 1) throw new Error('conversation_conflict');
+    const report = reports[0];
+    const worktree = snapshot.workspaces.find((workspace) => workspace.workspace_id === report?.workspace_id)?.worktree;
+    const cwd = report?.foreground_cwd ?? report?.cwd;
+    if (report && (!cwd || report.agent && report.agent !== report.agent_session!.agent || row.metadata.expectedCwd && row.metadata.expectedCwd !== cwd || row.metadata.expectedRepository && worktree?.repo_key !== row.metadata.expectedRepository || row.metadata.expectedCheckout && worktree?.checkout_path !== row.metadata.expectedCheckout)) throw new Error('worktree_changed');
+    const identity = report ? { providerSession: report.agent_session!, expectedCwd: row.metadata.expectedCwd ?? cwd!, observedCwd: cwd!, expectedRepository: row.metadata.expectedRepository ?? worktree?.repo_key, expectedCheckout: row.metadata.expectedCheckout ?? worktree?.checkout_path, agent: report.agent_session!.agent } : {};
+    this.database.saveThread({ ...row.metadata, ...identity, session: supervisor.target.session, tabId: tab, bindingFingerprint: supervisor.target.fingerprint, bindingConfigVersion: supervisor.target.configVersion, semanticSignature: undefined }, terminalIds, tab); this.publish(supervisor);
   }
   private workspacesWithThreads(machineId: string) {
     const shownTabs = new Set(this.projections.get(machineId)?.threads.filter((thread) => thread.bindingState === 'attached' && !thread.archivedAt).map((thread) => thread.tabId));
@@ -211,7 +220,7 @@ export class RuntimeManager extends EventEmitter {
     const records = supervisor.snapshot ? reconcile(this.database, supervisor.target, supervisor.snapshot) : { threads: this.database.threadRows(supervisor.target.id).map((row) => ({ ...row.metadata, panes: [], bindingState: 'detached' as const, status: 'unknown' as const })), projects: [] };
     const previous = this.projections.get(supervisor.target.id);
     const projection: Projection = { machineId: supervisor.target.id, generation: supervisor.generation, revision: (previous?.revision ?? 0) + 1, freshAt: supervisor.freshAt, connected: supervisor.connected, error: supervisor.error, ...records, layouts: supervisor.snapshot?.layouts.map((layout) => ({ workspaceId: layout.workspace_id, tabId: layout.tab_id, area: layout.area, panes: layout.panes.map((pane) => ({ paneId: pane.pane_id, rect: pane.rect })) })) ?? [] };
-    projection.threads = projection.threads.map((thread) => ({ ...thread, prompt: '', ...(!projection.connected ? { panes: [], status: 'unknown' as const, bindingState: 'detached' as const } : {}) }));
+    projection.threads = projection.threads.map((thread) => ({ ...thread, prompt: '', ...(!projection.connected ? { panes: [], status: 'unknown' as const, bindingState: 'detached' as const, recovery: thread.providerSession ? { state: 'known' as const } : thread.recovery } : {}) }));
     projection.availableTabs = projection.connected ? supervisor.snapshot?.tabs.map((tab) => ({ tabId: tab.tab_id, workspaceId: tab.workspace_id, label: tab.label ?? tab.tab_id, bound: projection.threads.some((thread) => thread.bindingState === 'attached' && thread.tabId === tab.tab_id), panes: supervisor.snapshot!.panes.filter((pane) => pane.tab_id === tab.tab_id && pane.workspace_id === tab.workspace_id).map((pane) => ({ id: pane.pane_id, terminalId: pane.terminal_id, title: pane.title ?? pane.agent ?? 'Shell' })) })) ?? [] : [];
     projection.machine = this.machine(supervisor);
     const semantic = (value: Projection) => JSON.stringify({ ...value, revision: 0, freshAt: null });

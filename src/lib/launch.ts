@@ -13,4 +13,4 @@ export const isLaunching = (thread: Thread) => ['pending', 'running'].includes(t
 export const launchFailed = (thread: Thread) => ['failed', 'unknown'].includes(thread.operation?.state ?? '') && !thread.panes.some((pane) => pane.kind === 'agent');
 export const launchLabel = (thread: Thread) => launchSteps[launchStepIndex(thread.operation?.step ?? 'validate')].active;
 const failedRecently = (thread: Thread, now: number) => now - Date.parse(thread.updatedAt) < RECENT_FAILURE_MS;
-export const isListedThread = (thread: Thread, now = Date.now()) => thread.panes.some((pane) => pane.kind === 'agent') || isLaunching(thread) || launchFailed(thread) && failedRecently(thread, now);
+export const isListedThread = (thread: Thread, now = Date.now()) => !!thread.agent || !!thread.providerSession || thread.panes.some((pane) => pane.kind === 'agent') || isLaunching(thread) || launchFailed(thread) && failedRecently(thread, now);

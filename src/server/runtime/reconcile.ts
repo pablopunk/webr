@@ -4,6 +4,7 @@ import type { NativeSnapshot } from '../protocol/native';
 import type { Project, Thread } from '../../lib/models';
 import type { TargetAdapter } from './target';
 import { orderPanes } from '../../lib/pane-strip';
+import { recoverThread } from './recovery';
 
 export const projectIconKey = (machineId: string, logicalId: string) => `project-icon:${machineId}:${logicalId}`;
 const iconRoute = (machineId: string, id: string, version = '') => `/api/projects/${encodeURIComponent(machineId)}/${encodeURIComponent(id)}/icon${version}`;
@@ -44,27 +45,48 @@ export function reconcile(database: MetadataDatabase, target: TargetAdapter, sna
     if (!projects.some((project) => project.id === id)) projects.push({ id, machineId: target.id, localId: location?.localId, logicalId, name: database.getSetting(projectNameKey(target.id, logicalId)) ?? workspace.worktree?.repo_name ?? workspace.label, path: location?.path ?? cwd, color: '#9b83df', initial: (workspace.label[0] ?? 'P').toUpperCase(), iconUrl: projectIconUrl(database, target, id, logicalId, !!location) });
     for (const tab of snapshot.tabs.filter((tab) => tab.workspace_id === workspace.workspace_id)) tabProjects.set(tab.tab_id, id);
   }
-  const launching = database.operations().some((operation) => operation.input.machineId === target.id && ['pending', 'running'].includes(operation.state));
+  const operations = database.operations();
+  const launching = operations.some((operation) => operation.input.machineId === target.id && ['pending', 'running'].includes(operation.state));
+  const peers = saved.filter((row) => row.metadata.session === target.session && row.metadata.bindingFingerprint === target.fingerprint).map((row) => row.metadata);
+  const recoveries = new Map(saved.map((row) => [row.id, sameBinding(row.metadata, target)
+    ? recoverThread(row.metadata, row.anchors, row.alias, snapshot, peers)
+    : { thread: { ...row.metadata, recovery: { state: 'needs_attention' as const, reason: 'target_changed' } }, tabId: null, unsafe: true }]));
+  // A shell-only projection may appear before Herdr restores the agent. Its layout
+  // alias is not conversation ownership; release it once a saved identity proves the match.
+  for (const [threadId, binding] of recoveries) {
+    if (binding.unsafe || !binding.thread.providerSession || !binding.tabId) continue;
+    const layout = saved.find((row) => row.id !== threadId && row.alias === binding.tabId && !row.metadata.agent && !row.metadata.providerSession && !row.metadata.ownerToken && !row.metadata.prompt && !operations.some((operation) => operation.threadId === row.id));
+    if (!layout) continue;
+    layout.alias = null;
+    layout.metadata = { ...layout.metadata, tabId: '', bindingState: 'detached', recovery: { state: 'unbound' } };
+    database.saveThread(layout.metadata, layout.anchors, null);
+    recoveries.set(layout.id, { thread: layout.metadata, tabId: null, unsafe: false });
+  }
+  const reservedTabs = new Set([...recoveries.values()].flatMap((binding) => [binding.tabId, ...(binding.reservedTabIds ?? [])]).filter((tabId): tabId is string => !!tabId));
   for (const tab of snapshot.tabs) {
-    if (launching || saved.some((row) => row.alias === tab.tab_id)) continue;
+    if (launching || reservedTabs.has(tab.tab_id) || saved.some((row) => row.alias === tab.tab_id)) continue;
     const panes = snapshot.panes.filter((pane) => pane.tab_id === tab.tab_id && pane.workspace_id === tab.workspace_id);
     if (!panes.length) continue;
     const thread: Thread = { id: randomUUID(), avatarIndex: database.nextAvatarIndex(), projectId: tabProjects.get(tab.tab_id) ?? '', machineId: target.id, title: threadTitle(tab.label, panes), prompt: '', agent: '', model: '', status: 'unknown', updatedAt: new Date().toISOString(), branch: '', worktree: !!snapshot.workspaces.find((workspace) => workspace.workspace_id === tab.workspace_id)?.worktree?.is_linked_worktree, session: target.session, tabId: tab.tab_id, panes: [], bindingState: 'attached', bindingFingerprint: target.fingerprint, bindingConfigVersion: target.configVersion };
     database.saveThread(thread, panes.map((pane) => pane.terminal_id), tab.tab_id);
     saved.push(database.threadRows(target.id).find((row) => row.id === thread.id)!);
   }
-  const operations = database.operations();
   const threads = saved.map((row): Thread => {
-    const tab = snapshot.tabs.find((tab) => tab.tab_id === row.alias);
+    const recovered = recoveries.get(row.id) ?? recoverThread(row.metadata, row.anchors, row.alias, snapshot, peers);
+    const occupied = saved.some((other) => other.id !== row.id && other.alias === recovered.tabId);
+    const tab = snapshot.tabs.find((tab) => tab.tab_id === recovered.tabId);
     const members = tab ? snapshot.panes.filter((pane) => pane.tab_id === tab.tab_id && pane.workspace_id === tab.workspace_id) : [];
-    const attached = sameBinding(row.metadata, target) && members.length > 0;
+    const attached = sameBinding(row.metadata, target) && !recovered.unsafe && !occupied && members.length > 0;
     const panes = attached ? members : [];
     const signature = JSON.stringify([panes.map((pane) => [pane.terminal_id, pane.pane_id, pane.agent, pane.agent_status])]);
-    const meaningfulChange = attached && row.metadata.semanticSignature !== signature;
+    const metadata = occupied ? { ...recovered.thread, recovery: { state: 'needs_attention' as const, reason: 'binding_conflict' } } : recovered.thread;
     const operation = operations.find((operation) => operation.threadId === row.id);
     const status: Thread['status'] = attached ? paneStatus(panes) ?? 'unknown' : 'unknown';
-    const thread: Thread = { ...row.metadata, title: attached ? threadTitle(tab?.label, panes, row.metadata.title) : row.metadata.title, projectId: attached ? tabProjects.get(tab!.tab_id) ?? row.metadata.projectId : row.metadata.projectId, bindingState: attached ? 'attached' : operation && !row.anchors.length ? 'pending' : 'detached', status, agent: attached ? panes.find((pane) => pane.agent)?.agent ?? '' : row.metadata.agent, semanticSignature: attached ? signature : row.metadata.semanticSignature, updatedAt: advancesActivity(row.metadata.status, status) ? new Date().toISOString() : row.metadata.updatedAt, panes: orderPanes(panes.map((pane) => ({ id: pane.pane_id, terminalId: pane.terminal_id, title: pane.title ?? pane.terminal_title_stripped ?? pane.agent ?? 'Shell', kind: pane.agent ? 'agent' as const : 'shell' as const })), row.metadata.paneOrder), operation: operation ? { id: operation.id, state: operation.state, step: operation.step } : undefined };
-    if (attached && (meaningfulChange || JSON.stringify(row.anchors) !== JSON.stringify(panes.map((pane) => pane.terminal_id)))) database.saveThread({ ...thread, panes: [], operation: undefined }, panes.map((pane) => pane.terminal_id), row.alias);
+    const thread: Thread = { ...metadata, tabId: attached ? tab!.tab_id : metadata.tabId, title: attached ? threadTitle(tab?.label, panes, metadata.title) : metadata.title, projectId: attached ? tabProjects.get(tab!.tab_id) ?? metadata.projectId : metadata.projectId, bindingState: attached ? 'attached' : operation && !row.anchors.length ? 'pending' : 'detached', status, agent: attached ? panes.find((pane) => pane.agent)?.agent ?? metadata.agent : metadata.agent, semanticSignature: attached ? signature : metadata.semanticSignature, updatedAt: advancesActivity(row.metadata.status, status) ? new Date().toISOString() : metadata.updatedAt, panes: orderPanes(panes.map((pane) => ({ id: pane.pane_id, terminalId: pane.terminal_id, title: pane.title ?? pane.terminal_title_stripped ?? pane.agent ?? 'Shell', kind: pane.agent ? 'agent' as const : 'shell' as const })), metadata.paneOrder), operation: operation ? { id: operation.id, state: operation.state, step: operation.step } : undefined };
+    const persisted = { ...thread, panes: [], operation: undefined };
+    const anchors = attached ? panes.map((pane) => pane.terminal_id) : row.anchors;
+    const alias = attached ? tab!.tab_id : row.alias;
+    if (JSON.stringify(row.metadata) !== JSON.stringify(persisted) || JSON.stringify(row.anchors) !== JSON.stringify(anchors) || alias !== row.alias) database.saveThread(persisted, anchors, alias);
     return thread;
   });
   return { threads, projects };

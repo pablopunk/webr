@@ -28,9 +28,12 @@ it('shows panes as tabs on a narrow screen', () => {
   fireEvent.click(screen.getByRole('tab', { name: 'Two' })); expect(focus).toHaveBeenCalledWith('c');
 });
 
-it('redirects a detached thread to the new thread page', () => {
+it('retains a detached thread without exposing stale terminals or redirecting away', () => {
+  vi.mocked(navigate).mockClear();
   render(<ThreadView thread={{ ...thread, bindingState: 'detached' }} connected canControl focusedPane="b" onFocusPane={vi.fn()} windowStart={0} narrow={false} />);
-  expect(navigate).toHaveBeenCalledWith('/new?project=p');
+  expect(navigate).not.toHaveBeenCalled();
+  expect(screen.getByRole('main', { name: 'Thread tab' })).toBeDefined();
+  expect(screen.queryByLabelText('One terminal')).toBeNull();
 });
 
 it('keeps a detached thread whose launch failed so the failure is shown', () => {

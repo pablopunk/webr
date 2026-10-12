@@ -1,4 +1,5 @@
 import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
 import type { Thread } from '../../lib/models';
 import type { LaunchInput } from '../../shared/runtime';
 
@@ -6,7 +7,11 @@ export const threads = sqliteTable('app_threads', {
   id: text('id').primaryKey(), machineId: text('machine_id').notNull(), session: text('session').notNull(),
   alias: text('alias'), metadata: text('metadata', { mode: 'json' }).$type<Thread>().notNull(),
   anchors: text('anchors', { mode: 'json' }).$type<string[]>().notNull(), avatar: integer('avatar').notNull(),
-}, (table) => [uniqueIndex('native_alias').on(table.machineId, table.session, table.alias)]);
+}, (table) => [
+  uniqueIndex('native_alias').on(table.machineId, table.session, table.alias),
+  uniqueIndex('thread_provider_session').on(table.machineId, table.session, sql`json_extract(${table.metadata}, '$.bindingFingerprint')`, sql`json_extract(${table.metadata}, '$.providerSession.agent')`, sql`json_extract(${table.metadata}, '$.providerSession.kind')`, sql`json_extract(${table.metadata}, '$.providerSession.value')`),
+  uniqueIndex('thread_owner_token').on(table.machineId, table.session, sql`json_extract(${table.metadata}, '$.bindingFingerprint')`, sql`json_extract(${table.metadata}, '$.ownerToken')`),
+]);
 export const operations = sqliteTable('launch_operations', {
   id: text('id').primaryKey(), accountId: text('account_id').notNull(), key: text('key').notNull(), hash: text('hash').notNull(), threadId: text('thread_id').notNull(),
   input: text('input', { mode: 'json' }).$type<LaunchInput>().notNull(), state: text('state').notNull(), step: text('step').notNull(),

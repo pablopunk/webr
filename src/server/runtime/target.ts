@@ -3,10 +3,13 @@ import type { NativeSnapshot } from '../protocol/native';
 import type { TerminalFrame, TerminalStream } from '../terminal/cli';
 import type { LaunchInput } from '../../shared/runtime';
 import type { WorktreeEntry } from './herdr-actions';
+import type { ProviderSession } from '../../lib/models';
 import type { Icon, IconCandidate } from '../transport/icons';
 
 export type TerminalDirection = 'right' | 'down';
 export type LaunchLocation = { projectId: string; localId?: string; logicalId?: string; path: string; workspaceId: string };
+export type LaunchCapture = { providerSession?: ProviderSession; expectedCwd?: string; observedCwd?: string; expectedRepository?: string; expectedCheckout?: string };
+export type CreatedLaunch = LaunchCapture & { tabId: string; paneId: string; terminalId: string; workspaceId: string };
 export type TargetAdapter = {
   id: string; session: string; name: string;
   fingerprint: string;
@@ -28,8 +31,8 @@ export type TargetAdapter = {
   suggestDirectories?(prefix: string): Promise<string[]>;
   createWorkspace?(path: string, label: string, requestId: string): Promise<{ workspaceId: string; tabId: string; terminalId: string }>;
   openTerminal(terminalId: string, mode: 'control' | 'observe', cols: number, rows: number, takeover: boolean, onFrame: (frame: TerminalFrame) => void, onClose: (reason: string) => void): TerminalStream;
-  create(input: LaunchInput, threadId: string): Promise<{ tabId: string; paneId: string; terminalId: string; workspaceId: string }>;
-  start(input: LaunchInput, paneId: string, threadId: string): Promise<void>;
+  create(input: LaunchInput, threadId: string): Promise<CreatedLaunch>;
+  start(input: LaunchInput, paneId: string, threadId: string, ownerToken?: string): Promise<LaunchCapture>;
   prompt(paneId: string, prompt: string, terminalId: string, threadId: string, input: LaunchInput): Promise<void>;
   scrollMode?(terminalId: string): Promise<'scrollback' | 'app'>;
   focusPane?(paneId: string): Promise<void>;

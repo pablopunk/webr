@@ -26,6 +26,14 @@
 .terminal-control-conflict { position: absolute; z-index: 10; top: 8px; left: 50%; display: flex; align-items: center; gap: 10px; max-width: calc(100% - 16px); padding: 6px 10px; transform: translateX(-50%); border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-raised); color: var(--ink-soft); box-shadow: var(--card-shadow); white-space: nowrap; }
 .terminal-control-conflict button { padding: 3px 7px; border: 0; border-radius: 5px; background: var(--surface-hover); color: var(--ink); }
 .runtime-notice { padding: 10px 16px; color: var(--ink-muted); font-size: 15px; }
+.thread-recovery-notice { display: flex; flex: none; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--surface-muted); color: var(--ink-soft); font-size: 13px; overflow-wrap: anywhere; }
+.thread-recovery-notice > svg { flex: none; margin-top: 1px; }
+.thread-recovery-notice strong { color: var(--ink); font-weight: 500; }
+.thread-recovery-notice p { margin: 3px 0 0; }
+.thread-recovery-notice.is-needs_attention > svg, .thread-recovery-notice.is-unbound > svg { color: var(--blocked); }
+.thread-recovery-notice.is-active > svg { color: var(--done); }
+.thread-recovery-notice.is-restoring > svg { animation: launch-spin 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .thread-recovery-notice.is-restoring > svg { animation: none; } }
 .launch-progress { height: 100%; display: grid; align-content: center; justify-items: start; gap: 18px; width: min(520px, 100%); margin: 0 auto; padding: 0 20px; }
 .launch-progress h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.03em; }
 .launch-prompt { margin: 0; padding: 10px 14px; border-left: 2px solid var(--line-strong); color: var(--ink-soft); font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 9em; overflow: auto; }
