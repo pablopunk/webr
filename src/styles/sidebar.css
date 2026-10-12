@@ -50,8 +50,8 @@
 .thread-row.needs-attention.status-blocked { --attention-bg: color-mix(in srgb, var(--blocked) 10%, var(--sidebar)); border-color: var(--card-edge); background: var(--attention-bg); box-shadow: var(--card-shadow); }
 .thread-row.needs-attention.status-done { --attention-bg: color-mix(in srgb, var(--done) 10%, var(--sidebar)); border-color: var(--card-edge); background: var(--attention-bg); box-shadow: var(--card-shadow); }
 .thread-row.needs-attention .thread-status, .thread-row.needs-attention .thread-avatar-harness { background: var(--attention-bg); }
-.thread-row.is-current { border-color: var(--card-edge); border-left: 3px solid var(--line-strong); padding-left: 8px; background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); }
-.thread-row.is-current:hover { border-left: 3px solid var(--line-strong); background: var(--card-hover); box-shadow: var(--card-shadow-hover); }
+.thread-row.is-current { border-color: var(--card-edge); background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink); }
+.thread-row.is-current:hover { background: var(--card-hover); box-shadow: var(--card-shadow-hover); }
 .thread-copy { display: flex; grid-column: 2; grid-row: 1 / 3; flex-direction: column; justify-content: center; gap: 4px; min-width: 0; }
 .thread-context { display: flex; align-items: center; gap: 5px; color: var(--ink-soft); font-size: 12px; }
 .thread-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); }
