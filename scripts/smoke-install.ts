@@ -111,7 +111,7 @@ async function main() {
     const tarball = values.tarball ?? await packTarball(workspace);
     for (const installer of installers) await verifyInstaller(installer, tarball, await mkdtemp(join(workspace, `${installer}-`)));
     console.log(`PASS: ${installers.join(', ')}`);
-  } finally { await rm(workspace, { recursive: true, force: true }); }
+  } finally { await rm(workspace, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 }
 
 await main().catch((error) => { console.error(error instanceof Error ? error.message : error); process.exit(1); });
