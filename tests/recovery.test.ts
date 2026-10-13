@@ -1,4 +1,7 @@
 import { afterEach, expect, it } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { MetadataDatabase } from '../src/server/storage/database';
 import { reconcile } from '../src/server/runtime/reconcile';
 import { FakeTarget } from './fixtures/target';
@@ -58,13 +61,63 @@ it.each(['conversation', 'cwd', 'repository', 'checkout', 'owner'] as const)('re
   expect(thread.panes).toEqual([]);
 });
 
-it('rejects a duplicate live provider reference rather than selecting one pane', () => {
+it('keeps each anchored tab attached when two live tabs report the same provider session', () => {
   const { db, target, original } = fixture();
   target.state.tabs.push({ tab_id: 'w1:t2', workspace_id: 'w1', label: 'Duplicate' });
   target.state.panes.push({ ...target.state.panes[0], pane_id: 'w1:p2', tab_id: 'w1:t2', terminal_id: 'duplicate' });
-  const thread = reconcile(db, target, target.state).threads.find((thread) => thread.id === original.id)!;
-  expect(thread).toMatchObject({ bindingState: 'detached', recovery: { state: 'needs_attention', reason: 'conversation_conflict' } });
-  expect(db.threadRows()).toHaveLength(1);
+  const first = reconcile(db, target, target.state).threads;
+  const intended = first.find((thread) => thread.id === original.id)!;
+  const duplicate = first.find((thread) => thread.tabId === 'w1:t2')!;
+  expect(intended).toMatchObject({ tabId: 'w1:t1', bindingState: 'attached', recovery: { state: 'active' } });
+  expect(duplicate).toMatchObject({ tabId: 'w1:t2', bindingState: 'attached', providerSession: original.providerSession });
+  expect(reconcile(db, target, target.state).threads.filter((thread) => thread.bindingState === 'attached')).toHaveLength(2);
+  expect(db.threadRows()).toHaveLength(2);
+
+  target.state.tabs = target.state.tabs.filter((tab) => tab.tab_id !== 'w1:t2');
+  target.state.panes = target.state.panes.filter((pane) => pane.tab_id !== 'w1:t2');
+  const afterClose = reconcile(db, target, target.state).threads;
+  expect(afterClose.find((thread) => thread.id === original.id)).toMatchObject({ tabId: 'w1:t1', bindingState: 'attached' });
+  expect(afterClose.find((thread) => thread.id === duplicate.id)?.bindingState).toBe('detached');
+});
+
+it('blocks missing-binding recovery when one provider session identifies multiple tabs', () => {
+  const { db, target, original } = fixture();
+  const row = db.threadRows()[0];
+  db.saveThread({ ...row.metadata, tabId: '', bindingState: 'detached' }, [], null);
+  target.state.tabs.push({ tab_id: 'w1:t2', workspace_id: 'w1', label: 'Duplicate' });
+  target.state.panes.push({ ...target.state.panes[0], pane_id: 'w1:p2', tab_id: 'w1:t2', terminal_id: 'duplicate' });
+
+  for (let pass = 0; pass < 2; pass++) {
+    const threads = reconcile(db, target, target.state).threads;
+    expect(threads.find((thread) => thread.id === original.id)).toMatchObject({ bindingState: 'detached', recovery: { state: 'needs_attention', reason: 'conversation_conflict' } });
+    expect(db.threadRows()).toHaveLength(1);
+  }
+});
+
+it('persists duplicate-session bindings across a database restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'webr-recovery-'));
+  const path = join(directory, 'gateway.sqlite');
+  try {
+    const firstDb = new MetadataDatabase(path); databases.push(firstDb);
+    const target = new FakeTarget();
+    const session: ProviderSession = { source: 'herdr:omp', agent: 'omp', kind: 'path', value: '/sessions/shared.jsonl' };
+    Object.assign(target.state.panes[0], { agent: 'omp', agent_session: session });
+    const original = reconcile(firstDb, target, target.state).threads[0];
+    target.state.tabs.push({ tab_id: 'w1:t2', workspace_id: 'w1', label: 'Duplicate' });
+    target.state.panes.push({ ...target.state.panes[0], pane_id: 'w1:p2', tab_id: 'w1:t2', terminal_id: 'duplicate' });
+    const beforeRestart = reconcile(firstDb, target, target.state).threads;
+    expect(beforeRestart.filter((thread) => thread.bindingState === 'attached')).toHaveLength(2);
+    const duplicateId = beforeRestart.find((thread) => thread.tabId === 'w1:t2')!.id;
+    firstDb.close(); databases.splice(databases.indexOf(firstDb), 1);
+
+    const restartedDb = new MetadataDatabase(path); databases.push(restartedDb);
+    const afterRestart = reconcile(restartedDb, target, target.state).threads;
+    expect(afterRestart.find((thread) => thread.id === original.id)).toMatchObject({ tabId: 'w1:t1', bindingState: 'attached' });
+    expect(afterRestart.find((thread) => thread.id === duplicateId)).toMatchObject({ tabId: 'w1:t2', bindingState: 'attached', providerSession: session });
+  } finally {
+    for (const db of databases.splice(0)) db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 it('does not infer a legacy conversation from a reused tab with a new terminal', () => {
@@ -93,9 +146,11 @@ it('captures an authoritative report arriving after launch without issuing anoth
   expect(target.effects).toEqual([]);
 });
 
-it('enforces one durable owner per provider conversation in a target realm', () => {
+it('allows duplicate provider references but preserves unique owner tokens and target scoping', () => {
   const { db, original } = fixture();
-  expect(() => db.saveThread({ ...original, id: 'another-thread' }, [], null)).toThrow();
+  db.saveThread({ ...original, ownerToken: 'same-owner' }, [], null);
+  expect(() => db.saveThread({ ...original, id: 'another-thread' }, [], null)).not.toThrow();
+  expect(() => db.saveThread({ ...original, id: 'same-owner-thread', ownerToken: 'same-owner' }, [], null)).toThrow();
   db.saveThread({ ...original, id: 'another-target', machineId: 'different' }, [], null);
   expect(db.threadRows('different')[0].metadata.providerSession).toEqual(original.providerSession);
 });

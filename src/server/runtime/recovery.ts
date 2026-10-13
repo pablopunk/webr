@@ -22,14 +22,22 @@ function worktreeUnavailable(thread: Thread, pane: NativePane, snapshot: NativeS
 
 export function recoverThread(thread: Thread, anchors: string[], alias: string | null, snapshot: NativeSnapshot, peers: Thread[]): { thread: Thread; tabId: string | null; unsafe: boolean; reservedTabIds?: string[] } {
   const fail = (reason: string, reservedTabIds: string[] = []) => ({ thread: { ...thread, recovery: { state: 'needs_attention' as const, reason } }, tabId: null, unsafe: true, reservedTabIds });
-  const sameSessionPanes = thread.providerSession ? snapshot.panes.filter((pane) => pane.agent_session && sameSession(thread.providerSession!, pane.agent_session)) : [];
   const sameOwnerPanes = thread.ownerToken ? snapshot.panes.filter((pane) => pane.tokens?.webr_owner === thread.ownerToken) : [];
-  if (thread.providerSession && peers.some((peer) => peer.id !== thread.id && peer.providerSession && sameSession(thread.providerSession!, peer.providerSession))) return fail('conversation_conflict', sameSessionPanes.map((pane) => pane.tab_id));
   if (thread.ownerToken && peers.some((peer) => peer.id !== thread.id && peer.ownerToken === thread.ownerToken)) return fail('owner_conflict', sameOwnerPanes.map((pane) => pane.tab_id));
-  const candidates = snapshot.panes.filter((pane) => thread.providerSession && pane.agent_session && sameSession(thread.providerSession, pane.agent_session) || thread.ownerToken && pane.tokens?.webr_owner === thread.ownerToken);
-  if (candidates.length > 1) return fail('conversation_conflict', candidates.map((pane) => pane.tab_id));
-  const candidate = candidates[0];
-  const tabId = candidate?.tab_id ?? alias;
+  // A surviving anchor in the saved tab proves the existing binding. Provider
+  // session IDs are recovery evidence, not unique terminal identities.
+  const anchored = alias ? snapshot.panes.filter((pane) => pane.tab_id === alias && anchors.includes(pane.terminal_id)) : [];
+  const ownerCandidates = thread.ownerToken ? snapshot.panes.filter((pane) => pane.tokens?.webr_owner === thread.ownerToken) : [];
+  const sessionCandidates = thread.providerSession ? snapshot.panes.filter((pane) => pane.agent_session && sameSession(thread.providerSession!, pane.agent_session)) : [];
+  const candidates = ownerCandidates.length ? ownerCandidates : sessionCandidates;
+  const candidateTabs = [...new Set(candidates.map((pane) => pane.tab_id))];
+  if (!anchored.length && candidateTabs.length > 1) return fail(ownerCandidates.length ? 'owner_conflict' : 'conversation_conflict', candidateTabs);
+  const candidate = anchored.length
+    ? candidates.find((pane) => pane.tab_id === alias) ?? anchored.find((pane) => pane.agent_session || pane.agent) ?? anchored[0]
+    : candidateTabs.length === 1
+      ? candidates.find((pane) => pane.tab_id === candidateTabs[0])
+      : undefined;
+  const tabId = anchored.length ? alias : candidate?.tab_id ?? alias;
   const members = snapshot.panes.filter((pane) => pane.tab_id === tabId);
   const reported = candidate ?? members.find((pane) => pane.agent_session) ?? members.find((pane) => pane.agent) ?? members[0];
   if (!reported) return { thread: { ...thread, recovery: { state: thread.providerSession ? 'needs_attention' : 'unbound', reason: thread.providerSession ? 'conversation_missing' : undefined } }, tabId, unsafe: false };
@@ -44,8 +52,8 @@ export function recoverThread(thread: Thread, anchors: string[], alias: string |
   if (!thread.providerSession && !candidate && !anchors.includes(reported.terminal_id)) {
     return { thread: { ...thread, recovery: { state: 'unbound', reason: 'identity_unverified' } }, tabId, unsafe: false };
   }
-  const matchingPanes = snapshot.panes.filter((pane) => pane.agent_session && sameSession(session, pane.agent_session));
-  if (matchingPanes.length > 1 || peers.some((peer) => peer.id !== thread.id && peer.providerSession && sameSession(session, peer.providerSession))) return fail('conversation_conflict', matchingPanes.map((pane) => pane.tab_id));
+  const matchingTabs = [...new Set(snapshot.panes.filter((pane) => pane.agent_session && sameSession(session, pane.agent_session)).map((pane) => pane.tab_id))];
+  if (!anchored.length && matchingTabs.length > 1 && !ownerCandidates.length) return fail('conversation_conflict', matchingTabs);
   const worktree = snapshot.workspaces.find((workspace) => workspace.workspace_id === reported.workspace_id)?.worktree;
   const cwd = reported.foreground_cwd ?? reported.cwd;
   if (!cwd) return fail('cwd_missing', [reported.tab_id]);
