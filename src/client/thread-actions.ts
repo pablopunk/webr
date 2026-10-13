@@ -2,6 +2,7 @@ import type { Project, Thread } from '../lib/models';
 
 const actionErrors: Record<string, string> = {
   machine_disconnected: 'The machine is not connected.',
+  workspace_creation_unavailable: 'This Herdr machine cannot create a terminal.',
   launch_in_progress: 'Wait for the launch to finish, then try again.',
   thread_not_found: 'This thread does not exist anymore.',
 };

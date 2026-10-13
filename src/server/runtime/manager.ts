@@ -12,9 +12,13 @@ import type { Bootstrap, Projection } from '../../shared/runtime';
 import type { Machine } from '../../lib/machines';
 import { LaunchJournal } from './launch';
 import { sameSession } from './recovery';
+import { createWorkspace, type CreatedWorkspace } from './workspace';
 
 const CATALOG_TTL_MS = 5 * 60_000;
 const MODELS_PENDING_TTL_MS = 500;
+const PENDING_TERMINAL_TTL_MS = 30_000;
+type AvailableTab = NonNullable<Projection['availableTabs']>[number];
+type PendingTerminalTab = { tab: AvailableTab; timer: ReturnType<typeof setTimeout> };
 
 export class RuntimeManager extends EventEmitter {
   readonly supervisors = new Map<string, TargetSupervisor>();
@@ -22,6 +26,7 @@ export class RuntimeManager extends EventEmitter {
   private projections = new Map<string, Projection>();
   private catalogs = new Map<string, { expires: number; value: Promise<Machine> }>();
   private configVersions = new Map<string, number>();
+  private pendingTerminalTabs = new Map<string, Map<string, PendingTerminalTab>>();
   private started = false;
   private closed = false;
   constructor(readonly database: MetadataDatabase, targets: TargetAdapter[]) {
@@ -40,7 +45,16 @@ export class RuntimeManager extends EventEmitter {
     if (this.started && target.enabled !== false) void supervisor.start();
   }
   start() { this.started = true; for (const supervisor of this.supervisors.values()) if (supervisor.target.enabled !== false) void supervisor.start(); }
-  async close() { this.closed = true; for (const supervisor of this.supervisors.values()) supervisor.stop(); await this.journal.stop(); this.removeAllListeners(); }
+  async close() {
+    this.closed = true;
+    for (const tabs of this.pendingTerminalTabs.values()) {
+      for (const pending of tabs.values()) clearTimeout(pending.timer);
+      tabs.clear();
+    }
+    this.pendingTerminalTabs.clear();
+    for (const supervisor of this.supervisors.values()) supervisor.stop();
+    await this.journal.stop(); this.removeAllListeners();
+  }
   bootstrap(): Bootstrap {
     const projections = [...this.projections.values()];
     return { projections, projects: projections.flatMap((projection) => projection.projects), threads: projections.flatMap((projection) => projection.threads), machines: [...this.supervisors.values()].map((supervisor) => ({ id: supervisor.target.id, name: supervisor.target.name, session: supervisor.target.session, connected: supervisor.connected, projectPaths: Object.fromEntries(supervisor.target.locations.map((location) => [location.projectId, location.path])), harnesses: [], error: supervisor.error, writable: supervisor.target.writable, os: supervisor.target.os, configVersion: this.configVersions.get(supervisor.target.id) })) };
@@ -79,6 +93,34 @@ export class RuntimeManager extends EventEmitter {
     const tab = ref.tabId && projection?.availableTabs?.find((item) => item.tabId === ref.tabId && !item.bound && item.panes.some((pane) => pane.terminalId === terminalId));
     if (!supervisor?.connected || !projection?.connected || !tab) throw new Error('binding_invalid');
     return supervisor.target;
+  }
+  async createTerminal(machineId: string, path: string, key: string): Promise<CreatedWorkspace> {
+    const supervisor = this.supervisors.get(machineId);
+    if (!supervisor?.connected) throw new Error('machine_disconnected');
+    if (!supervisor.target.writable) throw new Error('workspace_creation_unavailable');
+    const created = await createWorkspace(this.database, supervisor.target, key, path, 'Terminal');
+    this.registerPendingTerminal(supervisor, created);
+    supervisor.invalidate();
+    return created;
+  }
+  private registerPendingTerminal(supervisor: TargetSupervisor, created: CreatedWorkspace) {
+    let machineTabs = this.pendingTerminalTabs.get(supervisor.target.id);
+    if (!machineTabs) this.pendingTerminalTabs.set(supervisor.target.id, machineTabs = new Map());
+    const previous = machineTabs.get(created.tabId);
+    if (previous) clearTimeout(previous.timer);
+    const tab: AvailableTab = {
+      tabId: created.tabId, workspaceId: created.workspaceId, label: 'Terminal', bound: false,
+      panes: [{ id: created.paneId, terminalId: created.terminalId, title: 'Shell' }],
+    };
+    const pending: PendingTerminalTab = { tab, timer: setTimeout(() => {
+      if (this.closed || machineTabs?.get(created.tabId) !== pending) return;
+      machineTabs.delete(created.tabId);
+      if (!machineTabs.size) this.pendingTerminalTabs.delete(supervisor.target.id);
+      this.publish(supervisor);
+    }, PENDING_TERMINAL_TTL_MS) };
+    pending.timer.unref();
+    machineTabs.set(created.tabId, pending);
+    this.publish(supervisor);
   }
   async adopt(machineId: string, threadId: string, terminalIds: string[]) {
     const supervisor = this.supervisors.get(machineId);
@@ -269,7 +311,22 @@ export class RuntimeManager extends EventEmitter {
     const previous = this.projections.get(supervisor.target.id);
     const projection: Projection = { machineId: supervisor.target.id, generation: supervisor.generation, revision: (previous?.revision ?? 0) + 1, freshAt: supervisor.freshAt, connected: supervisor.connected, error: supervisor.error, ...records, layouts: supervisor.snapshot?.layouts.map((layout) => ({ workspaceId: layout.workspace_id, tabId: layout.tab_id, area: layout.area, panes: layout.panes.map((pane) => ({ paneId: pane.pane_id, rect: pane.rect })) })) ?? [] };
     projection.threads = projection.threads.map((thread) => ({ ...thread, prompt: '', ...(!projection.connected ? { panes: [], status: 'unknown' as const, bindingState: 'detached' as const, recovery: thread.providerSession ? { state: 'known' as const } : thread.recovery } : {}) }));
-    projection.availableTabs = projection.connected ? supervisor.snapshot?.tabs.map((tab) => ({ tabId: tab.tab_id, workspaceId: tab.workspace_id, label: tab.label ?? tab.tab_id, bound: projection.threads.some((thread) => thread.bindingState === 'attached' && thread.tabId === tab.tab_id), panes: supervisor.snapshot!.panes.filter((pane) => pane.tab_id === tab.tab_id && pane.workspace_id === tab.workspace_id).map((pane) => ({ id: pane.pane_id, terminalId: pane.terminal_id, title: pane.title ?? pane.agent ?? 'Shell' })) })) ?? [] : [];
+    const availableTabs = projection.connected ? supervisor.snapshot?.tabs.map((tab) => ({ tabId: tab.tab_id, workspaceId: tab.workspace_id, label: tab.label ?? tab.tab_id, bound: projection.threads.some((thread) => thread.bindingState === 'attached' && thread.tabId === tab.tab_id), panes: supervisor.snapshot!.panes.filter((pane) => pane.tab_id === tab.tab_id && pane.workspace_id === tab.workspace_id).map((pane) => ({ id: pane.pane_id, terminalId: pane.terminal_id, title: pane.title ?? pane.agent ?? 'Shell' })) })) ?? [] : [];
+    const pending = this.pendingTerminalTabs.get(supervisor.target.id);
+    for (const [tabId, entry] of pending ?? []) {
+      const observed = availableTabs.find((tab) => tab.tabId === tabId);
+      if (observed?.panes.some((pane) => pane.id === entry.tab.panes[0]?.id && pane.terminalId === entry.tab.panes[0]?.terminalId)) {
+        clearTimeout(entry.timer);
+        pending?.delete(tabId);
+        continue;
+      }
+      if (observed) {
+        const rootPane = entry.tab.panes[0]!;
+        observed.panes = [...observed.panes.filter((pane) => pane.id !== rootPane.id), rootPane];
+      } else availableTabs.push(entry.tab);
+    }
+    if (pending && !pending.size) this.pendingTerminalTabs.delete(supervisor.target.id);
+    projection.availableTabs = availableTabs;
     projection.machine = this.machine(supervisor);
     const semantic = (value: Projection) => JSON.stringify({ ...value, revision: 0, freshAt: null });
     if (previous && semantic(previous) === semantic(projection) && (!projection.freshAt || Date.parse(projection.freshAt) - Date.parse(previous.freshAt ?? '') < 30_000)) return;

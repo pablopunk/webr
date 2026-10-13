@@ -92,11 +92,12 @@ export class HerdrTarget implements TargetAdapter {
     return snapshot;
   }
   async createWorkspace(path: string, label: string, requestId: string) {
-    if (!this.profile.automatic || !this.compatible) throw new Error('workspace_creation_unavailable');
+    if (!this.writable) throw new Error('workspace_creation_unavailable');
     const result = await (await this.connect()).request('workspace.create', { cwd: await this.expandHome(path), label, focus: false }, { timeoutMs: 30_000, requestId });
+    if (result.type !== 'workspace_created') throw new Error('workspace_identity_mismatch');
     const workspace = nativeWorkspace.parse(result.workspace); const tab = nativeTab.parse(result.tab); const pane = nativePane.parse(result.root_pane);
     if (tab.workspace_id !== workspace.workspace_id || pane.workspace_id !== workspace.workspace_id || pane.tab_id !== tab.tab_id) throw new Error('workspace_identity_mismatch');
-    return { workspaceId: workspace.workspace_id, tabId: tab.tab_id, terminalId: pane.terminal_id };
+    return { workspaceId: workspace.workspace_id, tabId: tab.tab_id, paneId: pane.pane_id, terminalId: pane.terminal_id };
   }
   async catalog(projectId?: string): Promise<Machine> {
     const api = await this.connect();

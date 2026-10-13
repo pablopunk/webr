@@ -29,7 +29,7 @@ export type TargetAdapter = {
   worktrees?(projectId: string): Promise<WorktreeEntry[]>;
   openWorktree?(projectId: string, path: string): Promise<void>;
   suggestDirectories?(prefix: string): Promise<string[]>;
-  createWorkspace?(path: string, label: string, requestId: string): Promise<{ workspaceId: string; tabId: string; terminalId: string }>;
+  createWorkspace?(path: string, label: string, requestId: string): Promise<{ workspaceId: string; tabId: string; paneId: string; terminalId: string }>;
   openTerminal(terminalId: string, mode: 'control' | 'observe', cols: number, rows: number, takeover: boolean, onFrame: (frame: TerminalFrame) => void, onClose: (reason: string) => void): TerminalStream;
   create(input: LaunchInput, threadId: string): Promise<CreatedLaunch>;
   start(input: LaunchInput, paneId: string, threadId: string, ownerToken?: string): Promise<LaunchCapture>;

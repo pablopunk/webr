@@ -1,9 +1,9 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { MetadataDatabase } from '../src/server/storage/database';
 import { createHost } from '../src/server/host';
 import { RuntimeManager } from '../src/server/runtime/manager';
-import { resolveSessionTab } from '../src/server/runtime/session-tab';
+import { decodeSessionTabId, resolveSessionTab } from '../src/server/runtime/session-tab';
 import { FakeTarget, launch, frame } from './fixtures/target';
 import { decodeFrame } from '../src/shared/frame';
 import { WebSocket } from 'ws';
@@ -114,42 +114,38 @@ it('validates strict actions and rejects an idempotency key reused for another p
 it('creates and exposes a terminal-only tab before returning its direct URL data', async () => {
   const { app, headers, manager, target } = await setup();
   const workspaceId = 'w2'; const tabId = 'w2:t1'; const paneId = 'w2:p1'; const terminalId = 'term_terminal';
-  const layout = target.state.layouts[0]!;
-  const firstPane = target.state.panes[0]!;
-  const staleSnapshot = structuredClone(target.state);
-  const staleBootstrap = manager.bootstrap();
   let requested: { path: string; label: string } | undefined;
   target.createWorkspace = async (path, label, _requestId) => {
     requested = { path, label };
-    target.state.workspaces.push({ workspace_id: workspaceId, label, worktree: null });
-    target.state.tabs.push({ tab_id: tabId, workspace_id: workspaceId, label });
-    target.state.panes.push({ ...firstPane, pane_id: paneId, terminal_id: terminalId, workspace_id: workspaceId, tab_id: tabId, agent: null, title: 'Shell', cwd: path });
-    target.state.layouts.push({ workspace_id: workspaceId, tab_id: tabId, area: layout.area, panes: [{ pane_id: paneId, rect: layout.panes[0]!.rect }] });
-    let staleReads = 1;
-    target.readHook = async () => staleReads-- > 0 ? staleSnapshot : structuredClone(target.state);
-    return { workspaceId, tabId, terminalId };
+    return { workspaceId, tabId, paneId, terminalId };
   };
+  const readFresh = vi.spyOn(manager.supervisors.get(target.id)!, 'readFresh');
   const key = randomUUID();
   const response = await app.inject({ method: 'POST', url: '/api/terminals', headers: { ...headers, 'Idempotency-Key': key }, payload: { machineId: target.id, path: '~/' } });
   expect(response.statusCode).toBe(201);
   expect(requested).toMatchObject({ path: '~/', label: 'Terminal' });
-  expect(response.json()).toMatchObject({ workspaceId, tabId, terminalId });
+  expect(response.json()).toMatchObject({ workspaceId, tabId, paneId, terminalId });
+  expect(readFresh).not.toHaveBeenCalled();
   expect(manager.bootstrap().threads.some((item) => item.tabId === tabId)).toBe(false);
   const tab = manager.bootstrap().projections.find((projection) => projection.machineId === target.id)?.availableTabs?.find((item) => item.tabId === tabId);
   expect(tab).toMatchObject({ bound: false, panes: [{ id: paneId, terminalId, title: 'Shell' }] });
-  let bootstrapReads = 0;
-  const route = await resolveSessionTab({ bootstrap: () => bootstrapReads++ === 0 ? staleBootstrap : manager.bootstrap(), supervisors: manager.supervisors }, target.session, target.id, tabId);
+  const route = await resolveSessionTab(manager, target.session, target.id, tabId);
   expect(route.page).toBe('terminal');
   expect(route.terminalPending).toBe(false);
   expect(route.terminalTab).toMatchObject({ tabId, bound: false, panes: [{ id: paneId, terminalId }] });
-  expect(bootstrapReads).toBe(2);
   expect(manager.terminalBinding(target.id, terminalId, { tabId })).toBe(target);
   expect(() => manager.terminalBinding(target.id, terminalId, { tabId: 'unknown' })).toThrow('binding_invalid');
+  await manager.supervisors.get(target.id)!.readFresh();
+  expect(manager.bootstrap().projections.find((projection) => projection.machineId === target.id)?.availableTabs).toContainEqual(expect.objectContaining({ tabId, panes: [expect.objectContaining({ id: paneId, terminalId })] }));
   const sockets = await pair(app, headers);
   sockets.terminal.send(JSON.stringify({ type: 'open', streamId: 1, generation: 1, machineId: target.id, tabId, terminalId, mode: 'control', takeover: false, cols: 80, rows: 24 }));
   await expect.poll(() => target.streams.length).toBe(1);
   expect(target.streams[0]?.closed).toBe(false);
   sockets.metadata.close();
+});
+it('decodes encoded standalone tab route IDs before resolving them', () => {
+  expect(decodeSessionTabId(encodeURIComponent('w1:t1'))).toBe('w1:t1');
+  expect(decodeSessionTabId('%E0%A4%A')).toBe('');
 });
 it('keeps a known machine terminal route pending instead of rendering a 404 for a missing snapshot tab', async () => {
   const { manager, target } = await setup();

@@ -1,5 +1,11 @@
 import type { RuntimeManager } from './manager';
 
+export function decodeSessionTabId(value: string | undefined) {
+  if (!value) return '';
+  try { return decodeURIComponent(value); }
+  catch { return ''; }
+}
+
 export async function resolveSessionTab(manager: Pick<RuntimeManager, 'bootstrap' | 'supervisors'>, session: string, machineId: string | null, tabId: string) {
   const resolve = () => {
     const bootstrap = manager.bootstrap();

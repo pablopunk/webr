@@ -49,7 +49,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     if (status && status >= 400 && status < 500) return reply.code(status).send({ error: 'invalid_request' });
     if (message === 'thread_not_found') return reply.code(404).send({ error: message });
     if (message === 'launch_in_progress') return reply.code(409).send({ error: message });
-    return reply.code(['idempotency_conflict', 'binding_conflict', 'invalid_adoption'].includes(message) ? 409 : 503).send({ error: ['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected'].includes(message) ? message : 'request_failed' });
+    return reply.code(['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected', 'workspace_creation_unavailable'].includes(message) ? 409 : 503).send({ error: ['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected', 'workspace_creation_unavailable'].includes(message) ? message : 'request_failed' });
   });
   await app.register(websocket, { options: { maxPayload: 32 * 1024, perMessageDeflate: false } });
   const hub = registerWebsockets(app, manager);
@@ -110,27 +110,12 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     if (!supervisor?.connected) return reply.code(409).send({ error: 'machine_disconnected' });
     const result = await createWorkspace(manager.database, supervisor.target, key, input.path, input.label);
     supervisor.invalidate();
-    return reply.code(result.state === 'unknown' ? 202 : 201).send(result);
+    return reply.code(201).send(result);
   });
   app.post('/api/terminals', async (request, reply) => {
     const input = z.object({ machineId: opaqueId, path: z.string().regex(/^(\/|~\/)/).max(1000).refine((path) => !/[\x00-\x1f]/.test(path)) }).strict().parse(request.body);
     const key = z.uuid().parse(request.headers['idempotency-key']);
-    const supervisor = manager.supervisors.get(input.machineId);
-    if (!supervisor?.connected) return reply.code(409).send({ error: 'machine_disconnected' });
-    const result = await createWorkspace(manager.database, supervisor.target, key, input.path, 'Terminal');
-    if ('state' in result && result.state === 'unknown') return reply.code(202).send(result);
-    // Herdr can acknowledge workspace creation before the new tab appears in
-    // its next snapshot. Don't return a URL target that SSR would classify as
-    // a missing thread/tab; wait briefly for the created terminal to surface.
-    let visible = false;
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const snapshot = await supervisor.readFresh();
-      visible = snapshot.tabs.some((tab) => tab.tab_id === result.tabId)
-        && snapshot.panes.some((pane) => pane.tab_id === result.tabId && pane.terminal_id === result.terminalId);
-      if (visible) break;
-      if (attempt < 9) await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    if (!visible) return reply.code(503).send({ error: 'terminal_not_ready' });
+    const result = await manager.createTerminal(input.machineId, input.path, key);
     return reply.code(201).send(result);
   });
   const projectIconTarget = z.object({ machineId: opaqueId, logicalId: z.string().min(1).max(1000) }).strict();

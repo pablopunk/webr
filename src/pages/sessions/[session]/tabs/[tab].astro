@@ -1,11 +1,11 @@
 ---
 import Base from '../../../../layouts/Base.astro';
 import App from '../../../../components/App';
-import { resolveSessionTab } from '../../../../server/runtime/session-tab';
+import { decodeSessionTabId, resolveSessionTab } from '../../../../server/runtime/session-tab';
 const manager = Astro.locals.runtime;
 const machineId = Astro.url.searchParams.get('machine');
 const session = Astro.params.session ?? '';
-const tabId = Astro.params.tab ?? '';
+const tabId = decodeSessionTabId(Astro.params.tab);
 const route = await resolveSessionTab(manager, session, machineId, tabId);
 const { bootstrap, thread, machine, terminalTab, page, terminalPending } = route;
 const terminalStartup = page === 'terminal' && Astro.url.searchParams.get('startup') === 'resource-monitor' ? 'resource-monitor' as const : undefined;

@@ -85,9 +85,15 @@ it('accepts a connected empty session and creates its first workspace through He
   const { target, calls } = await setup(true, true); vi.stubEnv('WEBR_CONNECT', undefined);
   expect((await target.snapshot()).workspaces).toEqual([]); expect(target.locations).toEqual([]);
   const result = await target.createWorkspace('/fixture', 'Project', randomUUID());
-  expect(result).toMatchObject({ workspaceId: 'w1', terminalId: 'term_fixture' });
+  expect(result).toMatchObject({ workspaceId: 'w1', paneId: 'w1:p1', terminalId: 'term_fixture' });
   expect(calls.find((call) => call.method === 'workspace.create')?.params).toEqual({ cwd: '/fixture', label: 'Project', focus: false });
   expect((await target.snapshot()).workspaces).toHaveLength(1); expect(target.locations).toHaveLength(1);
+});
+it('allows configured writable Herdr profiles to create standalone workspaces', async () => {
+  const { target, calls } = await setup(false); await target.snapshot();
+  const result = await target.createWorkspace('/fixture', 'Terminal', randomUUID());
+  expect(result).toMatchObject({ workspaceId: 'w1', tabId: 'w1:t1', paneId: 'w1:p1', terminalId: 'term_fixture' });
+  expect(calls.filter((call) => call.method === 'workspace.create')).toHaveLength(1);
 });
 it('captures native cwd and worktree identity before agent startup', async () => {
   const { target, state } = await setup(); await target.snapshot();

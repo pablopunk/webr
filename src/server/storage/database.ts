@@ -1,6 +1,6 @@
 import { NodeSqliteClient } from './node-sqlite-client';
 import { openMigratedDrizzle } from './drizzle-node-sqlite';
-import { and, desc, eq, lte, max } from 'drizzle-orm';
+import { and, desc, eq, lte, max, sql } from 'drizzle-orm';
 import type { DeviceSession } from '../auth/sessions';
 import type { AuditEvent } from '../auth/audit';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +25,7 @@ export class MetadataDatabase {
   }
   close() { this.sqlite.close(); }
   getSetting(key: string) { return this.db.select().from(schema.settings).where(eq(schema.settings.key, key)).get()?.value; }
+  settingsWithPrefix(prefix: string) { return this.db.select().from(schema.settings).where(sql`substr(${schema.settings.key}, 1, ${prefix.length}) = ${prefix}`).all(); }
   deleteSetting(key: string) { this.db.delete(schema.settings).where(eq(schema.settings.key, key)).run(); }
   setSetting(key: string, value: string) { this.db.insert(schema.settings).values({ key, value }).onConflictDoUpdate({ target: schema.settings.key, set: { value } }).run(); }
   threadRows(machineId?: string, session?: string) {

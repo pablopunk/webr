@@ -36,6 +36,9 @@ it('requires the installed recovery and integration API contracts without requir
   const missingMethod = schemaFixture();
   missingMethod.schemas.request.oneOf = missingMethod.schemas.request.oneOf.filter((variant) => variant.properties.method.const !== 'pane.report_metadata');
   expect(validateInstalledSchema(missingMethod)).toContain('Missing method: pane.report_metadata');
+  const missingWorkspaceCreate = schemaFixture();
+  missingWorkspaceCreate.schemas.request.oneOf = missingWorkspaceCreate.schemas.request.oneOf.filter((variant) => variant.properties.method.const !== 'workspace.create');
+  expect(validateInstalledSchema(missingWorkspaceCreate)).toContain('Missing method: workspace.create');
   const missingField = schemaFixture();
   delete missingField.schemas.success_response.$defs.PaneInfo.properties.agent_session;
   expect(validateInstalledSchema(missingField)).toContain('Missing recovery response field: PaneInfo.agent_session');
