@@ -22,11 +22,11 @@ it('lists threads and terminals in one navigation with a terminals divider', () 
 });
 
 it('closes a terminal from its dismiss button', async () => {
-  const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ closed: true, busy: false }) }));
+  const fetch = vi.fn(async (_path: string, _init: RequestInit) => ({ ok: true, json: async () => ({ closed: true, busy: false }) }));
   vi.stubGlobal('fetch', fetch);
   renderSidebar();
   fireEvent.click(screen.getByRole('button', { name: 'Close Floating shell' }));
   await vi.waitFor(() => expect(fetch.mock.calls.filter(([path]) => path === '/api/tabs/close')).toHaveLength(1));
   const closes = fetch.mock.calls.filter(([path]) => path === '/api/tabs/close');
-  expect(JSON.parse(String(closes[0][1].body))).toEqual({ machineId: 'local', tabId: 'w1:t9', force: false });
+  expect(JSON.parse(String(closes[0]?.[1].body))).toEqual({ machineId: 'local', tabId: 'w1:t9', force: false });
 });
