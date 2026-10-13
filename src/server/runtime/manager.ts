@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import type { NativeSnapshot } from '../protocol/native';
 import type { TargetAdapter } from './target';
 import type { Thread } from '../../lib/models';
 import { canClosePane, insertAfter } from '../../lib/pane-strip';
@@ -220,9 +221,48 @@ export class RuntimeManager extends EventEmitter {
   async deleteArchived() {
     const archived = [...this.projections.values()].flatMap((projection) => projection.threads.filter((thread) => thread.archivedAt));
     const failed: string[] = [];
-    for (const thread of archived) await this.deleteThread(thread.machineId, thread.id).catch(() => failed.push(thread.id));
-    return { deleted: archived.length - failed.length, failed };
+    const skippedMachines: string[] = [];
+    let deleted = 0;
+    let orphanTabsDeleted = 0;
+    for (const thread of archived) {
+      try { await this.deleteThread(thread.machineId, thread.id); ++deleted; }
+      catch { failed.push(thread.id); }
+    }
+    for (const supervisor of this.supervisors.values()) {
+      const machineId = supervisor.target.id;
+      if (!supervisor.connected) { skippedMachines.push(machineId); continue; }
+      let snapshot: NativeSnapshot;
+      try { snapshot = await supervisor.readFresh(); }
+      catch { skippedMachines.push(machineId); continue; }
+      const orphanTabs = snapshot.tabs.filter((tab) => !this.threadOwnsTab(machineId, tab.tab_id)).map((tab) => tab.tab_id);
+      for (const tabId of orphanTabs) {
+        if (!supervisor.connected || !supervisor.target.writable || !supervisor.target.discardTab) {
+          skippedMachines.push(machineId);
+          break;
+        }
+        try { snapshot = await supervisor.readFresh(); }
+        catch { skippedMachines.push(machineId); break; }
+        if (!supervisor.connected || this.launchInProgress(machineId)) { skippedMachines.push(machineId); break; }
+        if (!snapshot.tabs.some((tab) => tab.tab_id === tabId) || this.threadOwnsTab(machineId, tabId)) continue;
+        try { await supervisor.target.discardTab(tabId, false); }
+        catch { /* A failed Herdr reply can still mean the tab closed; verify its snapshot below. */ }
+        try { snapshot = await supervisor.readFresh(); }
+        catch { failed.push(`${machineId}:${tabId}`); skippedMachines.push(machineId); break; }
+        const remains = snapshot.tabs.some((tab) => tab.tab_id === tabId);
+        if (!remains) ++orphanTabsDeleted;
+        else if (!this.threadOwnsTab(machineId, tabId)) failed.push(`${machineId}:${tabId}`);
+      }
+    }
+    return { deleted, orphanTabsDeleted, failed, skippedMachines: [...new Set(skippedMachines)] };
   }
+  private threadOwnsTab(machineId: string, tabId: string) {
+    return this.database.threadRows(machineId).some((row) => row.alias === tabId)
+      || this.projections.get(machineId)?.threads.some((thread) => thread.tabId === tabId) === true;
+  }
+  private launchInProgress(machineId: string) {
+    return this.database.operations().some((operation) => operation.input.machineId === machineId && ['pending', 'running'].includes(operation.state));
+  }
+
   private publishAll() { for (const supervisor of this.supervisors.values()) { this.publish(supervisor); supervisor.invalidate(); } }
   private publish(supervisor: TargetSupervisor) {
     const records = supervisor.snapshot ? reconcile(this.database, supervisor.target, supervisor.snapshot) : { threads: this.database.threadRows(supervisor.target.id).map((row) => ({ ...row.metadata, panes: [], bindingState: 'detached' as const, status: 'unknown' as const })), projects: [] };

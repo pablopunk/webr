@@ -98,9 +98,44 @@ it('archives a thread out of the list and deletes archived threads together with
   const thread = manager.bootstrap().threads[0];
   manager.archive('fixture', thread.id, true);
   expect(manager.bootstrap().threads[0].archivedAt).toBeTypeOf('string');
-  expect(await manager.deleteArchived()).toEqual({ deleted: 1, failed: [] });
+  expect(await manager.deleteArchived()).toEqual({ deleted: 1, orphanTabsDeleted: 0, failed: [], skippedMachines: [] });
   expect(target.effects).toEqual(['discard:w1:t1']); expect(manager.database.threadRows('fixture')).toEqual([]);
   await expect(manager.deleteThread('fixture', thread.id)).rejects.toThrow('thread_not_found');
+});
+it('deletes untracked terminal tabs and their agents while preserving live thread tabs', async () => {
+  const target = new FakeTarget();
+  const activePane = target.state.panes[0];
+  target.state.tabs.push({ tab_id: 'w1:t2', workspace_id: 'w1', label: 'Active thread' });
+  target.state.panes.push({ ...activePane, pane_id: 'w1:p2', terminal_id: 'term_active', tab_id: 'w1:t2', agent: 'opencode', focused: false });
+  target.state.layouts.push({ workspace_id: 'w1', tab_id: 'w1:t2', area: { x: 0, y: 0, width: 80, height: 24 }, panes: [{ pane_id: 'w1:p2', rect: { x: 0, y: 0, width: 80, height: 24 } }] });
+  target.state.tabs.push({ tab_id: 'w1:t3', workspace_id: 'w1', label: 'Orphan terminal' });
+  target.state.panes.push({ ...activePane, pane_id: 'w1:p3', terminal_id: 'term_orphan', tab_id: 'w1:t3', agent: null, focused: false });
+  target.state.layouts.push({ workspace_id: 'w1', tab_id: 'w1:t3', area: { x: 0, y: 0, width: 80, height: 24 }, panes: [{ pane_id: 'w1:p3', rect: { x: 0, y: 0, width: 80, height: 24 } }] });
+  target.state.agents.push({ terminal_id: 'term_orphan' });
+  const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(2);
+  const archived = manager.bootstrap().threads.find((thread) => thread.tabId === 'w1:t1')!;
+  manager.archive('fixture', archived.id, true);
+
+  expect(await manager.deleteArchived()).toEqual({ deleted: 1, orphanTabsDeleted: 1, failed: [], skippedMachines: [] });
+  expect(target.state.tabs.map((tab) => tab.tab_id)).toEqual(['w1:t2']);
+  expect(target.state.panes.map((pane) => pane.terminal_id)).toEqual(['term_active']);
+  expect(target.state.agents).toEqual([]);
+  expect(target.discards).toEqual([{ tabId: 'w1:t1', removeWorktree: false }, { tabId: 'w1:t3', removeWorktree: false }]);
+  expect(manager.database.threadRows('fixture').map((row) => row.alias)).toEqual(['w1:t2']);
+});
+it('reports an orphan terminal that Herdr could not close', async () => {
+  const target = new FakeTarget();
+  const pane = target.state.panes[0];
+  target.state.tabs.push({ tab_id: 'w1:t2', workspace_id: 'w1', label: 'Orphan terminal' });
+  target.state.panes.push({ ...pane, pane_id: 'w1:p2', terminal_id: 'term_orphan', tab_id: 'w1:t2', agent: null, focused: false });
+  target.state.layouts.push({ workspace_id: 'w1', tab_id: 'w1:t2', area: { x: 0, y: 0, width: 80, height: 24 }, panes: [{ pane_id: 'w1:p2', rect: { x: 0, y: 0, width: 80, height: 24 } }] });
+  const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  target.failure = 'discard:w1:t2:before';
+
+  expect(await manager.deleteArchived()).toEqual({ deleted: 0, orphanTabsDeleted: 0, failed: ['fixture:w1:t2'], skippedMachines: [] });
+  expect(target.state.tabs.map((tab) => tab.tab_id)).toContain('w1:t2');
 });
 it('opens terminals after the focused pane and keeps that order in the thread', async () => {
   const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();

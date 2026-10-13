@@ -18,7 +18,7 @@ import { groupProjectLocations } from '../client/project-groups';
 import { withTildeHome } from '../client/home-path';
 import { uuid } from '../lib/uuid';
 import { alertDialog, confirmDialog } from './dialogs';
-import { createTerminalTab, deleteArchivedThreads, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
+import { createTerminalTab, deleteArchivedThreads, deleteArchivedWarning, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
 
 export type SidebarMode = 'projects' | 'threads';
 const closedProjectsStorageKey = 'webr-sidebar-closed-projects';
@@ -161,9 +161,15 @@ function ArchivedThreads({ threads, renderThread }: { threads: Thread[]; renderT
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const deleteAll = async () => {
-    if (!await confirmDialog(deleteWarning(threads), { confirmLabel: 'Delete all', danger: true })) return;
+    if (!await confirmDialog(deleteArchivedWarning(threads), { confirmLabel: 'Delete all', danger: true })) return;
     setDeleting(true);
-    try { const result = await deleteArchivedThreads(); if (result.failed.length) await alertDialog(`${result.failed.length} archived ${result.failed.length === 1 ? 'thread' : 'threads'} could not be deleted.`); }
+    try {
+      const result = await deleteArchivedThreads();
+      const issues: string[] = [];
+      if (result.failed.length) issues.push(`${result.failed.length} item${result.failed.length === 1 ? '' : 's'} could not be deleted.`);
+      if (result.skippedMachines.length) issues.push(`Orphan cleanup could not run on ${result.skippedMachines.length} machine${result.skippedMachines.length === 1 ? '' : 's'}.`);
+      if (issues.length) await alertDialog(issues.join(' '));
+    }
     catch (error) { reportFailure(error); } finally { setDeleting(false); }
   };
   return <section className="thread-group archived-threads" aria-label="Archived threads">

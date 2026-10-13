@@ -40,7 +40,7 @@ export async function createTerminalTab(machineId: string, path: string, key: st
 }
 export const closeThreadPane = (thread: Thread, paneId: string, force: boolean) => post(`/api/threads/${encodeURIComponent(thread.id)}/panes/close`, { machineId: thread.machineId, paneId, force }) as Promise<{ closed: boolean; busy: boolean }>;
 export const deleteThreadPermanently = (thread: Thread) => post(`/api/threads/${encodeURIComponent(thread.id)}/delete`, { machineId: thread.machineId });
-export const deleteArchivedThreads = () => post('/api/archive/delete') as Promise<{ deleted: number; failed: string[] }>;
+export const deleteArchivedThreads = () => post('/api/archive/delete') as Promise<{ deleted: number; orphanTabsDeleted: number; failed: string[]; skippedMachines: string[] }>;
 const plural = (count: number, one: string, many: string) => count === 1 ? one : many;
 export function deleteWarning(threads: Thread[]) {
   const count = threads.length; const worktrees = threads.filter((thread) => thread.ownsWorktree).length;
@@ -49,4 +49,7 @@ export function deleteWarning(threads: Thread[]) {
   if (!worktrees) return `${subject} permanently? This closes ${closes}. Your project files stay untouched.`;
   const removes = worktrees === count ? plural(count, 'its worktree', 'their worktrees') : `${worktrees} ${plural(worktrees, 'worktree', 'worktrees')}`;
   return `${subject} permanently? This closes ${closes} and removes ${removes}, including uncommitted changes.`;
+}
+export function deleteArchivedWarning(threads: Thread[]) {
+  return `${deleteWarning(threads)} Standalone terminal tabs and agents not represented as threads are also closed; their worktrees and project files stay untouched.`;
 }

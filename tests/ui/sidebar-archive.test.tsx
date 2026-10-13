@@ -7,7 +7,7 @@ vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const renderSidebar = (threads = exampleThreads().slice(0, 1), archived = exampleThreads().slice(1, 2).map((thread) => ({ ...thread, archivedAt: thread.updatedAt }))) => render(<Sidebar projects={[]} threads={threads} archived={archived} machines={[]} mode="threads" onModeChange={() => {}} collapsed={false} mobileOpen={false} onCollapse={() => {}} onCloseMobile={() => {}} />);
-const answering = () => vi.fn(async (_path: string, _init: RequestInit) => ({ ok: true, json: async () => ({ deleted: 1, failed: [] }) }));
+const answering = () => vi.fn(async (_path: string, _init: RequestInit) => ({ ok: true, json: async () => ({ deleted: 1, orphanTabsDeleted: 0, failed: [], skippedMachines: [] }) }));
 
 it('archives a thread from its hover button and restores it from the Archived section', async () => {
   const fetch = answering(); vi.stubGlobal('fetch', fetch); renderSidebar();
@@ -25,6 +25,7 @@ it('deletes permanently from the right-click menu and deletes all archived threa
   expect(await screen.findByText(/removes its worktree/)).toBeTruthy(); fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
   await waitFor(() => expect(fetch.mock.calls[0][0]).toBe('/api/threads/terminal-web-bridge/delete'));
   fireEvent.click(screen.getByRole('button', { name: 'Delete all' }));
+  expect(await screen.findByText(/Standalone terminal tabs and agents not represented as threads are also closed/)).toBeTruthy();
   fireEvent.click(await screen.findByRole('button', { name: 'Delete all', hidden: false }).then(() => screen.getAllByRole('button', { name: 'Delete all' }).at(-1)!));
   await waitFor(() => expect(fetch.mock.calls[1][0]).toBe('/api/archive/delete'));
 });

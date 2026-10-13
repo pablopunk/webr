@@ -59,6 +59,7 @@ export class FakeTarget implements TargetAdapter {
   focused: string[] = [];
   splits = 0;
   busyPanes = new Set<string>();
+  discards: { tabId: string; removeWorktree: boolean }[] = [];
   async paneBusy(paneId: string) { return this.busyPanes.has(paneId); }
   async focusPane(paneId: string) { this.focused.push(paneId); }
   async splitTerminal(paneId: string, direction: 'right' | 'down') {
@@ -68,7 +69,15 @@ export class FakeTarget implements TargetAdapter {
     return pane.pane_id;
   }
   async closePane(paneId: string) { this.effect('close:' + paneId); this.state.panes = this.state.panes.filter((pane) => pane.pane_id !== paneId); }
-  async discardTab(tabId: string, _removeWorktree = false) { this.effect('discard:' + tabId); this.state.panes = this.state.panes.filter((pane) => pane.tab_id !== tabId); this.state.tabs = this.state.tabs.filter((tab) => tab.tab_id !== tabId); }
+  async discardTab(tabId: string, removeWorktree = false) {
+    this.effect('discard:' + tabId);
+    this.discards.push({ tabId, removeWorktree });
+    const terminalIds = new Set(this.state.panes.filter((pane) => pane.tab_id === tabId).map((pane) => pane.terminal_id));
+    this.state.panes = this.state.panes.filter((pane) => pane.tab_id !== tabId);
+    this.state.tabs = this.state.tabs.filter((tab) => tab.tab_id !== tabId);
+    this.state.layouts = this.state.layouts.filter((layout) => layout.tab_id !== tabId);
+    this.state.agents = this.state.agents.filter((agent) => !terminalIds.has(agent.terminal_id));
+  }
   close() { ++this.closed; }
 }
 export const launch: LaunchInput = { machineId: 'fixture', projectId: 'fixture:project', prompt: 'Test launch', agent: 'claude', model: 'Default', worktree: true };
