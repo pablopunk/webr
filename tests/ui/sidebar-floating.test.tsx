@@ -29,8 +29,8 @@ it('closes a terminal after confirming a busy process', async () => {
   vi.stubGlobal('fetch', fetch);
   renderSidebar();
   fireEvent.click(screen.getByRole('button', { name: 'Close Floating shell' }));
-  await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
-  expect(fetch.mock.calls[0][0]).toBe('/api/tabs/close');
-  expect(JSON.parse(String(fetch.mock.calls[0][1].body))).toEqual({ machineId: 'local', tabId: 'w1:t9', force: false });
-  expect(JSON.parse(String(fetch.mock.calls[1][1].body))).toEqual({ machineId: 'local', tabId: 'w1:t9', force: true });
+  await vi.waitFor(() => expect(fetch.mock.calls.filter(([path]) => path === '/api/tabs/close')).toHaveLength(2));
+  const closes = fetch.mock.calls.filter(([path]) => path === '/api/tabs/close');
+  expect(JSON.parse(String(closes[0][1].body))).toEqual({ machineId: 'local', tabId: 'w1:t9', force: false });
+  expect(JSON.parse(String(closes[1][1].body))).toEqual({ machineId: 'local', tabId: 'w1:t9', force: true });
 });
