@@ -18,7 +18,7 @@ it('archives a thread from its hover button and restores it from the Archived se
   expect(screen.queryByRole('button', { name: 'Unarchive Review socket API changes' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /Archived/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Unarchive Review socket API changes' }));
-  expect(requestsFor(fetch, archiveEndpoint).map(([, init]) => JSON.parse(String(init.body)))).toEqual([
+  expect(fetch.mock.calls.filter(([path]) => path.endsWith('/archive')).map(([, init]) => JSON.parse(String(init.body)))).toEqual([
     { machineId: 'local', archived: true },
     { machineId: 'local', archived: false },
   ]);
