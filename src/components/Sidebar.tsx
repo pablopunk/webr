@@ -18,7 +18,8 @@ import { groupProjectLocations } from '../client/project-groups';
 import { withTildeHome } from '../client/home-path';
 import { uuid } from '../lib/uuid';
 import { alertDialog, confirmDialog } from './dialogs';
-import { createTerminalTab, deleteArchivedThreads, deleteArchivedWarning, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
+import { createTerminalTab, closeTerminalTab, deleteArchivedThreads, deleteArchivedWarning, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
+import { sidebarTabKey, type FloatingTab } from '../lib/floating';
 import { SidebarMetrics } from './SidebarMetrics';
 import { terminalStartupStorageKey, type TerminalStartupPreset } from '../client/terminal-presets';
 
@@ -29,9 +30,11 @@ type Props = {
   projects: Project[];
   threads: Thread[];
   archived?: Thread[];
+  floating?: FloatingTab[];
   machines: Machine[];
   currentId?: string;
   currentMachineId?: string;
+  currentTab?: { machineId: string; tabId: string };
   mode: SidebarMode;
   onModeChange: (mode: SidebarMode) => void;
   collapsed: boolean;
@@ -84,8 +87,9 @@ const ThreadRow = memo(function ThreadRow({ thread, project, machineName, curren
   const archiveLabel = archived ? `Unarchive ${thread.title}` : `Archive ${thread.title}`;
   const [renaming, setRenaming] = useState(false);
   const editor = renaming ? <ThreadTitleEditor thread={thread} onDone={() => setRenaming(false)} onError={reportFailure} /> : undefined;
+  const flipId = thread.bindingState === 'attached' && thread.tabId ? sidebarTabKey(thread.machineId, thread.tabId) : thread.id;
   return <ContextMenu.Root>
-    <ContextMenu.Trigger className="thread-item" data-flip-id={thread.id} onDoubleClick={(event) => { event.preventDefault(); setRenaming(true); }}>
+    <ContextMenu.Trigger className="thread-item" data-flip-id={flipId} onDoubleClick={(event) => { event.preventDefault(); setRenaming(true); }}>
       <ThreadLink thread={thread} project={project} machineName={machineName} current={current} showProject={showProject} editor={editor} />
       <Tooltip label={archived ? 'Unarchive' : 'Archive'}><button type="button" className="thread-archive" aria-label={archiveLabel} onClick={() => void setThreadArchived(thread, !archived).catch(reportFailure)}><ArchiveIcon size={15} strokeWidth={1.8} aria-hidden="true" /></button></Tooltip>
     </ContextMenu.Trigger>
@@ -93,6 +97,27 @@ const ThreadRow = memo(function ThreadRow({ thread, project, machineName, curren
       <ContextMenu.Item className="thread-menu-item is-danger" onClick={() => void confirmDelete(thread)}><Trash2 size={14} aria-hidden="true" />Delete permanently</ContextMenu.Item>
     </ContextMenu.Popup></ContextMenu.Positioner></ContextMenu.Portal>
   </ContextMenu.Root>;
+});
+
+const TerminalRow = memo(function TerminalRow({ tab, session, machineName, current, canClose }: { tab: FloatingTab; session: string; machineName: string; current: boolean; canClose: boolean }) {
+  const [closing, setClosing] = useState(false);
+  const href = `/sessions/${encodeURIComponent(session)}/tabs/${encodeURIComponent(tab.tabId)}?machine=${encodeURIComponent(tab.machineId)}`;
+  const label = `${tab.label} · ${machineName} · ${tab.paneCount} pane${tab.paneCount === 1 ? '' : 's'}`;
+  const close = async () => {
+    if (!canClose || closing) return;
+    setClosing(true);
+    try {
+      let result = await closeTerminalTab(tab.machineId, tab.tabId, false);
+      if (result.busy && await confirmDialog(`${tab.label} is running a process. Close it anyway?`, { confirmLabel: 'Close', danger: true })) result = await closeTerminalTab(tab.machineId, tab.tabId, true);
+    } catch (error) { reportFailure(error); } finally { setClosing(false); }
+  };
+  return <div className="thread-item" data-flip-id={sidebarTabKey(tab.machineId, tab.tabId)}>
+    <Tooltip label={label} side="right"><a className={`thread-row ${current ? 'is-current' : ''}`} href={href} aria-current={current ? 'page' : undefined} aria-label={`${tab.label} · ${machineName} · Terminal`}>
+      <span className="thread-avatar" aria-hidden="true"><span className="thread-bot-avatar"><SquareTerminal size={24} strokeWidth={1.6} /></span></span>
+      <span className="thread-copy"><span className="thread-context">{machineName} · Terminal</span><span className="thread-name">{tab.label}</span></span>
+    </a></Tooltip>
+    <Tooltip label={`Close ${tab.label}`}><button type="button" className="thread-archive" aria-label={`Close ${tab.label}`} disabled={!canClose || closing} onClick={() => void close()}><X size={15} strokeWidth={1.8} aria-hidden="true" /></button></Tooltip>
+  </div>;
 });
 
 function ThreadLink({ thread, project, machineName, current, showProject, editor }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean; editor?: ReactNode }) {
@@ -190,7 +215,7 @@ function ArchivedThreads({ threads, renderThread }: { threads: Thread[]; renderT
   </section>;
 }
 
-export function Sidebar({ projects, threads, archived = [], machines, currentId, currentMachineId, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile, onOpenPalette, updateAction }: Props) {
+export function Sidebar({ projects, threads, archived = [], floating = [], machines, currentId, currentMachineId, currentTab, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile, onOpenPalette, updateAction }: Props) {
   const [closedProjects, setClosedProjects] = useState<string[]>([]);
   const [collapseMotionVersion, setCollapseMotionVersion] = useState(0);
   useEffect(() => {
@@ -230,8 +255,15 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
   useFlipList(navigation, collapseMotionVersion);
   const threadLink = (thread: Thread, showProject: boolean) => {
     const project = projects.find((item) => item.id === thread.projectId);
-    return <ThreadRow key={thread.id} thread={thread} project={project} machineName={machines.find((machine) => machine.id === thread.machineId)?.name ?? thread.machineId} current={currentId === thread.id} showProject={showProject} />;
+    return <ThreadRow key={thread.bindingState === 'attached' && thread.tabId ? sidebarTabKey(thread.machineId, thread.tabId) : thread.id} thread={thread} project={project} machineName={machines.find((machine) => machine.id === thread.machineId)?.name ?? thread.machineId} current={currentId === thread.id} showProject={showProject} />;
   };
+  const terminalLink = (tab: FloatingTab) => {
+    const machine = machines.find((item) => item.id === tab.machineId);
+    const session = tab.session || machine?.session || 'default';
+    const canClose = !!machine?.connected && !!machine?.writable;
+    return <TerminalRow key={sidebarTabKey(tab.machineId, tab.tabId)} tab={tab} session={session} machineName={machine?.name ?? tab.machineId} current={currentTab?.machineId === tab.machineId && currentTab?.tabId === tab.tabId} canClose={canClose} />;
+  };
+  const terminalsDivider = !!floating.length && <div className="thread-group" aria-label="Terminals"><div className="group-header"><span className="group-title"><SquareTerminal size={14} aria-hidden="true" /><span className="group-name">Terminals</span><span className="group-count">{floating.length}</span></span></div></div>;
 
   return <>
     {mobileOpen && <button className="sidebar-scrim" aria-label="Close sidebar" onClick={onCloseMobile} />}
@@ -255,11 +287,11 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
       </div>
       {!collapsed && <>
         <nav ref={navigation} className="thread-navigation" aria-label="Agent threads">
-          {mode === 'projects' ? projectGroups.filter((group) => threads.some((thread) => group.locations.includes(thread.projectId))).sort((a, b) => (threads.find((thread) => b.locations.includes(thread.projectId))?.updatedAt ?? '').localeCompare(threads.find((thread) => a.locations.includes(thread.projectId))?.updatedAt ?? '')).map(({ id, project, locations }) => <section key={id} className="thread-group">
+          {mode === 'projects' ? <>{projectGroups.filter((group) => threads.some((thread) => group.locations.includes(thread.projectId))).sort((a, b) => (threads.find((thread) => b.locations.includes(thread.projectId))?.updatedAt ?? '').localeCompare(threads.find((thread) => a.locations.includes(thread.projectId))?.updatedAt ?? '')).map(({ id, project, locations }) => <section key={id} className="thread-group">
             <ProjectGroupHeader project={project} machine={machines.find((machine) => machine.id === (project.machineId ?? 'local'))} closed={closedProjects.includes(id)} onToggle={() => toggleProject(id)} />
             {!closedProjects.includes(id) && threads.filter((thread) => locations.includes(thread.projectId)).map((thread) => threadLink(thread, false))}
-          </section>) : threads.map((thread) => threadLink(thread, true))}
-          {!threads.length && !archived.length && <p className="sidebar-empty">No agents yet. Press ⌘K to start one.</p>}
+          </section>)}{terminalsDivider}{floating.map(terminalLink)}</> : <>{threads.map((thread) => threadLink(thread, true))}{terminalsDivider}{floating.map(terminalLink)}</>}
+          {!threads.length && !floating.length && !archived.length && <p className="sidebar-empty">No agents or terminals yet. Press ⌘K to start one.</p>}
         </nav>
         {!!archived.length && <ArchivedThreads threads={archived} renderThread={(thread) => threadLink(thread, true)} />}
         <div className="sidebar-footer">

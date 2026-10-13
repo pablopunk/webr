@@ -236,6 +236,34 @@ export class RuntimeManager extends EventEmitter {
     await supervisor.readFresh(); this.publish(supervisor);
     return { closed: true, busy: false };
   }
+  async closeTab(machineId: string, tabId: string, force: boolean) {
+    const supervisor = this.supervisors.get(machineId);
+    if (!supervisor?.connected) throw new Error('machine_disconnected');
+    if (!supervisor.target.writable || !supervisor.target.discardTab) throw new Error('terminal_close_unavailable');
+    if (this.launchInProgress(machineId)) throw new Error('launch_in_progress');
+    const snapshot = await supervisor.readFresh();
+    const tab = snapshot.tabs.find((item) => item.tab_id === tabId);
+    if (!tab) throw new Error('tab_not_found');
+    if (this.threadOwnsTab(machineId, tabId)
+      || this.projections.get(machineId)?.threads.some((thread) => thread.bindingState === 'attached' && thread.tabId === tabId)) throw new Error('binding_conflict');
+    const panes = snapshot.panes.filter((pane) => pane.tab_id === tabId);
+    if (!force && supervisor.target.paneBusy) {
+      for (const pane of panes) {
+        if (await supervisor.target.paneBusy(pane.pane_id)) return { closed: false, busy: true };
+      }
+    }
+    const pending = this.pendingTerminalTabs.get(machineId)?.get(tabId);
+    try { await supervisor.target.discardTab(tabId, false); }
+    catch { /* A failed Herdr reply can still mean the tab closed; verify its snapshot below. */ }
+    if (pending) {
+      clearTimeout(pending.timer);
+      this.pendingTerminalTabs.get(machineId)?.delete(tabId);
+      if (!this.pendingTerminalTabs.get(machineId)?.size) this.pendingTerminalTabs.delete(machineId);
+    }
+    const fresh = await supervisor.readFresh();
+    this.publish(supervisor);
+    return fresh.tabs.some((item) => item.tab_id === tabId) ? { closed: false, busy: false } : { closed: true, busy: false };
+  }
   private attachedThread(machineId: string, threadId: string) {
     const supervisor = this.supervisors.get(machineId);
     const thread = this.projections.get(machineId)?.threads.find((thread) => thread.id === threadId);
@@ -315,7 +343,7 @@ export class RuntimeManager extends EventEmitter {
     const pending = this.pendingTerminalTabs.get(supervisor.target.id);
     for (const [tabId, entry] of pending ?? []) {
       const observed = availableTabs.find((tab) => tab.tabId === tabId);
-      if (observed?.panes.some((pane) => pane.id === entry.tab.panes[0]?.id && pane.terminalId === entry.tab.panes[0]?.terminalId)) {
+      if (observed?.panes.some((pane) => pane.terminalId === entry.tab.panes[0]?.terminalId)) {
         clearTimeout(entry.timer);
         pending?.delete(tabId);
         continue;

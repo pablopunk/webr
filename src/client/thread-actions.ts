@@ -5,6 +5,9 @@ const actionErrors: Record<string, string> = {
   workspace_creation_unavailable: 'This Herdr machine cannot create a terminal.',
   launch_in_progress: 'Wait for the launch to finish, then try again.',
   thread_not_found: 'This thread does not exist anymore.',
+  tab_not_found: 'This terminal does not exist anymore.',
+  binding_conflict: 'This terminal is now owned by a thread.',
+  terminal_close_unavailable: 'This Herdr machine cannot close a terminal.',
 };
 
 async function post(path: string, body: Record<string, unknown> = {}) {
@@ -40,6 +43,7 @@ export async function createTerminalTab(machineId: string, path: string, key: st
   return { tabId: result.tabId };
 }
 export const closeThreadPane = (thread: Thread, paneId: string, force: boolean) => post(`/api/threads/${encodeURIComponent(thread.id)}/panes/close`, { machineId: thread.machineId, paneId, force }) as Promise<{ closed: boolean; busy: boolean }>;
+export const closeTerminalTab = (machineId: string, tabId: string, force: boolean) => post('/api/tabs/close', { machineId, tabId, force }) as Promise<{ closed: boolean; busy: boolean }>;
 export const deleteThreadPermanently = (thread: Thread) => post(`/api/threads/${encodeURIComponent(thread.id)}/delete`, { machineId: thread.machineId });
 export const deleteArchivedThreads = () => post('/api/archive/delete') as Promise<{ deleted: number; orphanTabsDeleted: number; failed: string[]; skippedMachines: string[] }>;
 const plural = (count: number, one: string, many: string) => count === 1 ? one : many;

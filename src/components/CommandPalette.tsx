@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThreadAvatar } from './ThreadAvatar';
 import { Archive, ArchiveRestore, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, FolderTree, Gauge, LayoutList, Monitor, Moon, PanelLeft, Settings2, SquarePen, SquareTerminal, Sun, TerminalSquare, X } from 'lucide-react';
 import type { Project, Thread } from '../lib/models';
+import type { FloatingTab } from '../lib/floating';
 import { defaultShortcuts, formatShortcut, getShortcuts, type ShortcutAction } from './shortcuts';
 import type { SidebarMode } from './Sidebar';
 import { applyTheme } from './ThemeControl';
@@ -16,8 +17,8 @@ const reportFailure = (error: unknown) => alertDialog(error instanceof Error ? e
 
 type Command = { label: string; icon: ReactNode; detail?: string; shortcut?: ShortcutAction; run: () => void };
 
-export function CommandPalette({ open, onClose, projects, threads, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onClosePane }: {
-  open: boolean; onClose: () => void; projects: Project[]; threads: Thread[]; thread?: Thread;
+export function CommandPalette({ open, onClose, projects, threads, floating = [], machines = [], thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onClosePane }: {
+  open: boolean; onClose: () => void; projects: Project[]; threads: Thread[]; floating?: FloatingTab[]; machines?: { id: string; name: string; session: string }[]; thread?: Thread;
   focusedPane: string; mode: SidebarMode; onModeChange: (mode: SidebarMode) => void;
   onToggleSidebar: () => void; onFocusPane: (paneId: string) => void;
   onTerminalAction: (action: 'control' | 'takeover' | 'release') => void;
@@ -79,7 +80,13 @@ export function CommandPalette({ open, onClose, projects, threads, thread, focus
     ] : []),
     ...threads.map((item) => ({ label: item.title, icon: <ThreadAvatar thread={item} working={item.status === 'working'} size={22} />, detail: projects.find((project) => project.id === item.projectId)?.name,
       run: () => { void navigate(`/threads/${encodeURIComponent(item.id)}`); } })),
-  ], [projects, threads, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onClosePane]);
+    ...floating.map((item) => {
+      const machine = machines.find((entry) => entry.id === item.machineId);
+      const session = item.session || machine?.session || 'default';
+      return { label: item.label, icon: <SquareTerminal size={16} />, detail: `${machine?.name ?? item.machineId} · Terminal`,
+        run: () => { void navigate(`/sessions/${encodeURIComponent(session)}/tabs/${encodeURIComponent(item.tabId)}?machine=${encodeURIComponent(item.machineId)}`); } };
+    }),
+  ], [projects, threads, floating, machines, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onClosePane]);
 
   const matching = commands.filter((command) => `${command.label} ${command.detail ?? ''}`.toLowerCase().includes(query.toLowerCase().trim()));
   if (!open) return null;
