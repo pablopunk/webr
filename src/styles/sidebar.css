@@ -1,8 +1,26 @@
 .sidebar { position: sticky; top: 0; display: flex; flex: 0 0 280px; flex-direction: column; height: 100dvh; min-width: 0; border-right: 1px solid var(--line); background: var(--sidebar); }
 .sidebar.is-collapsed { flex-basis: 44px; }
-.sidebar-header { display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 10px 0 16px; border-bottom: 1px solid var(--line); }
+.sidebar-header { position: relative; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 7px; height: 48px; padding: 0 10px 0 16px; border-bottom: 1px solid var(--line); }
 .sidebar.is-collapsed .sidebar-header { justify-content: center; padding: 0; }
 .brand { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 700; letter-spacing: -.02em; }
+.sidebar-metrics { position: absolute; left: 50%; display: flex; align-items: center; gap: 0; min-width: 0; margin: 0; transform: translateX(-50%); }
+.sidebar-metric { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 26px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--ink-muted); cursor: pointer; }
+.sidebar-metric.is-spiking { color: #e1a846; }
+.sidebar-metric.is-struggling { color: #e46e67; }
+.sidebar-metric:hover { background: var(--surface-hover); }
+.sidebar-metric:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.sidebar-metric-glyph { position: relative; display: grid; place-items: center; width: 18px; height: 18px; }
+.sidebar-metric-icon { position: relative; z-index: 1; color: currentColor; transition: color 300ms ease; }
+.tooltip-popup:has(.sidebar-metric-tooltip) { width: 210px; padding: 12px; white-space: normal; }
+.sidebar-metric-tooltip { min-width: 185px; }
+.sidebar-metric-tooltip-heading { display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+.sidebar-metric-tooltip-heading strong:last-child { font: 600 13px var(--font-mono); }
+.sidebar-metric-meter { height: 4px; margin: 10px 0 8px; overflow: hidden; border-radius: 5px; background: var(--surface-active); }
+.sidebar-metric-meter span { display: block; height: 100%; border-radius: inherit; background: currentColor; transition: width 500ms ease; }
+.sidebar-metric-tooltip.is-spiking { color: #e1a846; }
+.sidebar-metric-tooltip.is-struggling { color: #e46e67; }
+.sidebar-metric-tooltip p { margin: 0 0 7px; color: var(--ink-soft); font-size: 12px; }
+.sidebar-metric-tooltip small { color: var(--ink-muted); font-size: 10px; }
 .sidebar-collapse { width: 26px; height: 26px; }
 .sidebar-actions { display: flex; align-items: center; gap: 5px; flex: none; margin: 12px 8px 4px; }
 .sidebar-new-thread { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border: 1px solid transparent; border-radius: 7px; background: var(--action-blue); box-shadow: var(--card-shadow); color: #fff; }

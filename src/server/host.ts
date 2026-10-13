@@ -2,6 +2,7 @@ import Fastify, { type FastifyRequest } from 'fastify';
 import websocket from '@fastify/websocket';
 import staticFiles from '@fastify/static';
 import { resolve } from 'node:path';
+import { cpus, freemem, totalmem } from 'node:os';
 import { distRoot } from './dist';
 import { z } from 'zod';
 import type { RuntimeManager } from './runtime/manager';
@@ -26,6 +27,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
   const app = Fastify({ logger: false, bodyLimit: 16 * 1024, ...(tls ? { https: tls } : {}), requestTimeout: 10_000 });
   const configuredOrigin = new URL(origin);
   const auth = new Auth(manager.database, configuredOrigin, authOptions);
+  let previousCpu = cpus().reduce((total, cpu) => ({ idle: total.idle + cpu.times.idle, total: total.total + Object.values(cpu.times).reduce((sum, time) => sum + time, 0) }), { idle: 0, total: 0 });
   app.addHook('onRequest', async (request, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Cache-Control', 'no-store');
@@ -67,6 +69,16 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     return manager.catalog(machineId, projectId);
   });
   app.get('/api/runtime', async () => manager.bootstrap());
+  app.get('/api/metrics', async () => {
+    const cores = cpus();
+    const currentCpu = cores.reduce((total, cpu) => ({ idle: total.idle + cpu.times.idle, total: total.total + Object.values(cpu.times).reduce((sum, time) => sum + time, 0) }), { idle: 0, total: 0 });
+    const idle = currentCpu.idle - previousCpu.idle;
+    const elapsed = currentCpu.total - previousCpu.total;
+    previousCpu = currentCpu;
+    const memoryTotalBytes = totalmem();
+    const memoryUsedBytes = memoryTotalBytes - freemem();
+    return { cpu: elapsed > 0 ? Math.round(Math.max(0, Math.min(100, (1 - idle / elapsed) * 100))) : 0, cpuCores: cores.length, memory: memoryTotalBytes > 0 ? Math.round(memoryUsedBytes / memoryTotalBytes * 100) : 0, memoryUsedBytes, memoryTotalBytes };
+  });
   app.addContentTypeParser(uploadContentTypes, { parseAs: 'buffer', bodyLimit: MAX_IMAGE_BYTES }, (_request, body, done) => done(null, body));
   app.post('/api/uploads', { bodyLimit: MAX_IMAGE_BYTES }, async (request, reply) => {
     const { machineId, name } = z.object({ machineId: opaqueId, name: z.string().max(255).optional() }).strict().parse(request.query);
