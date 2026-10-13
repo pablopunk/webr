@@ -5,7 +5,6 @@ import { exampleThreads } from '../../src/lib/models';
 import type { FloatingTab } from '../../src/lib/floating';
 
 vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
-vi.mock('../../src/components/dialogs', () => ({ confirmDialog: vi.fn(async () => true), alertDialog: vi.fn(async () => {}) }));
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -22,15 +21,12 @@ it('lists threads and terminals in one navigation with a terminals divider', () 
   expect(screen.getByRole('link', { name: /Floating shell/ }).getAttribute('aria-current')).toBe('page');
 });
 
-it('closes a terminal after confirming a busy process', async () => {
-  const fetch = vi.fn()
-    .mockResolvedValueOnce({ ok: true, json: async () => ({ closed: false, busy: true }) })
-    .mockResolvedValueOnce({ ok: true, json: async () => ({ closed: true, busy: false }) });
+it('closes a terminal from its dismiss button', async () => {
+  const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ closed: true, busy: false }) }));
   vi.stubGlobal('fetch', fetch);
   renderSidebar();
   fireEvent.click(screen.getByRole('button', { name: 'Close Floating shell' }));
-  await vi.waitFor(() => expect(fetch.mock.calls.filter(([path]) => path === '/api/tabs/close')).toHaveLength(2));
+  await vi.waitFor(() => expect(fetch.mock.calls.filter(([path]) => path === '/api/tabs/close')).toHaveLength(1));
   const closes = fetch.mock.calls.filter(([path]) => path === '/api/tabs/close');
   expect(JSON.parse(String(closes[0][1].body))).toEqual({ machineId: 'local', tabId: 'w1:t9', force: false });
-  expect(JSON.parse(String(closes[1][1].body))).toEqual({ machineId: 'local', tabId: 'w1:t9', force: true });
 });
