@@ -5,6 +5,7 @@ import { exampleThreads } from '../../src/lib/models';
 import type { FloatingTab } from '../../src/lib/floating';
 
 vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
+vi.mock('../../src/components/dialogs', () => ({ confirmDialog: vi.fn(async () => true), alertDialog: vi.fn(async () => {}) }));
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -28,7 +29,6 @@ it('closes a terminal after confirming a busy process', async () => {
   vi.stubGlobal('fetch', fetch);
   renderSidebar();
   fireEvent.click(screen.getByRole('button', { name: 'Close Floating shell' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Close' }));
   await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
   expect(fetch.mock.calls[0][0]).toBe('/api/tabs/close');
   expect(JSON.parse(String(fetch.mock.calls[0][1].body))).toEqual({ machineId: 'local', tabId: 'w1:t9', force: false });
