@@ -171,8 +171,23 @@ export class RuntimeManager extends EventEmitter {
   async focusPane(machineId: string, threadId: string, paneId: string) {
     const supervisor = this.supervisors.get(machineId);
     const thread = this.projections.get(machineId)?.threads.find((thread) => thread.id === threadId);
-    if (!supervisor?.connected || !thread?.panes.some((pane) => pane.id === paneId) || !supervisor.target.focusPane) throw new Error('invalid_focus');
+    if (!supervisor || !supervisor.connected) throw new Error('invalid_focus');
+    if (!supervisor.target.writable) throw new Error('read_only');
+    if (!thread?.panes.some((pane) => pane.id === paneId) || !supervisor.target.focusPane) throw new Error('invalid_focus');
     await supervisor.target.focusPane(paneId);
+    const acked = this.clearDoneBadge(machineId, threadId);
+    // Do not publish here: supervisor.snapshot is stale (pre-focus, still
+    // done) and a synchronous publish would re-latch the badge we just
+    // cleared. Invalidate instead so the next refresh reads post-focus state.
+    supervisor.invalidate();
+    return { focused: true, acked };
+  }
+  clearDoneBadge(machineId: string, threadId: string) {
+    const supervisor = this.supervisors.get(machineId);
+    const row = this.database.threadRows(machineId).find((row) => row.id === threadId);
+    if (!supervisor || !row || row.metadata.unseenDone !== true) return false;
+    this.database.saveThread({ ...row.metadata, unseenDone: false }, row.anchors, row.alias);
+    return true;
   }
   archive(machineId: string, threadId: string, archived: boolean) {
     const supervisor = this.supervisors.get(machineId);
@@ -239,7 +254,7 @@ export class RuntimeManager extends EventEmitter {
   async closeTab(machineId: string, tabId: string, force: boolean) {
     const supervisor = this.supervisors.get(machineId);
     if (!supervisor?.connected) throw new Error('machine_disconnected');
-    if (!supervisor.target.writable || !supervisor.target.discardTab) throw new Error('terminal_close_unavailable');
+    if (!supervisor.target.writable || !supervisor.target.discardTab) throw new Error('read_only');
     if (this.launchInProgress(machineId)) throw new Error('launch_in_progress');
     const snapshot = await supervisor.readFresh();
     const tab = snapshot.tabs.find((item) => item.tab_id === tabId);

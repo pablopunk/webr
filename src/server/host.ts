@@ -48,8 +48,9 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     if (status === 415 || message === 'unsupported_image') return reply.code(415).send({ error: 'unsupported_image' });
     if (status && status >= 400 && status < 500) return reply.code(status).send({ error: 'invalid_request' });
     if (message === 'thread_not_found' || message === 'tab_not_found') return reply.code(404).send({ error: message });
+    if (message === 'read_only') return reply.code(403).send({ error: message });
     if (message === 'launch_in_progress') return reply.code(409).send({ error: message });
-    return reply.code(['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected', 'workspace_creation_unavailable', 'terminal_close_unavailable'].includes(message) ? 409 : 503).send({ error: ['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected', 'workspace_creation_unavailable', 'terminal_close_unavailable'].includes(message) ? message : 'request_failed' });
+    return reply.code(['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected', 'workspace_creation_unavailable'].includes(message) ? 409 : 503).send({ error: ['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected', 'workspace_creation_unavailable'].includes(message) ? message : 'request_failed' });
   });
   await app.register(websocket, { options: { maxPayload: 32 * 1024, perMessageDeflate: false } });
   const hub = registerWebsockets(app, manager);
@@ -169,7 +170,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
   app.post('/api/threads/:id/focus', async (request) => {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
     const input = z.object({ machineId: opaqueId, paneId: opaqueId }).strict().parse(request.body);
-    await manager.focusPane(input.machineId, id, input.paneId); return { focused: true };
+    return manager.focusPane(input.machineId, id, input.paneId);
   });
   app.post('/api/threads/:id/archive', async (request) => {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);

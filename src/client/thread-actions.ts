@@ -7,7 +7,7 @@ const actionErrors: Record<string, string> = {
   thread_not_found: 'This thread does not exist anymore.',
   tab_not_found: 'This terminal does not exist anymore.',
   binding_conflict: 'This terminal is now owned by a thread.',
-  terminal_close_unavailable: 'This Herdr machine cannot close a terminal.',
+  read_only: 'This machine is read-only.',
 };
 
 async function post(path: string, body: Record<string, unknown> = {}) {
