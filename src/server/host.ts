@@ -47,7 +47,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     if (message === 'upload_failed') return reply.code(502).send({ error: message });
     if (status === 415 || message === 'unsupported_image') return reply.code(415).send({ error: 'unsupported_image' });
     if (status && status >= 400 && status < 500) return reply.code(status).send({ error: 'invalid_request' });
-    if (message === 'thread_not_found') return reply.code(404).send({ error: message });
+    if (message === 'thread_not_found' || message === 'tab_not_found') return reply.code(404).send({ error: message });
     if (message === 'read_only') return reply.code(403).send({ error: message });
     if (message === 'launch_in_progress') return reply.code(409).send({ error: message });
     return reply.code(['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected', 'workspace_creation_unavailable'].includes(message) ? 409 : 503).send({ error: ['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected', 'workspace_creation_unavailable'].includes(message) ? message : 'request_failed' });
@@ -200,6 +200,10 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
     const input = z.object({ machineId: opaqueId }).strict().parse(request.body);
     await manager.deleteThread(input.machineId, id); return { deleted: true };
+  });
+  app.post('/api/tabs/close', async (request) => {
+    const input = z.object({ machineId: opaqueId, tabId: opaqueId, force: z.boolean() }).strict().parse(request.body);
+    return manager.closeTab(input.machineId, input.tabId, input.force);
   });
   app.post('/api/archive/delete', async () => manager.deleteArchived());
   app.get('/api/operations/:id', async (request, reply) => {
