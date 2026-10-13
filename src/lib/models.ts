@@ -7,6 +7,8 @@ export function harnessName(agent: string): string {
   return Object.hasOwn(harnessNames, agent) ? harnessNames[agent] : agent;
 }
 
+export const hasUnseenDone = (thread: Thread) => thread.unseenDone === true;
+
 export type Project = {
   id: string;
   name: string;
@@ -54,6 +56,8 @@ export type Thread = {
   semanticSignature?: string;
   archivedAt?: string;
   paneOrder?: string[];
+  unseenDone?: boolean;
+  doneAt?: string;
   providerSession?: ProviderSession;
   ownerToken?: string;
   observedCwd?: string;

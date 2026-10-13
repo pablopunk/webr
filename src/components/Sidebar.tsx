@@ -1,7 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { ContextMenu } from '@base-ui/react/context-menu';
 import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, GitBranch, LayoutList, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Settings2, SquarePen, SquareTerminal, ImageUp, Pencil, Plus, Trash2, X } from 'lucide-react';
-import { type Project, type Thread, harnessName, relativeTime } from '../lib/models';
+import { type Project, type Thread, harnessName, hasUnseenDone, relativeTime } from '../lib/models';
 import { isLaunching, launchFailed, launchLabel } from '../lib/launch';
 import type { Machine } from '../lib/machines';
 import { HarnessIcon } from './HarnessIcon';
@@ -119,13 +119,14 @@ function ThreadLink({ thread, project, machineName, current, showProject, editor
     return () => observer.disconnect();
   }, [showProject, canReplaceAvatar, editor]);
   const warning = failed;
-  const StatusIcon = warning ? TriangleAlert : launching ? undefined : statusBadges[thread.status];
-  const needsAttention = warning || thread.status === 'blocked' || thread.status === 'done';
-  const status = launching ? launchLabel(thread) : failed ? 'Launch stopped' : statusLabel[thread.status];
+  const unseen = hasUnseenDone(thread);
+  const StatusIcon = warning ? TriangleAlert : launching ? undefined : unseen ? CircleCheck : thread.status === 'done' ? undefined : statusBadges[thread.status];
+  const needsAttention = warning || thread.status === 'blocked' || unseen;
+  const status = launching ? launchLabel(thread) : failed ? 'Launch stopped' : unseen ? statusLabel.done : statusLabel[thread.status];
   const context = launching || failed ? status : showProject ? project?.name : harnessName(thread.agent);
   const Row = editor ? 'div' : 'a';
-  return <Tooltip label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`} side="right"><Row className={`thread-row ${current ? 'is-current' : ''} ${needsAttention ? `needs-attention status-${warning ? 'blocked' : thread.status}` : ''}`} href={editor ? undefined : `/threads/${encodeURIComponent(thread.id)}`} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${status}`}>
-    <span ref={avatar} className={`thread-avatar ${canReplaceAvatar ? 'has-project-avatar' : ''}`} aria-hidden="true"><span className="thread-bot-avatar"><ThreadAvatar thread={thread} working={thread.status === 'working' || launching} size={24} /></span>{canReplaceAvatar && !showProject && <span className="thread-selected-project"><ProjectIcon project={project!} /></span>}{StatusIcon && <StatusIcon className={`thread-status status-${warning ? 'blocked' : thread.status}`} size={14} strokeWidth={2.2} />}<span className="thread-avatar-harness"><HarnessIcon harness={thread.agent} size={14} /></span></span>
+  return <Tooltip label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`} side="right"><Row className={`thread-row ${current ? 'is-current' : ''} ${needsAttention ? `needs-attention status-${warning || thread.status === 'blocked' ? 'blocked' : 'done'}` : ''}`} href={editor ? undefined : `/threads/${encodeURIComponent(thread.id)}`} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${status}`}>
+    <span ref={avatar} className={`thread-avatar ${canReplaceAvatar ? 'has-project-avatar' : ''}`} aria-hidden="true"><span className="thread-bot-avatar"><ThreadAvatar thread={thread} working={thread.status === 'working' || launching} size={24} /></span>{canReplaceAvatar && !showProject && <span className="thread-selected-project"><ProjectIcon project={project!} /></span>}{StatusIcon && <StatusIcon className={`thread-status status-${warning || thread.status === 'blocked' ? 'blocked' : unseen ? 'done' : thread.status}`} size={14} strokeWidth={2.2} />}<span className="thread-avatar-harness"><HarnessIcon harness={thread.agent} size={14} /></span></span>
     <span className="thread-copy"><span className="thread-context">{showProject && canReplaceAvatar && <span ref={projectSlot} className="thread-project-slot"><ProjectIcon project={project!} /></span>}{thread.worktree && !launching && !failed && <GitBranch className="thread-worktree" size={11} aria-label="Worktree" />}{context}</span>{editor ?? <span className="thread-name">{thread.title}</span>}</span>
     <span className="thread-time">{relativeTime(thread.updatedAt)}</span>
   </Row></Tooltip>;

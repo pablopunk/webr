@@ -234,6 +234,18 @@ it('stores a custom project icon, serves it with a version, and resets to the de
   expect(manager.bootstrap().projects[0].iconUrl ?? '').not.toContain('?v=');
 });
 
+it('rejects thread focus on a read-only machine without clearing the latch', async () => {
+  const { app, headers, manager, target } = await setup();
+  target.state.panes[0].agent_status = 'done'; target.event!();
+  await expect.poll(() => manager.bootstrap().threads[0].unseenDone).toBe(true);
+  const thread = manager.bootstrap().threads[0];
+  target.writable = false;
+  const response = await app.inject({ method: 'POST', url: `/api/threads/${thread.id}/focus`, headers, payload: { machineId: target.id, paneId: thread.panes[0].id } });
+  expect(response.statusCode).toBe(403); expect(response.json()).toEqual({ error: 'read_only' });
+  expect(target.focused).toHaveLength(0);
+  expect(manager.bootstrap().threads[0].unseenDone).toBe(true);
+});
+
 it('serves update status and starts updates only when a service is attached', async () => {
   const { app, headers } = await setup();
   expect((await app.inject({ method: 'GET', url: '/api/update', headers })).statusCode).toBe(404);

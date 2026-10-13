@@ -65,7 +65,71 @@ it('focuses only a pane that belongs to the thread so Herdr marks finished work 
   try {
     manager.start(); await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
     const thread = manager.bootstrap().threads[0];
-    await manager.focusPane(target.id, thread.id, thread.panes[0].id); expect(target.focused).toEqual([thread.panes[0].id]);
+    expect(await manager.focusPane(target.id, thread.id, thread.panes[0].id)).toEqual({ focused: true, acked: false });
+    expect(target.focused).toEqual([thread.panes[0].id]);
     await expect(manager.focusPane(target.id, thread.id, 'w9:p9')).rejects.toThrow('invalid_focus'); expect(target.focused).toHaveLength(1);
+  } finally { await manager.close(); database.close(); }
+});
+it('latches unseen done on finish and keeps it through later snapshots until visit', () => {
+  const database = new MetadataDatabase(':memory:'); const target = new FakeTarget();
+  try {
+    const idle = reconcile(database, target, target.state).threads[0];
+    expect(idle.status).toBe('idle'); expect(idle.unseenDone).toBeUndefined();
+    target.state.panes[0].agent_status = 'working';
+    expect(reconcile(database, target, target.state).threads[0].status).toBe('working');
+    expect(database.threadRows(target.id)[0].metadata.unseenDone).toBeUndefined();
+    target.state.panes[0].agent_status = 'done';
+    const done = reconcile(database, target, target.state).threads[0];
+    expect(done.status).toBe('done'); expect(done.unseenDone).toBe(true); expect(typeof done.doneAt).toBe('string');
+    const latchedAt = done.doneAt; const updatedAt = done.updatedAt;
+    const again = reconcile(database, target, target.state).threads[0];
+    expect(again.unseenDone).toBe(true); expect(again.doneAt).toBe(latchedAt); expect(again.updatedAt).toBe(updatedAt);
+    target.state.panes[0].agent_status = 'idle';
+    const read = reconcile(database, target, target.state).threads[0];
+    expect(read.status).toBe('idle'); expect(read.unseenDone).toBe(true); expect(read.doneAt).toBe(latchedAt);
+    target.state.panes[0].agent_status = 'working';
+    const rework = reconcile(database, target, target.state).threads[0];
+    expect(rework.status).toBe('working'); expect(rework.unseenDone).toBe(true); expect(rework.doneAt).toBe(latchedAt);
+  } finally { database.close(); }
+});
+it('backfills the latch for rows already done before rollout', () => {
+  const database = new MetadataDatabase(':memory:'); const target = new FakeTarget();
+  try {
+    reconcile(database, target, target.state);
+    const row = database.threadRows(target.id)[0];
+    database.saveThread({ ...row.metadata, status: 'done' }, row.anchors, row.alias);
+    target.state.panes[0].agent_status = 'done';
+    const latched = reconcile(database, target, target.state).threads[0];
+    expect(latched.unseenDone).toBe(true); expect(typeof latched.doneAt).toBe('string');
+  } finally { database.close(); }
+});
+it('does not latch done when a snapshot jumps from working straight to idle', () => {
+  const database = new MetadataDatabase(':memory:'); const target = new FakeTarget();
+  try {
+    reconcile(database, target, target.state);
+    target.state.panes[0].agent_status = 'working';
+    reconcile(database, target, target.state);
+    target.state.panes[0].agent_status = 'idle';
+    const skipped = reconcile(database, target, target.state).threads[0];
+    expect(skipped.status).toBe('idle'); expect(skipped.unseenDone).toBeUndefined(); expect(skipped.doneAt).toBeUndefined();
+  } finally { database.close(); }
+});
+it('acks the done latch on visit without reordering the sidebar', async () => {
+  const database = new MetadataDatabase(':memory:'); const target = new FakeTarget(); const manager = new RuntimeManager(database, [target]);
+  try {
+    manager.start(); await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+    target.state.panes[0].agent_status = 'done'; target.event!();
+    await expect.poll(() => manager.bootstrap().threads[0].unseenDone).toBe(true);
+    const thread = manager.bootstrap().threads[0];
+    const updatedAt = thread.updatedAt; const doneAt = thread.doneAt;
+    expect(await manager.focusPane(target.id, thread.id, thread.panes[0].id)).toEqual({ focused: true, acked: true });
+    expect(target.focused).toEqual([thread.panes[0].id]);
+    target.state.panes[0].agent_status = 'idle';
+    const row = database.threadRows(target.id)[0];
+    expect(row.metadata.unseenDone).toBe(false); expect(row.metadata.doneAt).toBe(doneAt); expect(row.metadata.updatedAt).toBe(updatedAt);
+    target.event!();
+    await expect.poll(() => manager.bootstrap().threads[0].unseenDone).toBe(false);
+    expect(manager.bootstrap().threads[0].updatedAt).toBe(updatedAt);
+    expect(await manager.focusPane(target.id, thread.id, thread.panes[0].id)).toEqual({ focused: true, acked: false });
   } finally { await manager.close(); database.close(); }
 });

@@ -171,8 +171,23 @@ export class RuntimeManager extends EventEmitter {
   async focusPane(machineId: string, threadId: string, paneId: string) {
     const supervisor = this.supervisors.get(machineId);
     const thread = this.projections.get(machineId)?.threads.find((thread) => thread.id === threadId);
-    if (!supervisor?.connected || !thread?.panes.some((pane) => pane.id === paneId) || !supervisor.target.focusPane) throw new Error('invalid_focus');
+    if (!supervisor || !supervisor.connected) throw new Error('invalid_focus');
+    if (!supervisor.target.writable) throw new Error('read_only');
+    if (!thread?.panes.some((pane) => pane.id === paneId) || !supervisor.target.focusPane) throw new Error('invalid_focus');
     await supervisor.target.focusPane(paneId);
+    const acked = this.clearDoneBadge(machineId, threadId);
+    // Do not publish here: supervisor.snapshot is stale (pre-focus, still
+    // done) and a synchronous publish would re-latch the badge we just
+    // cleared. Invalidate instead so the next refresh reads post-focus state.
+    supervisor.invalidate();
+    return { focused: true, acked };
+  }
+  clearDoneBadge(machineId: string, threadId: string) {
+    const supervisor = this.supervisors.get(machineId);
+    const row = this.database.threadRows(machineId).find((row) => row.id === threadId);
+    if (!supervisor || !row || row.metadata.unseenDone !== true) return false;
+    this.database.saveThread({ ...row.metadata, unseenDone: false }, row.anchors, row.alias);
+    return true;
   }
   archive(machineId: string, threadId: string, archived: boolean) {
     const supervisor = this.supervisors.get(machineId);
