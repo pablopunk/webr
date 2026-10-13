@@ -7,7 +7,7 @@ type Sample = Metrics & { at: number };
 
 const gibibytes = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 
-function Metric({ label, metrics, kind }: { label: string; metrics?: Metrics; kind: 'cpu' | 'memory' }) {
+function Metric({ label, metrics, kind, disabled, onOpenMonitor }: { label: string; metrics?: Metrics; kind: 'cpu' | 'memory'; disabled: boolean; onOpenMonitor: () => void }) {
   const Icon = kind === 'cpu' ? Cpu : MemoryStick;
   const value = metrics?.[kind];
   const strugglingAt = 80;
@@ -21,9 +21,9 @@ function Metric({ label, metrics, kind }: { label: string; metrics?: Metrics; ki
       : Number.isFinite(metrics?.memoryUsedBytes) && Number.isFinite(metrics?.memoryTotalBytes)
         ? `${gibibytes(metrics!.memoryUsedBytes!)} of ${gibibytes(metrics!.memoryTotalBytes!)} used`
         : 'Memory breakdown unavailable'}</p>
-    <small>Live · updates every 2 seconds</small>
+    <small>Live · updates every 2 seconds · click to open a monitor terminal</small>
   </div>}>
-    <button type="button" aria-label={`${label} usage details`} className={`sidebar-metric is-${kind} ${pressure}`}>
+    <button type="button" aria-label={`Open ${label === 'RAM' ? 'RAM' : 'CPU'} monitor terminal`} disabled={disabled} className={`sidebar-metric is-${kind} ${pressure}`} onClick={onOpenMonitor}>
       <span className={`sidebar-metric-glyph is-${kind}`} aria-hidden="true">
         <Icon className="sidebar-metric-icon" size={17} strokeWidth={1.8} />
       </span>
@@ -31,7 +31,7 @@ function Metric({ label, metrics, kind }: { label: string; metrics?: Metrics; ki
   </Tooltip>;
 }
 
-export function SidebarMetrics() {
+export function SidebarMetrics({ disabled, onOpenMonitor }: { disabled: boolean; onOpenMonitor: () => void }) {
   const [samples, setSamples] = useState<Sample[]>([]);
   useEffect(() => {
     let disposed = false;
@@ -56,7 +56,7 @@ export function SidebarMetrics() {
   }, []);
   const latest = samples.at(-1);
   return <div className="sidebar-metrics" aria-label="Server resource usage">
-    <Metric label="CPU" metrics={latest} kind="cpu" />
-    <Metric label="RAM" metrics={latest} kind="memory" />
+    <Metric label="CPU" metrics={latest} kind="cpu" disabled={disabled} onOpenMonitor={onOpenMonitor} />
+    <Metric label="RAM" metrics={latest} kind="memory" disabled={disabled} onOpenMonitor={onOpenMonitor} />
   </div>;
 }

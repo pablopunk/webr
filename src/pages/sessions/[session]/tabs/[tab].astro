@@ -1,14 +1,16 @@
 ---
 import Base from '../../../../layouts/Base.astro';
 import App from '../../../../components/App';
-const bootstrap = Astro.locals.runtime.bootstrap();
+import { resolveSessionTab } from '../../../../server/runtime/session-tab';
+const manager = Astro.locals.runtime;
 const machineId = Astro.url.searchParams.get('machine');
-const thread = machineId ? bootstrap.threads.find((item) => item.machineId === machineId && item.session === Astro.params.session && item.tabId === Astro.params.tab) : undefined;
-const machine = machineId ? bootstrap.machines.find((item) => item.id === machineId && item.session === Astro.params.session) : undefined;
-const terminalTab = !thread && machine ? bootstrap.projections.find((projection) => projection.machineId === machine.id)?.availableTabs?.find((item) => item.tabId === Astro.params.tab && !item.bound && item.panes.length > 0) : undefined;
-const page = thread ? 'thread' : terminalTab ? 'terminal' : 'missing';
+const session = Astro.params.session ?? '';
+const tabId = Astro.params.tab ?? '';
+const route = await resolveSessionTab(manager, session, machineId, tabId);
+const { bootstrap, thread, machine, terminalTab, page, terminalPending } = route;
+const terminalStartup = page === 'terminal' && Astro.url.searchParams.get('startup') === 'resource-monitor' ? 'resource-monitor' as const : undefined;
 if (page === 'missing') Astro.response.status = 404;
 ---
-<Base title={thread?.title ?? terminalTab?.label ?? 'Tab not found'}>
-  <App page={page} threadId={thread?.id} machineId={terminalTab ? machine?.id : undefined} tabId={terminalTab?.tabId} bootstrap={bootstrap} client:load transition:persist="webr-app" />
+<Base title={thread?.title ?? terminalTab?.label ?? (terminalPending ? 'Opening terminal…' : 'Tab not found')}>
+  <App page={page} threadId={thread?.id} machineId={page === 'terminal' ? machine?.id : undefined} tabId={page === 'terminal' ? tabId : undefined} terminalPending={terminalPending} terminalStartup={terminalStartup} bootstrap={bootstrap} client:load transition:persist="webr-app" />
 </Base>

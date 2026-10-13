@@ -8,6 +8,7 @@
 .sidebar-metric.is-spiking { color: #e1a846; }
 .sidebar-metric.is-struggling { color: #e46e67; }
 .sidebar-metric:hover { background: var(--surface-hover); }
+.sidebar-metric:disabled { cursor: not-allowed; opacity: .45; }
 .sidebar-metric:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 .sidebar-metric-glyph { position: relative; display: grid; place-items: center; width: 18px; height: 18px; }
 .sidebar-metric-icon { position: relative; z-index: 1; color: currentColor; transition: color 300ms ease; }

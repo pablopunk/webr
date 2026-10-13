@@ -20,6 +20,7 @@ import { uuid } from '../lib/uuid';
 import { alertDialog, confirmDialog } from './dialogs';
 import { createTerminalTab, deleteArchivedThreads, deleteArchivedWarning, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
 import { SidebarMetrics } from './SidebarMetrics';
+import { terminalStartupStorageKey, type TerminalStartupPreset } from '../client/terminal-presets';
 
 export type SidebarMode = 'projects' | 'threads';
 const closedProjectsStorageKey = 'webr-sidebar-closed-projects';
@@ -50,9 +51,14 @@ const statusBadges: Partial<Record<Thread['status'], typeof CircleHelp>> = {
 
 const reportFailure = (error: unknown) => alertDialog(error instanceof Error ? error.message : 'Herdr could not complete this action.');
 const confirmDelete = async (thread: Thread) => { if (await confirmDialog(deleteWarning([thread]), { confirmLabel: 'Delete', danger: true })) await deleteThreadPermanently(thread).catch(reportFailure); };
-const openTerminalAt = async (machine: Machine, path: string, key: string) => {
+const openTerminalAt = async (machine: Machine, path: string, key: string, startup?: TerminalStartupPreset) => {
   const { tabId } = await createTerminalTab(machine.id, path, key);
-  await navigate(`/sessions/${encodeURIComponent(machine.session)}/tabs/${encodeURIComponent(tabId)}?machine=${encodeURIComponent(machine.id)}`);
+  const query = new URLSearchParams({ machine: machine.id });
+  if (startup) {
+    try { sessionStorage.setItem(terminalStartupStorageKey(machine.id, tabId), startup); } catch { /* The startup query is still a usable fallback. */ }
+    query.set('startup', startup);
+  }
+  await navigate(`/sessions/${encodeURIComponent(machine.session)}/tabs/${encodeURIComponent(tabId)}?${query}`);
 };
 
 function NewTerminalButton({ machine }: { machine?: Machine }) {
@@ -204,6 +210,22 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
   const terminalMachine = currentMachineId
     ? machines.find((machine) => machine.id === currentMachineId && machine.connected && machine.writable)
     : machines.find((machine) => machine.id === 'local' && machine.connected && machine.writable) ?? machines.find((machine) => machine.connected && machine.writable);
+  const [monitorBusy, setMonitorBusy] = useState(false);
+  const monitorBusyRef = useRef(false);
+  const monitorOperation = useRef<{ payload: string; key: string } | null>(null);
+  const openResourceMonitor = async () => {
+    const machine = terminalMachine;
+    if (!machine || !machine.connected || !machine.writable || monitorBusyRef.current) return;
+    const path = '~/';
+    const payload = JSON.stringify({ machineId: machine.id, path, startup: 'resource-monitor' });
+    const key = monitorOperation.current?.payload === payload ? monitorOperation.current.key : uuid();
+    monitorOperation.current = { payload, key };
+    monitorBusyRef.current = true;
+    setMonitorBusy(true);
+    try { await openTerminalAt(machine, path, key, 'resource-monitor'); monitorOperation.current = null; }
+    catch (error) { reportFailure(error); }
+    finally { monitorBusyRef.current = false; setMonitorBusy(false); }
+  };
   const navigation = useRef<HTMLElement>(null);
   useFlipList(navigation, collapseMotionVersion);
   const threadLink = (thread: Thread, showProject: boolean) => {
@@ -216,7 +238,7 @@ export function Sidebar({ projects, threads, archived = [], machines, currentId,
     <aside className={`sidebar ${collapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'is-mobile-open' : ''}`} aria-label="Threads"
       onClick={(event) => { if (mobileOpen && (event.target as Element).closest('a[href]')) onCloseMobile(); }}>
       <div className="sidebar-header">
-        {!collapsed && <><span className="brand"><img src="/brand-mark.png" alt="" width={20} height={20} />webr</span><SidebarMetrics /></>}
+        {!collapsed && <><span className="brand"><img src="/brand-mark.png" alt="" width={20} height={20} />webr</span><SidebarMetrics disabled={!terminalMachine || monitorBusy} onOpenMonitor={() => void openResourceMonitor()} /></>}
         <button className="icon-button sidebar-collapse" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={onCollapse}>{collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}</button>
         <button className="icon-button mobile-close" aria-label="Close sidebar" onClick={onCloseMobile}><X size={16} /></button>
       </div>

@@ -3,7 +3,14 @@ import { Component, useEffect, useState, type ReactNode } from 'react';
 const describe = (error: unknown) => error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ''}` : String(error);
 
 function Report({ text }: { text: string }) {
-  return <pre role="alert" className="crash-report">{text}</pre>;
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => {
+    setDismissed(false);
+    const timeout = window.setTimeout(() => setDismissed(true), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [text]);
+  if (dismissed) return null;
+  return <div role="alert" className="crash-report"><pre>{text}</pre><button type="button" aria-label="Dismiss error" onClick={() => setDismissed(true)}>×</button></div>;
 }
 
 class Boundary extends Component<{ children: ReactNode }, { error?: unknown }> {
@@ -16,7 +23,11 @@ function DevCrashReport({ children }: { children: ReactNode }) {
   const [uncaught, setUncaught] = useState('');
   useEffect(() => {
     const onError = (event: ErrorEvent) => setUncaught(describe(event.error ?? event.message));
-    const onRejection = (event: PromiseRejectionEvent) => setUncaught(describe(event.reason));
+    const onRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      if (reason instanceof DOMException && reason.name === 'AbortError' && reason.message.includes('Transition was skipped')) { event.preventDefault(); return; }
+      setUncaught(describe(reason));
+    };
     window.addEventListener('error', onError); window.addEventListener('unhandledrejection', onRejection);
     return () => { window.removeEventListener('error', onError); window.removeEventListener('unhandledrejection', onRejection); };
   }, []);

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { MetadataDatabase } from '../src/server/storage/database';
 import { createHost } from '../src/server/host';
 import { RuntimeManager } from '../src/server/runtime/manager';
+import { resolveSessionTab } from '../src/server/runtime/session-tab';
 import { FakeTarget, launch, frame } from './fixtures/target';
 import { decodeFrame } from '../src/shared/frame';
 import { WebSocket } from 'ws';
@@ -116,6 +117,7 @@ it('creates and exposes a terminal-only tab before returning its direct URL data
   const layout = target.state.layouts[0]!;
   const firstPane = target.state.panes[0]!;
   const staleSnapshot = structuredClone(target.state);
+  const staleBootstrap = manager.bootstrap();
   let requested: { path: string; label: string } | undefined;
   target.createWorkspace = async (path, label, _requestId) => {
     requested = { path, label };
@@ -135,6 +137,12 @@ it('creates and exposes a terminal-only tab before returning its direct URL data
   expect(manager.bootstrap().threads.some((item) => item.tabId === tabId)).toBe(false);
   const tab = manager.bootstrap().projections.find((projection) => projection.machineId === target.id)?.availableTabs?.find((item) => item.tabId === tabId);
   expect(tab).toMatchObject({ bound: false, panes: [{ id: paneId, terminalId, title: 'Shell' }] });
+  let bootstrapReads = 0;
+  const route = await resolveSessionTab({ bootstrap: () => bootstrapReads++ === 0 ? staleBootstrap : manager.bootstrap(), supervisors: manager.supervisors }, target.session, target.id, tabId);
+  expect(route.page).toBe('terminal');
+  expect(route.terminalPending).toBe(false);
+  expect(route.terminalTab).toMatchObject({ tabId, bound: false, panes: [{ id: paneId, terminalId }] });
+  expect(bootstrapReads).toBe(2);
   expect(manager.terminalBinding(target.id, terminalId, { tabId })).toBe(target);
   expect(() => manager.terminalBinding(target.id, terminalId, { tabId: 'unknown' })).toThrow('binding_invalid');
   const sockets = await pair(app, headers);
@@ -142,6 +150,13 @@ it('creates and exposes a terminal-only tab before returning its direct URL data
   await expect.poll(() => target.streams.length).toBe(1);
   expect(target.streams[0]?.closed).toBe(false);
   sockets.metadata.close();
+});
+it('keeps a known machine terminal route pending instead of rendering a 404 for a missing snapshot tab', async () => {
+  const { manager, target } = await setup();
+  const route = await resolveSessionTab(manager, target.session, target.id, 'w1:still-starting');
+  expect(route.page).toBe('terminal');
+  expect(route.terminalPending).toBe(true);
+  expect(route.terminalTab).toBeUndefined();
 });
 it('shares one terminal control stream between two browser instances and releases it with the last one', async () => {
   const { app, headers, manager, target } = await setup();

@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { TerminalPane } from '../../src/components/TerminalPane';
+import { terminalStartupCommands } from '../../src/client/terminal-presets';
 
 const fixture = vi.hoisted(() => ({ onData: vi.fn(), control: vi.fn(), observe: vi.fn(), input: vi.fn(), close: vi.fn(), mount: vi.fn(), selection: '', dimensions: { cols: 90, rows: 31 } as { cols: number; rows: number }, osc: new Map<number, (data: string) => boolean>() }));
 vi.mock('../../src/client/provider', () => ({ useRuntime: () => ({ terminals: fixture }) }));
@@ -33,6 +34,24 @@ it('mounts a standalone terminal with its tab identity instead of a thread id', 
   await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
   expect(fixture.mount.mock.calls[0][0]).toMatchObject({ machineId: 'fixture', tabId: 'w2:t1', terminalId: 'term_shell' });
   expect(fixture.mount.mock.calls[0][0]).not.toHaveProperty('threadId');
+});
+it('starts a resource monitor once the terminal is writable', async () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
+  const onStartupComplete = vi.fn();
+  render(<TerminalPane pane={{ id: 'w2:p1', terminalId: 'term_shell', title: 'Shell', kind: 'shell' }} machineId="fixture" tabId="w2:t1" active canControl onFocus={() => {}} startupPreset="resource-monitor" onStartupComplete={onStartupComplete} />);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
+  const { onState } = fixture.mount.mock.calls[0][0];
+  expect(fixture.input).not.toHaveBeenCalled();
+  await act(async () => onState('Input control is active.', true));
+  const command = `${terminalStartupCommands['resource-monitor']}\r`;
+  expect(fixture.input).toHaveBeenCalledWith(command);
+  expect(fixture.input.mock.calls.filter(([text]) => text === command)).toHaveLength(1);
+  expect(onStartupComplete).toHaveBeenCalledOnce();
+  await act(async () => onState('Disconnected', false));
+  await act(async () => onState('Input control is active.', true));
+  expect(fixture.input.mock.calls.filter(([text]) => text === command)).toHaveLength(1);
+  expect(onStartupComplete).toHaveBeenCalledOnce();
 });
 it('requests control only for an approved active pane and passes typed keys to the terminal', async () => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });

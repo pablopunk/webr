@@ -5,10 +5,11 @@ import { navigate } from 'astro:transitions/client';
 import { Sidebar } from '../../src/components/Sidebar';
 import { exampleThreads, projects } from '../../src/lib/models';
 import type { Machine } from '../../src/lib/machines';
+import { terminalStartupStorageKey } from '../../src/client/terminal-presets';
 
 vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); sessionStorage.clear(); });
 const machine: Machine = { id: 'local', name: 'Local', connected: true, writable: true, session: 'default', projectPaths: {}, harnesses: [] };
 const project = { ...projects[0], machineId: machine.id };
 const fetch = vi.fn(async (url: string, _request: RequestInit) => ({ ok: true, json: async () => url === '/api/terminals' ? { tabId: 'w2:t1' } : [] }));
@@ -30,6 +31,16 @@ it('opens a shell-only terminal at the home directory from the icon-only launche
   expect(request.headers).toMatchObject({ 'Idempotency-Key': expect.any(String) });
 });
 
+it.each(['CPU', 'RAM'] as const)('opens a resource monitor terminal from the %s icon', async (metric) => {
+  vi.stubGlobal('fetch', fetch); renderSidebar();
+  fireEvent.click(screen.getByRole('button', { name: `Open ${metric} monitor terminal` }));
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith('/sessions/default/tabs/w2%3At1?machine=local&startup=resource-monitor'));
+  expect(sessionStorage.getItem(terminalStartupStorageKey('local', 'w2:t1'))).toBe('resource-monitor');
+  const [url, request] = fetch.mock.calls.find(([url]) => url === '/api/terminals')!;
+  expect(url).toBe('/api/terminals');
+  expect(JSON.parse(String(request.body))).toEqual({ machineId: 'local', path: '~/' });
+});
+
 it('opens a terminal at the project path from its context menu', async () => {
   vi.stubGlobal('fetch', fetch); renderSidebar('projects');
   fireEvent.contextMenu(screen.getByRole('button', { name: 'herdr' }));
@@ -44,4 +55,6 @@ it('opens a terminal at the project path from its context menu', async () => {
 it('disables the home terminal launcher without a writable machine', () => {
   renderSidebar('threads', []);
   expect((screen.getByRole('button', { name: 'New Terminal' }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole('button', { name: 'Open CPU monitor terminal' }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole('button', { name: 'Open RAM monitor terminal' }) as HTMLButtonElement).disabled).toBe(true);
 });

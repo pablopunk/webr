@@ -28,6 +28,7 @@ import { useClearDoneOnVisit } from '../client/clear-done-on-visit';
 import { isListedThread } from '../lib/launch';
 import { carriesFiles } from '../client/image-attach';
 import { trackVisualViewport } from '../client/visual-viewport';
+import { terminalStartupStorageKey, type TerminalStartupPreset } from '../client/terminal-presets';
 
 type Props = {
   page: 'thread' | 'terminal' | 'new' | 'settings' | 'missing';
@@ -36,6 +37,8 @@ type Props = {
   machineId?: string;
   tabId?: string;
   projectId?: string;
+  terminalPending?: boolean;
+  terminalStartup?: TerminalStartupPreset;
 };
 
 const keepTerminalFocus = (event: React.PointerEvent) => event.preventDefault();
@@ -44,7 +47,7 @@ export default function App(props: Props) {
   return <CrashReport><RuntimeProvider bootstrap={props.bootstrap}><RuntimeApp {...props} /></RuntimeProvider></CrashReport>;
 }
 
-function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId }: Props) {
+function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, terminalPending = false, terminalStartup }: Props) {
   const { ui, terminals } = useRuntime();
   const projects = useRuntimeSelector(useShallow((state) => state.projectIds.map((id) => state.projects[id])));
   const threads = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id]).filter((item) => !item.archivedAt && isListedThread(item))));
@@ -58,6 +61,34 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId }: 
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [pendingTerminalStartup, setPendingTerminalStartup] = useState<TerminalStartupPreset>();
+  const [terminalLookupTimedOut, setTerminalLookupTimedOut] = useState(false);
+  useEffect(() => {
+    if (page !== 'terminal' || !terminalStartup || !machineId || !tabId) { setPendingTerminalStartup(undefined); return; }
+    const key = terminalStartupStorageKey(machineId, tabId);
+    try {
+      const stored = sessionStorage.getItem(key);
+      if (stored && stored !== terminalStartup) { setPendingTerminalStartup(undefined); return; }
+    } catch { /* Continue from the whitelisted URL preset when storage is unavailable. */ }
+    setPendingTerminalStartup(terminalStartup);
+  }, [page, terminalStartup, machineId, tabId]);
+  useEffect(() => {
+    if (page !== 'terminal' || !terminalPending || standaloneTab) { setTerminalLookupTimedOut(false); return; }
+    const timeout = window.setTimeout(() => setTerminalLookupTimedOut(true), 10_000);
+    return () => window.clearTimeout(timeout);
+  }, [page, terminalPending, standaloneTab, machineId, tabId]);
+  useEffect(() => {
+    if (page === 'terminal' && standaloneTab) document.title = `${standaloneTab.label} · Webr`;
+  }, [page, standaloneTab]);
+  const completeTerminalStartup = useCallback(() => {
+    if (machineId && tabId) {
+      try { sessionStorage.removeItem(terminalStartupStorageKey(machineId, tabId)); } catch { /* The startup command has already been sent. */ }
+    }
+    setPendingTerminalStartup(undefined);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('startup');
+    window.history.replaceState(window.history.state, '', url);
+  }, [machineId, tabId]);
   useEffect(startPerf, []);
   useEffect(trackVisualViewport, []);
   const [mode, setMode] = useState<SidebarMode>('threads');
@@ -162,7 +193,7 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId }: 
       mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} updateAction={<UpdateButton />} />
     <div className="main-panel">
       {page === 'thread' && thread && <ThreadView thread={thread} connected={gatewayConnected && !!projections[thread.machineId]?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} />}
-      {page === 'terminal' && machineId && tabId && <TerminalTabView machineId={machineId} tabId={tabId} panes={terminalPanes} connected={gatewayConnected && !!projections[machineId]?.connected} canControl={!!machines.find((machine) => machine.id === machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} />}
+      {page === 'terminal' && machineId && tabId && <TerminalTabView machineId={machineId} tabId={tabId} panes={terminalPanes} connected={gatewayConnected && !!projections[machineId]?.connected} canControl={!!machines.find((machine) => machine.id === machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} pending={terminalPending && !standaloneTab && !terminalLookupTimedOut} startupPreset={pendingTerminalStartup} onStartupComplete={completeTerminalStartup} />}
       {page === 'new' && <NewThreadView key={projectId} projects={projects} machines={machines} selectedProjectId={projectId} onOpenSidebar={toggleSidebar} />}
       {page === 'settings' && <SettingsView onOpenSidebar={toggleSidebar} />}
       {page === 'missing' && <main className="not-found"><h1>Thread not found</h1><a href="/">Open a thread</a></main>}

@@ -17,6 +17,7 @@ import { TerminalUrlActions, type SelectedUrl } from './TerminalUrlActions';
 import { bindTerminalClipboard, type CopyOutcome } from '../client/terminal-clipboard';
 import { useTerminalNotice } from './useTerminalNotice';
 import { useVoiceInput } from './useVoiceInput';
+import { terminalStartupCommands, type TerminalStartupPreset } from '../client/terminal-presets';
 
 function themeColors() {
   const styles = getComputedStyle(document.documentElement);
@@ -46,7 +47,7 @@ function loadGlyphRenderer(terminal: Terminal, create: () => { onContextLoss(lis
   try { const renderer = create(); renderer.onContextLoss(() => renderer.dispose()); terminal.loadAddon(renderer as never); } catch { /* DOM renderer stays active */ }
 }
 
-export function TerminalPane({ pane, machineId, threadId, tabId, active, canControl, onFocus }: { pane: Pane; machineId: string; threadId?: string; tabId?: string; active: boolean; canControl: boolean; onFocus: () => void }) {
+export function TerminalPane({ pane, machineId, threadId, tabId, active, canControl, onFocus, startupPreset, onStartupComplete }: { pane: Pane; machineId: string; threadId?: string; tabId?: string; active: boolean; canControl: boolean; onFocus: () => void; startupPreset?: TerminalStartupPreset; onStartupComplete?: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const section = useRef<HTMLElement>(null);
   const term = useRef<Terminal | null>(null);
@@ -55,6 +56,7 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
   const [message, setMessage] = useState('Connecting…');
   const [writable, setWritable] = useState(false);
   const writableRef = useRef(false);
+  const startupSent = useRef(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [ctrl, setCtrl] = useState(false);
   const [touch, setTouch] = useState(false);
@@ -64,6 +66,13 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
   const images = useImageAttachments({ machineId, active, writable: writableRef, show, send: (text) => { control.current?.input(text, true); } });
   const voice = useVoiceInput({ show, send: (text) => { control.current?.input(text, true); } });
   const showCopyResult = useRef((outcome: CopyOutcome) => {}); showCopyResult.current = (outcome) => outcome === 'copied' ? show('Copied to clipboard', 'info', 1200) : outcome === 'waiting-for-click' ? show('Click or press a key to finish copying.', 'info', 6000) : show('The browser blocked clipboard access.', 'error', 4000);
+
+  useEffect(() => {
+    if (!startupPreset || !writable || startupSent.current) return;
+    startupSent.current = true;
+    control.current?.input(`${terminalStartupCommands[startupPreset]}\r`);
+    onStartupComplete?.();
+  }, [startupPreset, writable, onStartupComplete]);
 
   useEffect(() => {
     if (!host.current) return;
