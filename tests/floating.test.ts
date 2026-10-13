@@ -31,9 +31,9 @@ it('derives floating tabs from unbound projections with panes', () => {
 
 it('navigates from terminal to thread on promotion and back on demotion', () => {
   const floating = [{ machineId: 'm', session: 's', tabId: 't', workspaceId: 'w', label: 'Shell', paneCount: 1, panes: [] }];
-  const thread = { id: 'thread-1', machineId: 'm', tabId: 't', bindingState: 'attached', panes: [{ id: 'p', title: 'Agent', kind: 'agent' }] } as unknown as import('../src/lib/models').Thread;
+  const thread = { id: 'thread-1', machineId: 'm', tabId: 't', bindingState: 'attached', panes: [{ id: 'p', title: 'Agent', kind: 'agent' as const }] } as unknown as import('../src/lib/models').Thread;
   expect(decideFlipNavigation({ page: 'terminal', viewedMachineId: 'm', viewedTabId: 't', threads: [thread], floating, launchingOrRestoring: false })).toEqual({ to: 'thread', threadId: 'thread-1' });
-  const demoted = { ...thread, panes: [{ id: 'p', title: 'Shell', kind: 'shell' }] };
+  const demoted: import('../src/lib/models').Thread = { ...thread, panes: [{ id: 'p', title: 'Shell', kind: 'shell' as const }] };
   expect(decideFlipNavigation({ page: 'thread', viewedThreadId: 'thread-1', threads: [demoted], floating, launchingOrRestoring: false })).toEqual({ to: 'terminal', session: 's', machineId: 'm', tabId: 't' });
   expect(decideFlipNavigation({ page: 'terminal', viewedMachineId: 'm', viewedTabId: 't', threads: [thread], floating, launchingOrRestoring: true })).toEqual({ to: null });
 });
