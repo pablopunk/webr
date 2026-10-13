@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isNewerVersion } from '../server/update/versions';
 import { detectPackageManager, globalInstallCommand } from '../server/update/package-manager';
@@ -189,6 +189,24 @@ it('refreshes the cached latest version from the registry', async () => {
   const { service } = waitingService({ fetchLatest: async () => '1000.0.0' });
   await service.refresh();
   expect(service.status().latest).toBe('1000.0.0');
+});
+
+it('runs detached update processes from the home directory instead of inheriting the server cwd', async () => {
+  const home = env();
+  const previousCwd = process.cwd();
+  try {
+    process.chdir(home.WEBR_HOME!);
+    vi.stubEnv('WEBR_HOME', home.WEBR_HOME!);
+    writeCachedLatest(newer, home);
+    const service = new UpdateService({ env: home, command: { command: process.execPath, args: ['-e', 'process.stdout.write(process.cwd())'] }, restartGraceMs: 1 });
+    expect(service.start().state).toBe('updating');
+    await expect.poll(() => {
+      try { return readFileSync(join(home.WEBR_HOME!, 'update.log'), 'utf8'); } catch { return ''; }
+    }).toBe(homedir());
+  } finally {
+    process.chdir(previousCwd);
+    vi.unstubAllEnvs();
+  }
 });
 
 it('runs the installed webr for global installs and npx for npx runs', () => {

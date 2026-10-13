@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { closeSync, mkdirSync, openSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { UpdateState, UpdateStatus, Updates } from '../../src/shared/update';
 import { installedEntry } from '../entry';
@@ -27,7 +28,7 @@ const logPath = () => join(webrHome(), 'update.log');
 function spawnDetached({ command, args }: UpdateCommand, onExit: Exit) {
   mkdirSync(webrHome(), { recursive: true });
   const log = openSync(logPath(), 'w');
-  const child = spawn(command, args, { detached: true, stdio: ['ignore', log, log], windowsHide: true, env: { ...process.env, WEBR_NO_UPDATE_CHECK: '1' } });
+  const child = spawn(command, args, { cwd: homedir(), detached: true, stdio: ['ignore', log, log], windowsHide: true, env: { ...process.env, WEBR_NO_UPDATE_CHECK: '1' } });
   closeSync(log);
   child.once('error', () => onExit(null));
   child.once('exit', onExit);
