@@ -115,6 +115,7 @@ it('creates and exposes a terminal-only tab before returning its direct URL data
   const workspaceId = 'w2'; const tabId = 'w2:t1'; const paneId = 'w2:p1'; const terminalId = 'term_terminal';
   const layout = target.state.layouts[0]!;
   const firstPane = target.state.panes[0]!;
+  const staleSnapshot = structuredClone(target.state);
   let requested: { path: string; label: string } | undefined;
   target.createWorkspace = async (path, label, _requestId) => {
     requested = { path, label };
@@ -122,6 +123,8 @@ it('creates and exposes a terminal-only tab before returning its direct URL data
     target.state.tabs.push({ tab_id: tabId, workspace_id: workspaceId, label });
     target.state.panes.push({ ...firstPane, pane_id: paneId, terminal_id: terminalId, workspace_id: workspaceId, tab_id: tabId, agent: null, title: 'Shell', cwd: path });
     target.state.layouts.push({ workspace_id: workspaceId, tab_id: tabId, area: layout.area, panes: [{ pane_id: paneId, rect: layout.panes[0]!.rect }] });
+    let staleReads = 1;
+    target.readHook = async () => staleReads-- > 0 ? staleSnapshot : structuredClone(target.state);
     return { workspaceId, tabId, terminalId };
   };
   const key = randomUUID();

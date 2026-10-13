@@ -107,7 +107,18 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     if (!supervisor?.connected) return reply.code(409).send({ error: 'machine_disconnected' });
     const result = await createWorkspace(manager.database, supervisor.target, key, input.path, 'Terminal');
     if ('state' in result && result.state === 'unknown') return reply.code(202).send(result);
-    await supervisor.readFresh();
+    // Herdr can acknowledge workspace creation before the new tab appears in
+    // its next snapshot. Don't return a URL target that SSR would classify as
+    // a missing thread/tab; wait briefly for the created terminal to surface.
+    let visible = false;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const snapshot = await supervisor.readFresh();
+      visible = snapshot.tabs.some((tab) => tab.tab_id === result.tabId)
+        && snapshot.panes.some((pane) => pane.tab_id === result.tabId && pane.terminal_id === result.terminalId);
+      if (visible) break;
+      if (attempt < 9) await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (!visible) return reply.code(503).send({ error: 'terminal_not_ready' });
     return reply.code(201).send(result);
   });
   const projectIconTarget = z.object({ machineId: opaqueId, logicalId: z.string().min(1).max(1000) }).strict();

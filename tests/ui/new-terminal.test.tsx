@@ -33,6 +33,7 @@ it('opens a shell-only terminal at the home directory from the icon-only launche
 it('opens a terminal at the project path from its context menu', async () => {
   vi.stubGlobal('fetch', fetch); renderSidebar('projects');
   fireEvent.contextMenu(screen.getByRole('button', { name: 'herdr' }));
+  expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual(['New thread', 'New Terminal', 'Rename project', 'Change icon']);
   fireEvent.click(await screen.findByRole('menuitem', { name: 'New Terminal' }));
   await waitFor(() => expect(navigate).toHaveBeenCalledWith('/sessions/default/tabs/w2%3At1?machine=local'));
   const [url, request] = fetch.mock.calls.find(([url]) => url === '/api/terminals')!;

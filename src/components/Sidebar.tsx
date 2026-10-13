@@ -148,8 +148,8 @@ function ProjectGroupHeader({ project, closed, onToggle, machine }: { project: P
       </Title>
     </ContextMenu.Trigger>
     <ContextMenu.Portal><ContextMenu.Positioner className="thread-menu-positioner"><ContextMenu.Popup className="thread-menu">
-      <ContextMenu.Item className="thread-menu-item" disabled={!machine || !machine.connected || !machine.writable || terminalBusy} onClick={() => void openTerminalHere()}><SquareTerminal size={14} aria-hidden="true" />New Terminal</ContextMenu.Item>
       <ContextMenu.Item className="thread-menu-item" onClick={() => void navigate(`/new?project=${encodeURIComponent(project.id)}`)}><Plus size={14} aria-hidden="true" />New thread</ContextMenu.Item>
+      <ContextMenu.Item className="thread-menu-item" disabled={!machine || !machine.connected || !machine.writable || terminalBusy} onClick={() => void openTerminalHere()}><SquareTerminal size={14} aria-hidden="true" />New Terminal</ContextMenu.Item>
       <ContextMenu.Item className="thread-menu-item" onClick={() => setRenaming(true)}><Pencil size={14} aria-hidden="true" />Rename project</ContextMenu.Item>
       <ContextMenu.Item className="thread-menu-item" onClick={() => setChangingIcon(true)}><ImageUp size={14} aria-hidden="true" />Change icon</ContextMenu.Item>
       <div className="thread-menu-path" title={project.path}>{withTildeHome(project.path)}</div>
