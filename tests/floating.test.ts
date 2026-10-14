@@ -124,3 +124,18 @@ it('keeps publishing when a pending terminal entry loses its panes', async () =>
   const tabs = manager.bootstrap().projections.find((projection) => projection.machineId === 'fixture')?.availableTabs ?? [];
   expect(tabs.some((tab) => tab.tabId === created.tabId)).toBe(true);
 });
+
+it('returns a stable reference for unchanged inputs', () => {
+  const projection = {
+    machineId: 'fixture', generation: 'a', revision: 1, freshAt: null, connected: true, threads: [], projects: [], layouts: [],
+    machine: { id: 'fixture', name: 'Fixture', connected: true, session: 'fixture', projectPaths: {}, harnesses: [] },
+    availableTabs: [
+      { tabId: 'w1:t1', workspaceId: 'w1', label: 'Shell', bound: false, panes: [{ id: 'w1:p1', terminalId: 'term_1', title: 'Shell' }] },
+    ],
+  } as unknown as Projection;
+  const projections = [projection];
+  expect(floatingTabsFromProjections(projections)).toBe(floatingTabsFromProjections(projections));
+  expect(floatingTabsFromProjections(projections, { fixture: 'a' })).toBe(floatingTabsFromProjections(projections, { fixture: 'a' }));
+  const record = { fixture: projection };
+  expect(floatingTabsFromProjections(record)).toBe(floatingTabsFromProjections(record));
+});

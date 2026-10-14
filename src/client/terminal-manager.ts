@@ -86,7 +86,7 @@ export class BrowserTerminalManager {
     this.metadata = metadata; this.binary = binary; binary.binaryType = 'arraybuffer';
     const opened = () => { if (epoch !== this.epoch || metadata.readyState !== 1 || binary.readyState !== 1) return; this.connectedAt = Date.now(); this.onConnection(true); for (const [id, pane] of this.panes) { ++pane.generation; pane.sequence = new FrameSequence(); pane.attempts = 0; this.open(id); } };
     metadata.onopen = opened; binary.onopen = opened;
-    metadata.onmessage = (event) => { if (epoch !== this.epoch) return; try { const record = JSON.parse(event.data); if (record.type === 'projection') this.install(record.projection); } catch { this.disconnect(); } };
+    metadata.onmessage = (event) => { if (epoch !== this.epoch) return; try { const record = JSON.parse(event.data); if (record.type === 'projection') this.install(record.projection); } catch (error) { console.error('Projection update failed:', error instanceof Error ? error.message : error); this.disconnect(); } };
     binary.onmessage = (event) => {
       if (epoch !== this.epoch) return;
       try {

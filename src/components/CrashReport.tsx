@@ -9,10 +9,11 @@ function Report({ text }: { text: string }) {
   return <div role="alert" className="crash-report"><pre>{text}</pre><button type="button" aria-label="Reload page" onClick={() => window.location.reload()}>Reload</button><button type="button" aria-label="Dismiss error" onClick={() => setDismissed(true)}>×</button></div>;
 }
 
-class Boundary extends Component<{ children: ReactNode }, { error?: unknown }> {
-  state: { error?: unknown } = {};
+class Boundary extends Component<{ children: ReactNode }, { error?: unknown; stack?: string }> {
+  state: { error?: unknown; stack?: string } = {};
   static getDerivedStateFromError(error: unknown) { return { error }; }
-  render() { return this.state.error ? <Report text={describe(this.state.error)} /> : this.props.children; }
+  componentDidCatch(_error: unknown, info: { componentStack?: string }) { this.setState({ stack: info.componentStack }); }
+  render() { return this.state.error ? <Report text={`${describe(this.state.error)}${this.state.stack ?? ''}`} /> : this.props.children; }
 }
 
 function DevCrashReport({ children }: { children: ReactNode }) {

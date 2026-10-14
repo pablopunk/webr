@@ -13,10 +13,28 @@ export type FloatingTab = {
 
 export const sidebarTabKey = (machineId: string, tabId: string) => `${machineId}:${tabId}`;
 
+// Memoized by input identity: zustand selectors re-evaluate on every render,
+// so a fresh array here would look like a store change and re-render forever.
+const floatingCache = new WeakMap<Record<string, Projection> | Projection[], Map<string, FloatingTab[]>>();
+
 /** Live Herdr tabs with no attached thread and at least one pane. */
 export function floatingTabsFromProjections(
   projections: Record<string, Projection> | Projection[],
   sessions: Record<string, string> = {},
+): FloatingTab[] {
+  const sessionKey = JSON.stringify(sessions);
+  let bySessions = floatingCache.get(projections);
+  if (!bySessions) { bySessions = new Map(); floatingCache.set(projections, bySessions); }
+  const cached = bySessions.get(sessionKey);
+  if (cached) return cached;
+  const computed = computeFloatingTabs(projections, sessions);
+  bySessions.set(sessionKey, computed);
+  return computed;
+}
+
+function computeFloatingTabs(
+  projections: Record<string, Projection> | Projection[],
+  sessions: Record<string, string>,
 ): FloatingTab[] {
   const list = Array.isArray(projections) ? projections : Object.values(projections);
   return list.flatMap((projection) => (projection?.availableTabs ?? [])
