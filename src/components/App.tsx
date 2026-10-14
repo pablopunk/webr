@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Command, PanelLeft } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
 import { PerfOverlay } from './PerfOverlay';
@@ -25,8 +25,7 @@ import { canClosePane, paneToFocusAfterClosing } from '../lib/pane-strip';
 import { usePaneWindowStart, useNarrowScreen } from '../client/pane-window';
 import { alertDialog, confirmDialog } from './dialogs';
 import { useClearDoneOnVisit } from '../client/clear-done-on-visit';
-import { isListedThread } from '../lib/launch';
-import { decideFlipNavigation, floatingTabsFromProjections } from '../lib/floating';
+import { decideFlipNavigation, floatingTabsFromProjections, partitionSidebar } from '../lib/floating';
 import { carriesFiles } from '../client/image-attach';
 import { trackVisualViewport } from '../client/visual-viewport';
 import { terminalStartupStorageKey, type TerminalStartupPreset } from '../client/terminal-presets';
@@ -51,13 +50,14 @@ export default function App(props: Props) {
 function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, terminalPending = false, terminalStartup }: Props) {
   const { ui, terminals } = useRuntime();
   const projects = useRuntimeSelector(useShallow((state) => state.projectIds.map((id) => state.projects[id])));
-  const threads = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id]).filter((item) => !item.archivedAt && isListedThread(item))));
+  const activeThreads = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id]).filter((item) => !item.archivedAt)));
   const archived = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id]).filter((item) => !!item.archivedAt)));
   const thread = useRuntimeSelector((state) => state.threads[threadId ?? '']);
   const projections = useRuntimeSelector((state) => state.projections);
   const gatewayConnected = useRuntimeSelector((state) => state.connected);
   const standaloneTab = useRuntimeSelector((state) => page === 'terminal' ? state.projections[machineId ?? '']?.availableTabs?.find((tab) => tab.tabId === tabId && !tab.bound) : undefined);
-  const floating = useRuntimeSelector(useShallow((state) => floatingTabsFromProjections(state.projections, Object.fromEntries(bootstrap.machines.map((machine) => [machine.id, machine.session])))));
+  const unboundTabs = useRuntimeSelector(useShallow((state) => floatingTabsFromProjections(state.projections, Object.fromEntries(bootstrap.machines.map((machine) => [machine.id, machine.session])))));
+  const { listed: threads, detached, terminals: floating, ownedTabs } = useMemo(() => partitionSidebar(activeThreads, unboundTabs), [activeThreads, unboundTabs]);
   const terminalPanes: Pane[] = standaloneTab?.panes.map((pane) => ({ ...pane, kind: 'shell' })) ?? [];
   const machines = Object.values(projections).flatMap((projection) => { const machine = projection.machine ?? bootstrap.machines.find((machine) => machine.id === projection.machineId); return machine ? [{ ...machine, connected: gatewayConnected && projection.connected, error: projection.error }] : []; });
   const [collapsed, setCollapsed] = useState(false);
@@ -111,7 +111,7 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
   const allThreads = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id])));
   useEffect(() => {
     const launchingOrRestoring = allThreads.some((item) => ['pending', 'running'].includes(item.operation?.state ?? '')) || thread?.operation?.state === 'running';
-    const nav = decideFlipNavigation({ page, viewedThreadId: threadId, viewedMachineId: machineId ?? thread?.machineId, viewedTabId: tabId ?? thread?.tabId, threads: allThreads, floating, launchingOrRestoring });
+    const nav = decideFlipNavigation({ page, viewedThreadId: threadId, viewedMachineId: machineId ?? thread?.machineId, viewedTabId: tabId ?? thread?.tabId, threads: allThreads, floating: unboundTabs, launchingOrRestoring });
     if (nav.to === 'thread') {
       const key = `thread:${nav.threadId}`;
       if (flipNavigated.current !== key) { flipNavigated.current = key; void navigate(`/threads/${encodeURIComponent(nav.threadId)}`); }
@@ -121,7 +121,7 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
       const key = `terminal:${nav.machineId}:${nav.tabId}`;
       if (flipNavigated.current !== key) { flipNavigated.current = key; void navigate(`/sessions/${encodeURIComponent(session)}/tabs/${encodeURIComponent(nav.tabId)}?machine=${encodeURIComponent(nav.machineId)}`); }
     }
-  }, [page, threadId, tabId, machineId, thread, allThreads, floating, machines, bootstrap.machines]);
+  }, [page, threadId, tabId, machineId, thread, allThreads, unboundTabs, machines, bootstrap.machines]);
 
   useEffect(() => {
     const keepFileDropsInsideTheApp = (event: DragEvent) => { if (carriesFiles(event.dataTransfer)) event.preventDefault(); };
@@ -218,7 +218,7 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
   }, [thread, threads, floating, page, machineId, tabId, machines, bootstrap.machines, paletteOpen, toggleSidebar, openTerminal, closePane, focusedPane, setFocusedPane]);
 
   return <div className={`app-shell ${page === 'thread' || page === 'terminal' ? 'is-thread' : ''}`}>
-    <Sidebar projects={projects} threads={threads} archived={archived} floating={floating} machines={machines} currentId={thread?.id} currentMachineId={page === 'terminal' ? machineId : thread?.machineId} currentTab={page === 'terminal' && machineId && tabId ? { machineId, tabId } : undefined} mode={mode} onModeChange={changeMode} collapsed={collapsed}
+    <Sidebar projects={projects} threads={threads} archived={archived} floating={floating} detached={detached} ownedTabs={ownedTabs} machines={machines} currentId={thread?.id} currentMachineId={page === 'terminal' ? machineId : thread?.machineId} currentTab={page === 'terminal' && machineId && tabId ? { machineId, tabId } : undefined} mode={mode} onModeChange={changeMode} collapsed={collapsed}
       mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} updateAction={<UpdateButton />} />
     <div className="main-panel">
       {page === 'thread' && thread && <ThreadView thread={thread} connected={gatewayConnected && !!projections[thread.machineId]?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} />}

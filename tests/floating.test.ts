@@ -1,7 +1,8 @@
 import { afterEach, expect, it } from 'vitest';
 import { MetadataDatabase } from '../src/server/storage/database';
 import { RuntimeManager } from '../src/server/runtime/manager';
-import { decideFlipNavigation, floatingTabsFromProjections, sidebarTabKey } from '../src/lib/floating';
+import { decideFlipNavigation, floatingTabsFromProjections, partitionSidebar, sidebarTabKey, type FloatingTab } from '../src/lib/floating';
+import type { Thread } from '../src/lib/models';
 import { FakeTarget } from './fixtures/target';
 import type { Projection } from '../src/shared/runtime';
 
@@ -138,4 +139,51 @@ it('returns a stable reference for unchanged inputs', () => {
   expect(floatingTabsFromProjections(projections, { fixture: 'a' })).toBe(floatingTabsFromProjections(projections, { fixture: 'a' }));
   const record = { fixture: projection };
   expect(floatingTabsFromProjections(record)).toBe(floatingTabsFromProjections(record));
+});
+
+const tab = (tabId: string, paneCount = 1): FloatingTab => ({ machineId: 'm', session: 's', tabId, workspaceId: 'w', label: tabId, paneCount, panes: [] });
+const thread = (id: string, patch: Partial<Thread>): Thread => ({ id, machineId: 'm', tabId: '', agent: 'claude', panes: [], bindingState: 'detached', updatedAt: '2026-10-14T10:00:00Z', ...patch }) as unknown as Thread;
+
+it('lets a detached thread own its still-live tab instead of duplicating it as a terminal row', () => {
+  const owner = thread('t1', { tabId: 'w:t4' });
+  const result = partitionSidebar([owner], [tab('w:t4'), tab('w:t5')]);
+  expect(result.listed.map((item) => item.id)).toEqual(['t1']);
+  expect(result.ownedTabs.get('t1')?.tabId).toBe('w:t4');
+  expect(result.terminals.map((item) => item.tabId)).toEqual(['w:t5']);
+});
+
+it('moves detached threads without a live tab out of the list, but keeps launching ones', () => {
+  const gone = thread('gone', { tabId: 'w:t9' });
+  const launching = thread('new', { operation: { id: 'o', state: 'running', step: 'start' } });
+  const result = partitionSidebar([gone, launching], []);
+  expect(result.listed.map((item) => item.id)).toEqual(['new']);
+  expect(result.detached.map((item) => item.id)).toEqual(['gone']);
+});
+
+it('gives a tab claimed by two detached threads to the most recent one only', () => {
+  const older = thread('old', { tabId: 'w:t1', updatedAt: '2026-10-14T09:00:00Z' });
+  const newer = thread('new', { tabId: 'w:t1' });
+  const result = partitionSidebar([older, newer], [tab('w:t1')]);
+  expect(result.listed.map((item) => item.id)).toEqual(['new']);
+  expect(result.detached.map((item) => item.id)).toEqual(['old']);
+});
+
+it('shows every live tab exactly once and never lists a thread without a terminal', () => {
+  let seed = 7; const random = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+  for (let round = 0; round < 300; round++) {
+    const tabs = Array.from({ length: Math.floor(random() * 6) }, (_, index) => tab(`w:t${index}`));
+    const threads = Array.from({ length: Math.floor(random() * 7) }, (_, index) => thread(`th${index}`, {
+      tabId: random() < 0.2 ? '' : `w:t${Math.floor(random() * 7)}`,
+      bindingState: random() < 0.3 ? 'attached' : 'detached',
+      updatedAt: new Date(Date.UTC(2026, 9, 14, 0, Math.floor(random() * 60))).toISOString(),
+      ...(random() < 0.2 ? { operation: { id: 'o', state: 'running' as const, step: 'start' } } : {}),
+    }));
+    const attachedTabs = new Set(threads.filter((item) => item.bindingState === 'attached').map((item) => item.tabId));
+    const liveUnbound = tabs.filter((item) => !attachedTabs.has(item.tabId));
+    const result = partitionSidebar(threads, liveUnbound);
+    const rows = [...result.terminals.map((item) => item.tabId), ...[...result.ownedTabs.values()].map((item) => item.tabId)];
+    expect([...rows].sort()).toEqual(liveUnbound.map((item) => item.tabId).sort());
+    for (const item of result.listed) expect(item.bindingState === 'attached' || result.ownedTabs.has(item.id) || !!item.operation).toBe(true);
+    expect(result.listed.length + result.detached.length).toBe(threads.length);
+  }
 });

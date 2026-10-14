@@ -1,5 +1,6 @@
 import type { Projection } from '../shared/runtime';
 import type { Thread } from './models';
+import { isLaunchTransitional, isListedThread } from './launch';
 
 export type FloatingTab = {
   machineId: string;
@@ -50,6 +51,35 @@ function computeFloatingTabs(
     }))).sort((a, b) => (a.label ?? '').localeCompare(b.label ?? '') || (a.tabId ?? '').localeCompare(b.tabId ?? ''));
 }
 
+export type SidebarPartition = { listed: Thread[]; detached: Thread[]; terminals: FloatingTab[]; ownedTabs: Map<string, FloatingTab> };
+
+const tabKeyOf = (thread: Thread) => sidebarTabKey(thread.machineId, thread.tabId);
+
+/**
+ * Every live Herdr tab appears exactly once: as its owning thread's row, or as a terminal row.
+ * An owning thread is attached, or detached while its saved tab is still live. Threads without
+ * a live tab and not launching are detached and never become a row that opens nothing.
+ */
+export function partitionSidebar(threads: Thread[], unboundTabs: FloatingTab[], now = Date.now()): SidebarPartition {
+  const liveTabs = new Map(unboundTabs.map((tab) => [sidebarTabKey(tab.machineId, tab.tabId), tab]));
+  const candidates = threads.filter((thread) => isListedThread(thread, now));
+  const owners = new Map<string, Thread>();
+  for (const thread of candidates) {
+    if (thread.bindingState === 'attached' || !thread.tabId || !liveTabs.has(tabKeyOf(thread))) continue;
+    const incumbent = owners.get(tabKeyOf(thread));
+    if (!incumbent || thread.updatedAt > incumbent.updatedAt) owners.set(tabKeyOf(thread), thread);
+  }
+  const ownedTabs = new Map<string, FloatingTab>();
+  const listed: Thread[] = []; const detached: Thread[] = [];
+  for (const thread of candidates) {
+    const owned = thread.bindingState !== 'attached' && owners.get(tabKeyOf(thread))?.id === thread.id;
+    if (owned) ownedTabs.set(thread.id, liveTabs.get(tabKeyOf(thread))!);
+    if (thread.bindingState === 'attached' || owned || isLaunchTransitional(thread, now)) listed.push(thread); else detached.push(thread);
+  }
+  const claimed = new Set([...owners.keys()]);
+  return { listed, detached, terminals: unboundTabs.filter((tab) => !claimed.has(sidebarTabKey(tab.machineId, tab.tabId))), ownedTabs };
+}
+
 /** Agent-present means the tab currently runs an agent surface. Idle/done alone never demotes. */
 export function tabHasAgentPanes(tabId: string, machineId: string, threads: Thread[]): boolean {
   const thread = threads.find((item) => item.machineId === machineId && item.tabId === tabId && item.bindingState === 'attached');
@@ -83,7 +113,7 @@ export function decideFlipNavigation(args: {
   if (args.page === 'thread' && args.viewedThreadId) {
     const thread = args.threads.find((item) => item.id === args.viewedThreadId);
     if (!thread) return { to: null };
-    const demoted = thread.bindingState === 'attached' && !thread.panes.some((pane) => pane.kind === 'agent');
+    const demoted = thread.bindingState !== 'attached' || !thread.panes.some((pane) => pane.kind === 'agent');
     if (demoted) {
       const tab = args.floating.find((item) => item.machineId === thread.machineId && item.tabId === thread.tabId);
       if (tab) return { to: 'terminal', session: tab.session, machineId: tab.machineId, tabId: tab.tabId };

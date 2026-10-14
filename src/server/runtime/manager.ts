@@ -11,6 +11,7 @@ import type { MetadataDatabase } from '../storage/database';
 import type { Bootstrap, Projection } from '../../shared/runtime';
 import type { Machine } from '../../lib/machines';
 import { LaunchJournal } from './launch';
+import { isListedThread } from '../../lib/launch';
 import { isSameOrSiblingWorktree, sameSession } from './recovery';
 import { createWorkspace, type CreatedWorkspace } from './workspace';
 
@@ -361,7 +362,7 @@ export class RuntimeManager extends EventEmitter {
     const previous = this.projections.get(supervisor.target.id);
     const projection: Projection = { machineId: supervisor.target.id, generation: supervisor.generation, revision: (previous?.revision ?? 0) + 1, freshAt: supervisor.freshAt, connected: supervisor.connected, error: supervisor.error, ...records, layouts: supervisor.snapshot?.layouts.map((layout) => ({ workspaceId: layout.workspace_id, tabId: layout.tab_id, area: layout.area, panes: layout.panes.map((pane) => ({ paneId: pane.pane_id, rect: pane.rect })) })) ?? [] };
     projection.threads = projection.threads.map((thread) => ({ ...thread, prompt: '', ...(!projection.connected ? { panes: [], status: 'unknown' as const, bindingState: 'detached' as const, recovery: thread.providerSession ? { state: 'known' as const } : thread.recovery } : {}) }));
-    const availableTabs = projection.connected ? supervisor.snapshot?.tabs.map((tab) => ({ tabId: tab.tab_id, workspaceId: tab.workspace_id, label: tab.label ?? tab.tab_id, bound: projection.threads.some((thread) => thread.bindingState === 'attached' && thread.tabId === tab.tab_id), panes: supervisor.snapshot!.panes.filter((pane) => pane.tab_id === tab.tab_id && pane.workspace_id === tab.workspace_id).map((pane) => ({ id: pane.pane_id, terminalId: pane.terminal_id, title: pane.title ?? pane.agent ?? 'Shell' })) })) ?? [] : [];
+    const availableTabs = projection.connected ? supervisor.snapshot?.tabs.map((tab) => ({ tabId: tab.tab_id, workspaceId: tab.workspace_id, label: tab.label ?? tab.tab_id, bound: projection.threads.some((thread) => thread.bindingState === 'attached' && thread.tabId === tab.tab_id && isListedThread(thread)), panes: supervisor.snapshot!.panes.filter((pane) => pane.tab_id === tab.tab_id && pane.workspace_id === tab.workspace_id).map((pane) => ({ id: pane.pane_id, terminalId: pane.terminal_id, title: pane.title ?? pane.agent ?? 'Shell' })) })) ?? [] : [];
     const pending = this.pendingTerminalTabs.get(supervisor.target.id);
     for (const [tabId, entry] of pending ?? []) {
       const observed = availableTabs.find((tab) => tab.tabId === tabId);

@@ -1,6 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { ContextMenu } from '@base-ui/react/context-menu';
-import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, GitBranch, LayoutList, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Settings2, SquarePen, SquareTerminal, ImageUp, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, GitBranch, LayoutList, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Settings2, SquarePen, SquareTerminal, ImageUp, Pencil, Plus, Trash2, Unplug, X } from 'lucide-react';
 import { type Project, type Thread, harnessName, hasUnseenDone, relativeTime } from '../lib/models';
 import { isLaunching, launchFailed, launchLabel } from '../lib/launch';
 import type { Machine } from '../lib/machines';
@@ -31,6 +31,8 @@ type Props = {
   threads: Thread[];
   archived?: Thread[];
   floating?: FloatingTab[];
+  detached?: Thread[];
+  ownedTabs?: Map<string, FloatingTab>;
   machines: Machine[];
   currentId?: string;
   currentMachineId?: string;
@@ -81,7 +83,7 @@ function NewTerminalButton({ machine }: { machine?: Machine }) {
   return <Tooltip label="New Terminal"><button type="button" className="sidebar-action-icon" aria-label="New Terminal" disabled={!machine || !machine.connected || !machine.writable || busy} onClick={() => void open()}><SquareTerminal size={16} aria-hidden="true" /></button></Tooltip>;
 }
 
-const ThreadRow = memo(function ThreadRow({ thread, project, machineName, current, showProject }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean }) {
+const ThreadRow = memo(function ThreadRow({ thread, project, machineName, current, showProject, href }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean; href: string }) {
   const archived = !!thread.archivedAt;
   const ArchiveIcon = archived ? ArchiveRestore : Archive;
   const archiveLabel = archived ? `Unarchive ${thread.title}` : `Archive ${thread.title}`;
@@ -90,7 +92,7 @@ const ThreadRow = memo(function ThreadRow({ thread, project, machineName, curren
   const flipId = thread.bindingState === 'attached' && thread.tabId ? sidebarTabKey(thread.machineId, thread.tabId) : thread.id;
   return <ContextMenu.Root>
     <ContextMenu.Trigger className="thread-item" data-flip-id={flipId} onDoubleClick={(event) => { event.preventDefault(); setRenaming(true); }}>
-      <ThreadLink thread={thread} project={project} machineName={machineName} current={current} showProject={showProject} editor={editor} />
+      <ThreadLink thread={thread} project={project} machineName={machineName} current={current} showProject={showProject} editor={editor} href={href} />
       <Tooltip label={archived ? 'Unarchive' : 'Archive'}><button type="button" className="thread-archive" aria-label={archiveLabel} onClick={() => void setThreadArchived(thread, !archived).catch(reportFailure)}><ArchiveIcon size={15} strokeWidth={1.8} aria-hidden="true" /></button></Tooltip>
     </ContextMenu.Trigger>
     <ContextMenu.Portal><ContextMenu.Positioner className="thread-menu-positioner"><ContextMenu.Popup className="thread-menu">
@@ -99,9 +101,11 @@ const ThreadRow = memo(function ThreadRow({ thread, project, machineName, curren
   </ContextMenu.Root>;
 });
 
+const terminalHref = (session: string, tab: FloatingTab) => `/sessions/${encodeURIComponent(session)}/tabs/${encodeURIComponent(tab.tabId)}?machine=${encodeURIComponent(tab.machineId)}`;
+
 const TerminalRow = memo(function TerminalRow({ tab, session, machineName, current, canClose }: { tab: FloatingTab; session: string; machineName: string; current: boolean; canClose: boolean }) {
   const [closing, setClosing] = useState(false);
-  const href = `/sessions/${encodeURIComponent(session)}/tabs/${encodeURIComponent(tab.tabId)}?machine=${encodeURIComponent(tab.machineId)}`;
+  const href = terminalHref(session, tab);
   const label = `${tab.label} · ${machineName} · ${tab.paneCount} pane${tab.paneCount === 1 ? '' : 's'}`;
   const close = async () => {
     if (!canClose || closing) return;
@@ -120,7 +124,7 @@ const TerminalRow = memo(function TerminalRow({ tab, session, machineName, curre
   </div>;
 });
 
-function ThreadLink({ thread, project, machineName, current, showProject, editor }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean; editor?: ReactNode }) {
+function ThreadLink({ thread, project, machineName, current, showProject, editor, href }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean; href: string; editor?: ReactNode }) {
   const avatar = useRef<HTMLSpanElement>(null);
   const projectSlot = useRef<HTMLSpanElement>(null);
   const launching = isLaunching(thread); const failed = launchFailed(thread);
@@ -150,7 +154,7 @@ function ThreadLink({ thread, project, machineName, current, showProject, editor
   const status = launching ? launchLabel(thread) : failed ? 'Launch stopped' : unseen ? statusLabel.done : statusLabel[thread.status];
   const context = launching || failed ? status : showProject ? project?.name : harnessName(thread.agent);
   const Row = editor ? 'div' : 'a';
-  return <Tooltip label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`} side="right"><Row className={`thread-row ${current ? 'is-current' : ''} ${needsAttention ? `needs-attention status-${warning || thread.status === 'blocked' ? 'blocked' : 'done'}` : ''}`} href={editor ? undefined : `/threads/${encodeURIComponent(thread.id)}`} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${status}`}>
+  return <Tooltip label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`} side="right"><Row className={`thread-row ${current ? 'is-current' : ''} ${needsAttention ? `needs-attention status-${warning || thread.status === 'blocked' ? 'blocked' : 'done'}` : ''}`} href={editor ? undefined : href} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${status}`}>
     <span ref={avatar} className={`thread-avatar ${canReplaceAvatar ? 'has-project-avatar' : ''}`} aria-hidden="true"><span className="thread-bot-avatar"><ThreadAvatar thread={thread} working={thread.status === 'working' || launching} size={24} /></span>{canReplaceAvatar && !showProject && <span className="thread-selected-project"><ProjectIcon project={project!} /></span>}{StatusIcon && <StatusIcon className={`thread-status status-${warning || thread.status === 'blocked' ? 'blocked' : unseen ? 'done' : thread.status}`} size={14} strokeWidth={2.2} />}<span className="thread-avatar-harness"><HarnessIcon harness={thread.agent} size={14} /></span></span>
     <span className="thread-copy"><span className="thread-context">{showProject && canReplaceAvatar && <span ref={projectSlot} className="thread-project-slot"><ProjectIcon project={project!} /></span>}{thread.worktree && !launching && !failed && <GitBranch className="thread-worktree" size={11} aria-label="Worktree" />}{context}</span>{editor ?? <span className="thread-name">{thread.title}</span>}</span>
     <span className="thread-time">{relativeTime(thread.updatedAt)}</span>
@@ -216,7 +220,19 @@ function ArchivedThreads({ threads, renderThread }: { threads: Thread[]; renderT
   </section>;
 }
 
-export function Sidebar({ projects, threads, archived = [], floating = [], machines, currentId, currentMachineId, currentTab, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile, onOpenPalette, updateAction }: Props) {
+function DetachedThreads({ threads, renderThread }: { threads: Thread[]; renderThread: (thread: Thread) => ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return <section className="thread-group archived-threads" aria-label="Detached threads">
+    <div className="group-header">
+      <button className="group-title" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+        <span className="group-chevron" aria-hidden="true">{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span><Unplug size={14} aria-hidden="true" /><span className="group-name">Detached</span><span className="group-count">{threads.length}</span>
+      </button>
+    </div>
+    {open && threads.map(renderThread)}
+  </section>;
+}
+
+export function Sidebar({ projects, threads, archived = [], floating = [], detached = [], ownedTabs = new Map(), machines, currentId, currentMachineId, currentTab, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile, onOpenPalette, updateAction }: Props) {
   const [closedProjects, setClosedProjects] = useState<string[]>([]);
   const [collapseMotionVersion, setCollapseMotionVersion] = useState(0);
   useEffect(() => {
@@ -256,7 +272,12 @@ export function Sidebar({ projects, threads, archived = [], floating = [], machi
   useFlipList(navigation, collapseMotionVersion);
   const threadLink = (thread: Thread, showProject: boolean) => {
     const project = projects.find((item) => item.id === thread.projectId);
-    return <ThreadRow key={thread.bindingState === 'attached' && thread.tabId ? sidebarTabKey(thread.machineId, thread.tabId) : thread.id} thread={thread} project={project} machineName={machines.find((machine) => machine.id === thread.machineId)?.name ?? thread.machineId} current={currentId === thread.id} showProject={showProject} />;
+    const ownedTab = ownedTabs.get(thread.id);
+    const machine = machines.find((item) => item.id === thread.machineId);
+    const href = ownedTab ? terminalHref(ownedTab.session || machine?.session || 'default', ownedTab) : `/threads/${encodeURIComponent(thread.id)}`;
+    const viewingOwnedTab = !!ownedTab && currentTab?.machineId === ownedTab.machineId && currentTab?.tabId === ownedTab.tabId;
+    const keyed = ownedTab || thread.bindingState === 'attached' && thread.tabId;
+    return <ThreadRow key={keyed ? sidebarTabKey(thread.machineId, ownedTab?.tabId ?? thread.tabId) : thread.id} thread={thread} project={project} machineName={machine?.name ?? thread.machineId} current={currentId === thread.id || viewingOwnedTab} showProject={showProject} href={href} />;
   };
   const terminalLink = (tab: FloatingTab) => {
     const machine = machines.find((item) => item.id === tab.machineId);
@@ -292,8 +313,9 @@ export function Sidebar({ projects, threads, archived = [], floating = [], machi
             <ProjectGroupHeader project={project} machine={machines.find((machine) => machine.id === (project.machineId ?? 'local'))} closed={closedProjects.includes(id)} onToggle={() => toggleProject(id)} />
             {!closedProjects.includes(id) && threads.filter((thread) => locations.includes(thread.projectId)).map((thread) => threadLink(thread, false))}
           </section>)}{terminalsDivider}{floating.map(terminalLink)}</> : <>{threads.map((thread) => threadLink(thread, true))}{terminalsDivider}{floating.map(terminalLink)}</>}
-          {!threads.length && !floating.length && !archived.length && <p className="sidebar-empty">No agents or terminals yet. Press ⌘K to start one.</p>}
+          {!threads.length && !floating.length && !archived.length && !detached.length && <p className="sidebar-empty">No agents or terminals yet. Press ⌘K to start one.</p>}
         </nav>
+        {!!detached.length && <DetachedThreads threads={detached} renderThread={(thread) => threadLink(thread, true)} />}
         {!!archived.length && <ArchivedThreads threads={archived} renderThread={(thread) => threadLink(thread, true)} />}
         <div className="sidebar-footer">
           <a className="sidebar-settings" href="/settings"><Settings2 size={15} /> Settings</a>
