@@ -31,4 +31,4 @@ Needs `agent-browser` and `ffmpeg` on the PATH. Nothing real is read: no real He
 - Chromium runs with `--disable-3d-apis`. With WebGL on, xterm glyphs render at twice the size in headless screenshots.
 - `touch-device.js` fakes `(pointer: coarse)` so the terminal key bar appears. A real touch emulation resets the custom viewport.
 - Rebuild before capturing, or the images show a stale UI. The command does this unless `--skip-build` is passed.
-- After capturing, look at every image before committing. The README references them by these exact names.
+- Before committing or pushing, open every regenerated image and the first frame of the GIF (`ffmpeg -i assets/demo.gif -frames:v 1 frame.png`, then Read it) and look at them. Reject and regenerate any with "Disconnected", an empty or black terminal, a "Detached" group, or a stale UI. A command that exits 0 is not proof: the demo GIF once shipped to the README as a disconnected, empty window. The README references the images by these exact names.

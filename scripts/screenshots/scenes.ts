@@ -70,7 +70,7 @@ async function recordDemo(context: SceneContext) {
   const browser = new Browser('webr-shots-demo', false);
   try {
     browser.openWideWindow(context.url);
-    browser.clickText(DEMO_THREAD);
+    browser.clickTextReloading(DEMO_THREAD);
     browser.wait(2500);
     const video = join(context.scratch, 'demo.webm');
     browser.startRecording(video);
