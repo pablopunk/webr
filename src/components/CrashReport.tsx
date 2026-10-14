@@ -4,13 +4,9 @@ const describe = (error: unknown) => error instanceof Error ? `${error.name}: ${
 
 function Report({ text }: { text: string }) {
   const [dismissed, setDismissed] = useState(false);
-  useEffect(() => {
-    setDismissed(false);
-    const timeout = window.setTimeout(() => setDismissed(true), 5000);
-    return () => window.clearTimeout(timeout);
-  }, [text]);
+  useEffect(() => { setDismissed(false); }, [text]);
   if (dismissed) return null;
-  return <div role="alert" className="crash-report"><pre>{text}</pre><button type="button" aria-label="Dismiss error" onClick={() => setDismissed(true)}>×</button></div>;
+  return <div role="alert" className="crash-report"><pre>{text}</pre><button type="button" aria-label="Reload page" onClick={() => window.location.reload()}>Reload</button><button type="button" aria-label="Dismiss error" onClick={() => setDismissed(true)}>×</button></div>;
 }
 
 class Boundary extends Component<{ children: ReactNode }, { error?: unknown }> {
@@ -34,4 +30,4 @@ function DevCrashReport({ children }: { children: ReactNode }) {
   return <><Boundary>{children}</Boundary>{uncaught && <Report text={uncaught} />}</>;
 }
 
-export const CrashReport = ({ children }: { children: ReactNode }) => import.meta.env.DEV ? <DevCrashReport>{children}</DevCrashReport> : <>{children}</>;
+export const CrashReport = ({ children }: { children: ReactNode }) => import.meta.env.DEV ? <DevCrashReport>{children}</DevCrashReport> : <Boundary>{children}</Boundary>;

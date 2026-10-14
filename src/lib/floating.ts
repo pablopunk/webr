@@ -19,17 +19,17 @@ export function floatingTabsFromProjections(
   sessions: Record<string, string> = {},
 ): FloatingTab[] {
   const list = Array.isArray(projections) ? projections : Object.values(projections);
-  return list.flatMap((projection) => (projection.availableTabs ?? [])
-    .filter((tab) => !tab.bound && tab.panes.length > 0)
+  return list.flatMap((projection) => (projection?.availableTabs ?? [])
+    .filter((tab) => !!tab && typeof tab.tabId === 'string' && !tab.bound && Array.isArray(tab.panes) && tab.panes.length > 0)
     .map((tab) => ({
       machineId: projection.machineId,
       session: projection.machine?.session ?? sessions[projection.machineId] ?? '',
       tabId: tab.tabId,
       workspaceId: tab.workspaceId,
-      label: tab.label,
+      label: tab.label ?? tab.tabId,
       paneCount: tab.panes.length,
       panes: tab.panes,
-    }))).sort((a, b) => a.label.localeCompare(b.label) || a.tabId.localeCompare(b.tabId));
+    }))).sort((a, b) => (a.label ?? '').localeCompare(b.label ?? '') || (a.tabId ?? '').localeCompare(b.tabId ?? ''));
 }
 
 /** Agent-present means the tab currently runs an agent surface. Idle/done alone never demotes. */

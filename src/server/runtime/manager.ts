@@ -350,6 +350,13 @@ export class RuntimeManager extends EventEmitter {
 
   private publishAll() { for (const supervisor of this.supervisors.values()) { this.publish(supervisor); supervisor.invalidate(); } }
   private publish(supervisor: TargetSupervisor) {
+    try {
+      this.buildProjection(supervisor);
+    } catch (error) {
+      console.error(`projection for ${supervisor.target.id} skipped:`, error instanceof Error ? error.message : error);
+    }
+  }
+  private buildProjection(supervisor: TargetSupervisor) {
     const records = supervisor.snapshot ? reconcile(this.database, supervisor.target, supervisor.snapshot) : { threads: this.database.threadRows(supervisor.target.id).map((row) => ({ ...row.metadata, panes: [], bindingState: 'detached' as const, status: 'unknown' as const })), projects: [] };
     const previous = this.projections.get(supervisor.target.id);
     const projection: Projection = { machineId: supervisor.target.id, generation: supervisor.generation, revision: (previous?.revision ?? 0) + 1, freshAt: supervisor.freshAt, connected: supervisor.connected, error: supervisor.error, ...records, layouts: supervisor.snapshot?.layouts.map((layout) => ({ workspaceId: layout.workspace_id, tabId: layout.tab_id, area: layout.area, panes: layout.panes.map((pane) => ({ paneId: pane.pane_id, rect: pane.rect })) })) ?? [] };
@@ -364,8 +371,8 @@ export class RuntimeManager extends EventEmitter {
         continue;
       }
       if (observed) {
-        const rootPane = entry.tab.panes[0]!;
-        observed.panes = [...observed.panes.filter((pane) => pane.id !== rootPane.id), rootPane];
+        const rootPane = entry.tab.panes[0];
+        if (rootPane) observed.panes = [...observed.panes.filter((pane) => pane.id !== rootPane.id), rootPane];
       } else availableTabs.push(entry.tab);
     }
     if (pending && !pending.size) this.pendingTerminalTabs.delete(supervisor.target.id);

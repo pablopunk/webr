@@ -67,3 +67,60 @@ it('reports a missing tab', async () => {
   await expect.poll(() => manager.bootstrap().machines[0].connected).toBe(true);
   await expect(manager.closeTab('fixture', 'w1:missing', true)).rejects.toThrow('tab_not_found');
 });
+
+it('survives malformed tab entries without throwing', () => {
+  const projection = {
+    machineId: 'fixture', generation: 'a', revision: 1, freshAt: null, connected: true, threads: [], projects: [], layouts: [],
+    availableTabs: [
+      null,
+      undefined,
+      { tabId: 'w1:good', workspaceId: 'w1', label: 'Good', bound: false, panes: [{ id: 'w1:p1', terminalId: 'term_1', title: 'Shell' }] },
+      { workspaceId: 'w1', label: 'NoId', bound: false, panes: [{ id: 'w1:p2', terminalId: 'term_2', title: 'Shell' }] },
+      { tabId: 'w1:nopanes', workspaceId: 'w1', label: 'NoPanes', bound: false },
+      { tabId: 'w1:nullpanes', workspaceId: 'w1', label: 'NullPanes', bound: false, panes: null },
+      { tabId: 'w1:nolabel', workspaceId: 'w1', bound: false, panes: [{ id: 'w1:p3', terminalId: 'term_3', title: 'Shell' }] },
+    ],
+  } as unknown as Projection;
+  const floating = floatingTabsFromProjections([projection]);
+  expect(floating.map((tab) => tab.tabId)).toEqual(['w1:good', 'w1:nolabel']);
+  expect(floating.find((tab) => tab.tabId === 'w1:nolabel')?.label).toBe('w1:nolabel');
+});
+
+it('survives null projections and sorts a dozen tabs', () => {
+  const tabs = Array.from({ length: 10 }, (_, index) => ({
+    tabId: `w1:shell${index}`, workspaceId: 'w1', label: `Terminal ${9 - index}`, bound: false,
+    panes: [{ id: `w1:p${index}`, terminalId: `term_${index}`, title: 'Shell' }],
+  }));
+  const projection = {
+    machineId: 'local', generation: 'a', revision: 1, freshAt: null, connected: true, threads: [], projects: [], layouts: [],
+    machine: { id: 'local', name: 'Local', connected: true, session: 'default', projectPaths: {}, harnesses: [] },
+    availableTabs: [...tabs,
+      { tabId: 'w1:agent1', workspaceId: 'w1', label: 'nvm', bound: true, panes: [{ id: 'w1:pa', terminalId: 'term_a', title: 'Agent' }] },
+      { tabId: 'w1:agent2', workspaceId: 'w1', label: 'webr', bound: true, panes: [{ id: 'w1:pb', terminalId: 'term_b', title: 'Agent' }] }],
+  } as unknown as Projection;
+  const floating = floatingTabsFromProjections([null, undefined, projection] as unknown as Projection[]);
+  expect(floating).toHaveLength(10);
+  expect(floating.map((tab) => tab.label)).toEqual([...floating.map((tab) => tab.label)].sort());
+});
+
+it('keeps publishing when a pending terminal entry loses its panes', async () => {
+  const target = new FakeTarget();
+  let calls = 0;
+  target.createWorkspace = async () => {
+    ++calls;
+    return calls === 1
+      ? { workspaceId: 'w9', tabId: 'w1:pending', paneId: 'w1:pp', terminalId: 'term_pending' }
+      : { workspaceId: 'w9', tabId: 'w1:pending2', paneId: 'w1:pp2', terminalId: 'term_pending2' };
+  };
+  const manager = new RuntimeManager(database(), [target]); cleanups.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().machines[0]?.connected).toBe(true);
+  const created = await manager.createTerminal('fixture', '/fixture', 'key-1');
+  const pending = (manager as unknown as { pendingTerminalTabs: Map<string, Map<string, { tab: { panes: unknown[] } }>> }).pendingTerminalTabs.get('fixture')?.get(created.tabId);
+  expect(pending).toBeDefined();
+  pending!.tab.panes = [];
+  target.state.tabs.push({ tab_id: created.tabId, workspace_id: 'w9', label: 'Terminal' });
+  target.state.panes.push({ ...target.state.panes[0], pane_id: 'w1:real', terminal_id: 'term_real', tab_id: created.tabId, agent: null, focused: false });
+  await manager.createTerminal('fixture', '/fixture', 'key-2');
+  const tabs = manager.bootstrap().projections.find((projection) => projection.machineId === 'fixture')?.availableTabs ?? [];
+  expect(tabs.some((tab) => tab.tabId === created.tabId)).toBe(true);
+});

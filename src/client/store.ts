@@ -17,6 +17,7 @@ export function createRuntimeStore(bootstrap: Bootstrap) {
       return { connected, projections: Object.fromEntries(Object.entries(state.projections).map(([id, projection]) => [id, { ...projection, connected: false, freshAt: null }])), threads: Object.fromEntries(Object.entries(state.threads).map(([id, thread]) => [id, { ...thread, status: 'unknown' as const, bindingState: 'detached' as const, recovery: thread.providerSession ? { state: 'known' as const } : thread.recovery }])) };
     }),
     install: (projection) => {
+      if (!projection || typeof projection.machineId !== 'string') { console.warn('Dropping projection without machine identity.'); return; }
       const old = get();
       const previous = old.projections[projection.machineId];
       const generations = retired.get(projection.machineId) ?? new Set<string>();
@@ -26,11 +27,23 @@ export function createRuntimeStore(bootstrap: Bootstrap) {
       if (generations.size > 8) generations.delete(generations.values().next().value!);
       retired.set(projection.machineId, generations);
       const threads = Object.fromEntries(Object.entries(old.threads).filter(([, thread]) => thread.machineId !== projection.machineId));
-      for (const thread of projection.threads) threads[thread.id] = share(old.threads[thread.id], { ...thread, panes: thread.panes.map((pane) => share(old.threads[thread.id]?.panes.find((oldPane) => oldPane.id === pane.id && oldPane.terminalId === pane.terminalId), pane)) });
-      const projections = { ...old.projections, [projection.machineId]: projection };
+      for (const thread of projection.threads ?? []) {
+        if (!thread || typeof thread.id !== 'string') { console.warn('Dropping thread without identity.'); continue; }
+        const panes = Array.isArray(thread.panes) ? thread.panes : [];
+        threads[thread.id] = share(old.threads[thread.id], { ...thread, panes: panes.map((pane) => share(old.threads[thread.id]?.panes.find((oldPane) => oldPane?.id === pane?.id && oldPane?.terminalId === pane?.terminalId), pane)) });
+      }
+      const rawTabs = projection.availableTabs;
+      const droppedTabs = Array.isArray(rawTabs) ? rawTabs.filter((tab) => !tab || typeof tab.tabId !== 'string').length : 0;
+      if (droppedTabs > 0) console.warn(`Dropping ${droppedTabs} terminal tab(s) without identity.`);
+      const cleanTabs = Array.isArray(rawTabs) ? rawTabs.flatMap((tab) => {
+        if (!tab || typeof tab.tabId !== 'string') return [];
+        return [{ ...tab, label: tab.label ?? tab.tabId, panes: Array.isArray(tab.panes) ? tab.panes : [] }];
+      }) : rawTabs;
+      const clean = { ...projection, availableTabs: cleanTabs };
+      const projections = { ...old.projections, [projection.machineId]: clean };
       const projects: Record<string, Project> = {};
-      for (const entry of Object.values(projections)) for (const project of entry.projects) projects[project.id] = share(old.projects[project.id], project);
-      const threadIds = Object.values(threads).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((thread) => thread.id);
+      for (const entry of Object.values(projections)) for (const project of entry?.projects ?? []) { if (!project || typeof project.id !== 'string') continue; projects[project.id] = share(old.projects[project.id], project); }
+      const threadIds = Object.values(threads).sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '')).map((thread) => thread.id);
       const projectIds = Object.keys(projects);
       set({ projections, threads, projects, threadIds: share(old.threadIds, threadIds), projectIds: share(old.projectIds, projectIds) });
     },

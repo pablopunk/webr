@@ -22,3 +22,15 @@ it('lets developers dismiss frontend errors', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Dismiss error' }));
   expect(screen.queryByRole('alert')).toBeNull();
 });
+
+it('catches render errors instead of blanking the page', () => {
+  const Broken = () => { throw new Error('Render exploded'); };
+  const silence = (...args: unknown[]) => { if (String(args[0]).includes('Render exploded')) return; };
+  const error = console.error;
+  console.error = silence as typeof console.error;
+  try {
+    render(<CrashReport><Broken /></CrashReport>);
+    expect(screen.getByRole('alert').textContent).toContain('Render exploded');
+    expect(screen.getByRole('button', { name: 'Reload page' })).not.toBeNull();
+  } finally { console.error = error; }
+});

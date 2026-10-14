@@ -3,8 +3,9 @@ export const harnessNames: Record<string, string> = {
   claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'Pi',
 };
 
-export function harnessName(agent: string): string {
-  return Object.hasOwn(harnessNames, agent) ? harnessNames[agent] : agent;
+export function harnessName(agent: string | undefined): string {
+  const name = agent ?? '';
+  return Object.hasOwn(harnessNames, name) ? harnessNames[name] : name;
 }
 
 export const hasUnseenDone = (thread: Thread | undefined) => thread?.unseenDone === true;

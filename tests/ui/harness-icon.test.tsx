@@ -17,3 +17,9 @@ it('renders the generated icon for every registered harness and only falls back 
   expect(container.querySelector('img')).toBeNull();
   expect(container.querySelector('.harness-icon-letter')?.textContent).toBe('U');
 });
+
+it('renders a blank fallback instead of crashing on a missing harness', () => {
+  const { container } = render(<HarnessIcon harness={undefined} />);
+  expect(container.querySelector('img')).toBeNull();
+  expect(container.querySelector('.harness-icon-letter')?.textContent).toBe('');
+});
