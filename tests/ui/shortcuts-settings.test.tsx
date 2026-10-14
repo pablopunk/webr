@@ -16,6 +16,8 @@ const keymap = {
     previous_tab: ['shift+left'],
     focus_pane_right: ['ctrl+l'],
     focus_pane_left: ['ctrl+h'],
+    focus_pane_down: ['ctrl+j'],
+    focus_pane_up: ['ctrl+k'],
     toggle_sidebar: ['ctrl+a b'],
     new_tab: ['ctrl+a c'],
     split_vertical: ['ctrl+a v'],
@@ -49,8 +51,8 @@ it('defaults each action to the Herdr binding, prefix included', async () => {
   renderSettings();
   await waitFor(() => expect(screen.getByText(/\(⌃A prefix\)/)).toBeTruthy());
   expect(triggerText('Close pane shortcut: Close pane')).toBe('⌃A›X');
-  expect(triggerText('Next thread shortcut: Next tab')).toBe('⇧→');
-  expect(triggerText('Previous thread shortcut: Previous tab')).toBe('⇧←');
+  expect(triggerText('Next thread shortcut: Focus pane down')).toBe('⌃J');
+  expect(triggerText('Previous thread shortcut: Focus pane up')).toBe('⌃K');
   expect(triggerText('Leader prefix: Herdr')).toBe('⌃A');
 });
 

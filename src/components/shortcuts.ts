@@ -6,11 +6,12 @@ export const shortcutLabels: Record<ShortcutAction, string> = {
   toggleSidebar: 'Toggle sidebar', newThread: 'New thread', openTerminal: 'New terminal', closePane: 'Close pane',
 };
 
-// Which Herdr action each Webr action mirrors. Webr threads are Herdr tabs,
-// so thread navigation follows next_tab/previous_tab and pane actions follow
-// the Herdr pane bindings.
+// Which Herdr action each Webr action mirrors. The thread list runs
+// vertically, so thread navigation follows focus_pane_down/up (matching
+// up/down muscle memory); panes sit on a horizontal strip, so pane
+// navigation follows focus_pane_left/right.
 export const WEBR_TO_HERDR: Record<ShortcutAction, string> = {
-  nextThread: 'next_tab', previousThread: 'previous_tab',
+  nextThread: 'focus_pane_down', previousThread: 'focus_pane_up',
   nextPane: 'focus_pane_right', previousPane: 'focus_pane_left',
   toggleSidebar: 'toggle_sidebar', newThread: 'new_tab', openTerminal: 'split_vertical', closePane: 'close_pane',
 };

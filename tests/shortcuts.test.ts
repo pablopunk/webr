@@ -9,6 +9,8 @@ const keymap = {
     previous_tab: ['shift+left'],
     focus_pane_right: ['ctrl+l'],
     focus_pane_left: ['ctrl+h'],
+    focus_pane_down: ['ctrl+j'],
+    focus_pane_up: ['ctrl+k'],
     toggle_sidebar: ['ctrl+a b'],
     new_tab: ['ctrl+a c'],
     split_vertical: ['ctrl+a v', 'ctrl+a ctrl+s'],
@@ -22,8 +24,8 @@ const keymap = {
 
 it('maps Webr actions to the resolved Herdr bindings', () => {
   expect(herdrDefaultsForWebr(keymap)).toEqual({
-    nextThread: 'shift+right',
-    previousThread: 'shift+left',
+    nextThread: 'ctrl+j',
+    previousThread: 'ctrl+k',
     nextPane: 'ctrl+l',
     previousPane: 'ctrl+h',
     toggleSidebar: 'ctrl+a b',
