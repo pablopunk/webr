@@ -124,12 +124,17 @@ it('acks the done latch on visit without reordering the sidebar', async () => {
     const updatedAt = thread.updatedAt; const doneAt = thread.doneAt;
     expect(await manager.focusPane(target.id, thread.id, thread.panes[0].id)).toEqual({ focused: true, acked: true });
     expect(target.focused).toEqual([thread.panes[0].id]);
-    target.state.panes[0].agent_status = 'idle';
     const row = database.threadRows(target.id)[0];
     expect(row.metadata.unseenDone).toBe(false); expect(row.metadata.doneAt).toBe(doneAt); expect(row.metadata.updatedAt).toBe(updatedAt);
     target.event!();
     await expect.poll(() => manager.bootstrap().threads[0].unseenDone).toBe(false);
     expect(manager.bootstrap().threads[0].updatedAt).toBe(updatedAt);
     expect(await manager.focusPane(target.id, thread.id, thread.panes[0].id)).toEqual({ focused: true, acked: false });
+
+    target.state.panes[0].agent_status = 'working'; target.event!();
+    await expect.poll(() => manager.bootstrap().threads[0].status).toBe('working');
+    target.state.panes[0].agent_status = 'done'; target.event!();
+    await expect.poll(() => manager.bootstrap().threads[0].unseenDone).toBe(true);
+    expect(manager.bootstrap().threads[0].doneAt).not.toBe(doneAt);
   } finally { await manager.close(); database.close(); }
 });
