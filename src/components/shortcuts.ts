@@ -3,7 +3,7 @@ export type ShortcutAction = 'nextThread' | 'previousThread' | 'nextPane' | 'pre
 export const shortcutLabels: Record<ShortcutAction, string> = {
   nextThread: 'Next thread', previousThread: 'Previous thread',
   nextPane: 'Next pane', previousPane: 'Previous pane',
-  toggleSidebar: 'Toggle sidebar', newThread: 'New thread', openTerminal: 'New terminal', closePane: 'Close pane',
+  toggleSidebar: 'Toggle sidebar', newThread: 'New thread', openTerminal: 'New split', closePane: 'Close pane',
   renameThread: 'Rename thread', commandPalette: 'Command palette',
 };
 

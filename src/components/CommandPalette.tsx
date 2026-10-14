@@ -16,7 +16,7 @@ import { perfAvailable, perfVisible, setPerfVisible } from '../client/perf';
 
 const reportFailure = (error: unknown) => alertDialog(error instanceof Error ? error.message : 'Herdr could not complete this action.');
 
-type Command = { label: string; icon: ReactNode; detail?: string; shortcut?: ShortcutAction; run: () => void };
+type Command = { label: string; icon: ReactNode; detail?: string; shortcut?: ShortcutAction; keywords?: string; run: () => void };
 
 export function CommandPalette({ open, onClose, projects, threads, floating = [], machines = [], thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onClosePane }: {
   open: boolean; onClose: () => void; projects: Project[]; threads: Thread[]; floating?: FloatingTab[]; machines?: { id: string; name: string; session: string }[]; thread?: Thread;
@@ -51,7 +51,7 @@ export function CommandPalette({ open, onClose, projects, threads, floating = []
     { label: 'New thread', icon: <SquarePen size={16} />, shortcut: 'newThread', run: () => { void navigate(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`); } },
     { label: 'Settings', icon: <Settings2 size={16} />, run: () => { void navigate('/settings'); } },
     ...(perfAvailable ? [{ label: 'Toggle performance overlay', icon: <Gauge size={16} />, detail: 'Dev only', run: () => setPerfVisible(!perfVisible()) }] : []),
-    { label: 'Toggle sidebar', icon: <PanelLeft size={16} />, shortcut: 'toggleSidebar', run: onToggleSidebar },
+    { label: 'Toggle sidebar', icon: <PanelLeft size={16} />, shortcut: 'toggleSidebar', keywords: 'panel', run: onToggleSidebar },
     ...(threads.length ? [
       { label: 'Next thread', icon: <ArrowDown size={16} />, shortcut: 'nextThread' as const, run: () => navigateThread(1) },
       { label: 'Previous thread', icon: <ArrowUp size={16} />, shortcut: 'previousThread' as const, run: () => navigateThread(-1) },
@@ -65,11 +65,11 @@ export function CommandPalette({ open, onClose, projects, threads, floating = []
     })),
     ...(thread ? [
       { label: thread.archivedAt ? 'Unarchive thread' : 'Archive thread', icon: thread.archivedAt ? <ArchiveRestore size={16} /> : <Archive size={16} />, run: () => { void setThreadArchived(thread, !thread.archivedAt).catch(reportFailure); } },
-      { label: 'Copy thread link', icon: <Copy size={16} />, run: () => { void navigator.clipboard.writeText(location.href); } },
-      { label: 'Rename thread', icon: <Pencil size={16} />, shortcut: 'renameThread' as const, run: () => requestThreadRename(thread.id) },
+      { label: 'Copy thread link', icon: <Copy size={16} />, keywords: 'url', run: () => { void navigator.clipboard.writeText(location.href); } },
+      { label: 'Rename thread', icon: <Pencil size={16} />, shortcut: 'renameThread' as const, keywords: 'tab title', run: () => requestThreadRename(thread.id) },
       ...(thread.bindingState === 'attached' ? [
-        { label: 'New terminal', icon: <SquareTerminal size={16} />, shortcut: 'openTerminal' as const, run: onOpenTerminal },
-        ...(canClosePane(thread, focusedPane) ? [{ label: 'Close pane', icon: <X size={16} />, shortcut: 'closePane' as const, run: onClosePane }] : []),
+        { label: 'New split', icon: <SquareTerminal size={16} />, shortcut: 'openTerminal' as const, keywords: 'new pane terminal', run: onOpenTerminal },
+        ...(canClosePane(thread, focusedPane) ? [{ label: 'Close pane', icon: <X size={16} />, shortcut: 'closePane' as const, keywords: 'kill terminal', run: onClosePane }] : []),
       ] : []),
       ...(thread.bindingState === 'attached' ? [
         { label: 'Request terminal control', icon: <TerminalSquare size={16} />, run: () => onTerminalAction('control') },
@@ -90,7 +90,7 @@ export function CommandPalette({ open, onClose, projects, threads, floating = []
     }),
   ], [projects, threads, floating, machines, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onClosePane]);
 
-  const matching = commands.filter((command) => `${command.label} ${command.detail ?? ''}`.toLowerCase().includes(query.toLowerCase().trim()));
+  const matching = commands.filter((command) => `${command.label} ${command.detail ?? ''} ${command.keywords ?? ''}`.toLowerCase().includes(query.toLowerCase().trim()));
   if (!open) return null;
 
   const run = (command: Command) => { onClose(); command.run(); };
