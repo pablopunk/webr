@@ -19,11 +19,19 @@ const assets = resolve(options.out!);
 const brand = join(assets, 'brand');
 await mkdir(brand, { recursive: true });
 const scratch = await mkdtemp(join(tmpdir(), 'webr-shots-out-'));
-const environment = await startDemoEnvironment();
+const SCENE_ATTEMPTS = 3;
+async function captureInFreshEnvironment(scene: (typeof scenes)[number]) {
+  const environment = await startDemoEnvironment();
+  try { await scene.capture({ url: environment.url, scratch, brand, assets }); } finally { await environment.stop(); }
+}
+async function captureWithRetries(scene: (typeof scenes)[number]) {
+  for (let attempt = 1; ; attempt++) {
+    try { return await captureInFreshEnvironment(scene); } catch (error) { if (attempt === SCENE_ATTEMPTS) throw error; console.log(`retrying ${scene.name}: ${String(error).split('\n')[0]}`); }
+  }
+}
 try {
-  for (const scene of selected) { await scene.capture({ url: environment.url, scratch, brand, assets }); console.log(`captured ${scene.name}`); }
+  for (const scene of selected) { await captureWithRetries(scene); console.log(`captured ${scene.name}`); }
 } finally {
-  await environment.stop();
   await rm(scratch, { recursive: true, force: true });
 }
 process.exit(0);

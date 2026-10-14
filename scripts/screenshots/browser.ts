@@ -7,6 +7,7 @@ const SOFTWARE_RENDERING = '--disable-3d-apis';
 const DESKTOP = { width: 1024, height: 709, scale: 2 };
 const CLICK_ATTEMPTS = 20;
 const CLICK_RETRY_MS = 500;
+const RELOAD_ATTEMPTS = 3;
 const WIDE_WINDOW = { width: 1200, height: 815, scale: 1.3133 };
 
 export class Browser {
@@ -18,7 +19,7 @@ export class Browser {
     if (result.status !== 0) throw new Error(`agent-browser ${args.join(' ')} failed: ${result.stdout}${result.stderr}`);
     return result.stdout.trim();
   }
-  open(url: string, width: number, height: number, scale: number) { this.run('set', 'viewport', String(width), String(height), String(scale)); this.run('open', url); this.run('eval', 'localStorage.clear()'); this.run('reload'); this.wait(2500); }
+  open(url: string, width: number, height: number, scale: number) { this.run('set', 'viewport', String(width), String(height), String(scale)); this.run('open', url); this.run('eval', 'localStorage.clear()'); this.run('reload'); this.wait(2500); this.waitUntilConnected(); }
   openPhone(url: string, cssHeight: number) { this.open(url, PHONE_CSS_WIDTH, cssHeight, PHONE_SCALE); }
   openDesktop(url: string) { this.open(url, DESKTOP.width, DESKTOP.height, DESKTOP.scale); }
   openWideWindow(url: string) { this.open(url, WIDE_WINDOW.width, WIDE_WINDOW.height, WIDE_WINDOW.scale); }
@@ -32,6 +33,19 @@ export class Browser {
   }
   click(selector: string) { this.retrying(() => this.run('click', selector)); this.wait(700); }
   clickText(text: string) { this.retrying(() => this.run('find', 'text', text, 'click')); this.wait(1500); }
+  clickTextReloading(text: string) {
+    for (let attempt = 1; ; attempt++) {
+      try { this.clickText(text); return; } catch (error) { if (attempt === RELOAD_ATTEMPTS) throw error; this.run('reload'); this.wait(2500); }
+    }
+  }
+  pageShows(text: string) { return this.run('eval', `document.body.innerText.includes(${JSON.stringify(text)})`) === 'true'; }
+  waitUntilConnected() {
+    for (let attempt = 1; ; attempt++) {
+      if (!this.pageShows('Disconnected')) return;
+      if (attempt === RELOAD_ATTEMPTS) throw new Error('the page stayed disconnected');
+      this.run('reload'); this.wait(2500);
+    }
+  }
   screenshot(path: string) { this.run('screenshot', path); }
   close() { try { this.run('close'); } catch { /* the browser may already be gone */ } }
 }
