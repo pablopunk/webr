@@ -1,5 +1,29 @@
 import { isSequence, keyCombo, sequenceParts, type ShortcutAction } from '../components/shortcuts';
 
+// Armed leader-prefix state, shared between the app handler (which arms it)
+// and terminal panes (which must see it to pass a doubled prefix through).
+let armedLeader: string | null = null;
+let armedTimer: ReturnType<typeof setTimeout> | undefined;
+
+export function armLeaderPrefix(combo: string, timeoutMs = 1500): void {
+  armedLeader = combo;
+  if (armedTimer) clearTimeout(armedTimer);
+  armedTimer = setTimeout(() => { armedLeader = null; }, timeoutMs);
+}
+
+// Take a pending prefix, clearing it. Pure modifier presses must callers
+// check keyCombo first: they must never consume the armed state.
+export function takeLeaderPrefix(): string | null {
+  const first = armedLeader;
+  armedLeader = null;
+  if (armedTimer) { clearTimeout(armedTimer); armedTimer = undefined; }
+  return first;
+}
+
+export function peekLeaderPrefix(): string | null {
+  return armedLeader;
+}
+
 export function appShortcutAction(event: KeyboardEvent, shortcuts: Record<ShortcutAction, string>) {
   if (event.repeat || event.defaultPrevented || event.isComposing) return;
   const target = event.target as HTMLElement | null;

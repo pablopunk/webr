@@ -18,7 +18,7 @@ import { useStore } from 'zustand';
 import { RuntimeProvider, useRuntime, useRuntimeSelector } from '../client/provider';
 import type { Bootstrap } from '../shared/runtime';
 import type { Pane } from '../lib/models';
-import { appShortcutAction, sequenceAction, sequenceStarters } from '../client/keyboard';
+import { appShortcutAction, armLeaderPrefix, sequenceAction, sequenceStarters, takeLeaderPrefix } from '../client/keyboard';
 import { perfAvailable, startPerf } from '../client/perf';
 import { closeThreadPane, openThreadTerminal } from '../client/thread-actions';
 import { canClosePane, paneToFocusAfterClosing } from '../lib/pane-strip';
@@ -64,14 +64,11 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcuts, setShortcuts] = useState(getShortcuts);
-  const pendingPrefix = useRef<string | null>(null);
-  const pendingTimer = useRef<number | undefined>(undefined);
   useEffect(() => {
     let live = true;
     void loadShortcuts().then((next) => { if (live) setShortcuts(next); });
     return () => { live = false; };
   }, []);
-  useEffect(() => () => window.clearTimeout(pendingTimer.current), []);
   const [pendingTerminalStartup, setPendingTerminalStartup] = useState<TerminalStartupPreset>();
   const [terminalLookupTimedOut, setTerminalLookupTimedOut] = useState(false);
   useEffect(() => {
@@ -208,11 +205,6 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
   }, []);
 
   useEffect(() => {
-    const armPrefix = (combo: string) => {
-      pendingPrefix.current = combo;
-      window.clearTimeout(pendingTimer.current);
-      pendingTimer.current = window.setTimeout(() => { pendingPrefix.current = null; }, 1500);
-    };
     const runAction = (action: ShortcutAction) => {
       if (action === 'toggleSidebar') toggleSidebar();
       if (action === 'openTerminal') openTerminal();
@@ -243,6 +235,11 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
       if (event.repeat || event.isComposing) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest('[data-recording="true"]')) return;
+      const combo = keyCombo(event);
+      // Pure modifier presses never disturb an armed prefix.
+      if (!combo) return;
+      // Consume any armed prefix first so it cannot go stale behind the palette.
+      const first = takeLeaderPrefix();
       if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k') {
         event.preventDefault(); setPaletteOpen((value) => !value); return;
       }
@@ -250,25 +247,19 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
       // Read storage live so changes made in Settings (including the prefix)
       // apply without remounting; state covers the async Herdr keymap load.
       const stored = { ...shortcuts, ...getShortcuts() };
-      // A pending prefix starter (e.g. ctrl+a) turns the next keypress into a
-      // Herdr-style sequence ("ctrl+a x"); anything else falls through.
-      if (pendingPrefix.current) {
-        const first = pendingPrefix.current;
-        pendingPrefix.current = null;
-        window.clearTimeout(pendingTimer.current);
-        const combo = keyCombo(event);
-        const sequenced = combo ? sequenceAction(first, combo, stored) : undefined;
+      if (first) {
+        // Pressing the prefix twice sends one literal prefix to the terminal.
+        if (combo === first) return;
+        const sequenced = sequenceAction(first, combo, stored);
         if (sequenced) { event.preventDefault(); runAction(sequenced); return; }
-        if (!combo) return;
-        if (sequenceStarters(stored).has(combo)) { event.preventDefault(); armPrefix(combo); return; }
+        if (sequenceStarters(stored).has(combo)) { event.preventDefault(); armLeaderPrefix(combo); return; }
         const single = appShortcutAction(event, stored);
         if (!single) return;
         event.preventDefault();
         runAction(single);
         return;
       }
-      const combo = keyCombo(event);
-      if (combo && sequenceStarters(stored).has(combo)) { event.preventDefault(); armPrefix(combo); return; }
+      if (sequenceStarters(stored).has(combo)) { event.preventDefault(); armLeaderPrefix(combo); return; }
       const action = appShortcutAction(event, stored);
       if (!action) return;
       event.preventDefault();

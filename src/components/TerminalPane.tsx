@@ -8,7 +8,7 @@ import { TerminalInput, controlCharacter, terminalKeyBytes } from './TerminalInp
 import { TerminalKeyBar } from './TerminalKeyBar';
 import { matchesCoarsePointer } from '../client/visual-viewport';
 import { bindTerminalGestures } from '../client/terminal-gestures';
-import { shortcutInvolves } from '../client/keyboard';
+import { peekLeaderPrefix, shortcutInvolves, takeLeaderPrefix } from '../client/keyboard';
 import { getShortcuts, keyCombo } from './shortcuts';
 import { conflictMessage } from '../client/terminal-manager';
 import { ImagePlus } from 'lucide-react';
@@ -154,7 +154,12 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
       if (event.defaultPrevented || event.metaKey || event.isComposing || !unfocused(event) || (event.target as HTMLElement).classList?.contains('terminal-input-capture')) return;
       // Herdr-style app shortcuts (including the prefix starter) belong to the
       // app leader-key handler even when a terminal pane has focus.
-      if (shortcutInvolves(keyCombo(event), getShortcuts())) return;
+      // A doubled prefix is the exception: it sends one literal prefix to
+      // the shell, so consume the armed state and fall through to bytes.
+      // This handler runs before the app's, hence peek-then-take here.
+      const combo = keyCombo(event);
+      if (combo && peekLeaderPrefix() === combo) takeLeaderPrefix();
+      else if (shortcutInvolves(combo, getShortcuts())) return;
       const bytes = terminalKeyBytes(event);
       if (bytes) { event.preventDefault(); event.stopPropagation(); control.current?.input(bytes); } else if (event.key.length === 1 && !event.ctrlKey) focusInput();
     };
