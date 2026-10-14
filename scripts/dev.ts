@@ -36,6 +36,10 @@ const productionWasRunning = await stopProductionWebr();
 await stopPreviousServer();
 const restorePlugin = enterPluginDevMode(fileURLToPath(new URL('..', import.meta.url)), realRun, pluginStateDir(), productionWasRunning);
 process.once('exit', restorePlugin);
-const server = spawn('pnpm', ['start'], { stdio: 'inherit', env: { ...process.env, HOST: process.env.HOST ?? '0.0.0.0', PORT: String(port), WEBR_DEV: '1' } });
+// In dev the server logs to the terminal so boot failures stay visible;
+// production keeps redirecting to WEBR_LOG_FILE.
+const env: NodeJS.ProcessEnv = { ...process.env, HOST: process.env.HOST ?? '0.0.0.0', PORT: String(port), WEBR_DEV: '1' };
+delete env.WEBR_LOG_FILE;
+const server = spawn('pnpm', ['start'], { stdio: 'inherit', env });
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(signal, () => server.kill(signal === 'SIGHUP' ? 'SIGTERM' : signal));
 server.on('exit', (code) => process.exit(code ?? 0));

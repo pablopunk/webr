@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Command, PanelLeft } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
+import { PrefixOverlay } from './PrefixOverlay';
 import { PerfOverlay } from './PerfOverlay';
 import { PairingPrompt } from './PairingPrompt';
 import { CrashReport } from './CrashReport';
@@ -11,14 +12,14 @@ import { UpdateButton } from './UpdateButton';
 import { applyTheme } from './ThemeControl';
 import { ThreadView } from './ThreadView';
 import { TerminalTabView } from './TerminalTabView';
-import { getShortcuts } from './shortcuts';
+import { getShortcuts, keyCombo, loadShortcuts, type ShortcutAction } from './shortcuts';
 import { navigate } from 'astro:transitions/client';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from 'zustand';
 import { RuntimeProvider, useRuntime, useRuntimeSelector } from '../client/provider';
 import type { Bootstrap } from '../shared/runtime';
 import type { Pane } from '../lib/models';
-import { appShortcutAction } from '../client/keyboard';
+import { appShortcutAction, armLeaderPrefix, paletteToggle, sequenceAction, sequenceStarters, subscribeLeaderPrefix, takeLeaderPrefix, requestThreadRename } from '../client/keyboard';
 import { perfAvailable, startPerf } from '../client/perf';
 import { closeThreadPane, openThreadTerminal } from '../client/thread-actions';
 import { canClosePane, paneToFocusAfterClosing } from '../lib/pane-strip';
@@ -63,6 +64,14 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcuts, setShortcuts] = useState(getShortcuts);
+  const [armedPrefix, setArmedPrefix] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void loadShortcuts().then((next) => { if (live) setShortcuts(next); });
+    return () => { live = false; };
+  }, []);
+  useEffect(() => subscribeLeaderPrefix(setArmedPrefix), []);
   const [pendingTerminalStartup, setPendingTerminalStartup] = useState<TerminalStartupPreset>();
   const [terminalLookupTimedOut, setTerminalLookupTimedOut] = useState(false);
   useEffect(() => {
@@ -199,25 +208,22 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
   }, []);
 
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.repeat || event.isComposing) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('[data-recording="true"]')) return;
-      if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k') {
-        event.preventDefault(); setPaletteOpen((value) => !value); return;
-      }
-      if (paletteOpen || event.defaultPrevented) return;
-      const action = appShortcutAction(event, getShortcuts());
-      if (!action) return;
-      event.preventDefault();
+    const runAction = (action: ShortcutAction) => {
       if (action === 'toggleSidebar') toggleSidebar();
       if (action === 'openTerminal') openTerminal();
       if (action === 'closePane') void closePane();
-       if (action === 'newThread') void navigate(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`);
-       if ((action === 'nextPane' || action === 'previousPane') && thread?.panes.length) {
-         const index = thread.panes.findIndex((pane) => pane.id === focusedPane);
-         setFocusedPane(thread.panes[(index + (action === 'nextPane' ? 1 : -1) + thread.panes.length) % thread.panes.length].id);
-       }
+      if (action === 'renameThread' && page === 'thread' && thread) {
+        // The editor lives in the sidebar row, so make sure it is visible first.
+        if (window.matchMedia('(max-width: 760px)').matches) setMobileOpen(true);
+        else if (collapsed) toggleSidebar();
+        const id = thread.id;
+        requestAnimationFrame(() => requestThreadRename(id));
+      }
+      if (action === 'newThread') void navigate(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`);
+      if ((action === 'nextPane' || action === 'previousPane') && thread?.panes.length) {
+        const index = thread.panes.findIndex((pane) => pane.id === focusedPane);
+        setFocusedPane(thread.panes[(index + (action === 'nextPane' ? 1 : -1) + thread.panes.length) % thread.panes.length].id);
+      }
       if ((action === 'nextThread' || action === 'previousThread') && (threads.length || floating.length)) {
         const items: ({ kind: 'thread'; id: string } | { kind: 'terminal'; machineId: string; tabId: string; session: string })[] = [
           ...threads.map((item) => ({ kind: 'thread' as const, id: item.id })),
@@ -235,13 +241,47 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
         }
       }
     };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.repeat || event.isComposing) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-recording="true"]')) return;
+      const combo = keyCombo(event);
+      // Pure modifier presses never disturb an armed prefix.
+      if (!combo) return;
+      // Consume any armed prefix first so it cannot go stale behind the palette.
+      const first = takeLeaderPrefix();
+      // Read storage live so changes made in Settings (including the prefix)
+      // apply without remounting; state covers the async Herdr keymap load.
+      const stored = { ...shortcuts, ...getShortcuts() };
+      if (paletteToggle(first, combo, stored)) {
+        event.preventDefault(); setPaletteOpen((value) => !value); return;
+      }
+      if (paletteOpen || event.defaultPrevented) return;
+      if (first) {
+        // Pressing the prefix twice sends one literal prefix to the terminal.
+        if (combo === first) return;
+        const sequenced = sequenceAction(first, combo, stored);
+        if (sequenced) { event.preventDefault(); runAction(sequenced); return; }
+        if (sequenceStarters(stored).has(combo)) { event.preventDefault(); armLeaderPrefix(combo); return; }
+        const single = appShortcutAction(event, stored);
+        if (!single) return;
+        event.preventDefault();
+        runAction(single);
+        return;
+      }
+      if (sequenceStarters(stored).has(combo)) { event.preventDefault(); armLeaderPrefix(combo); return; }
+      const action = appShortcutAction(event, stored);
+      if (!action) return;
+      event.preventDefault();
+      runAction(action);
+    };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [thread, threads, floating, page, machineId, tabId, machines, bootstrap.machines, paletteOpen, toggleSidebar, openTerminal, closePane, focusedPane, setFocusedPane]);
+  }, [thread, threads, floating, page, machineId, tabId, machines, bootstrap.machines, paletteOpen, toggleSidebar, openTerminal, closePane, focusedPane, setFocusedPane, shortcuts, collapsed]);
 
   return <div className={`app-shell ${page === 'thread' || page === 'terminal' ? 'is-thread' : ''}`}>
     <Sidebar projects={projects} threads={threads} archived={archived} floating={floating} detached={detached} ownedTabs={ownedTabs} machines={machines} currentId={thread?.id} currentMachineId={page === 'terminal' ? machineId : thread?.machineId} currentTab={page === 'terminal' && machineId && tabId ? { machineId, tabId } : undefined} mode={mode} onModeChange={changeMode} collapsed={collapsed}
-      mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} updateAction={<UpdateButton />} />
+      mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} paletteShortcut={shortcuts.commandPalette} updateAction={<UpdateButton />} />
     <div className="main-panel">
       {page === 'thread' && thread && <ThreadView thread={thread} connected={gatewayConnected && !!projections[thread.machineId]?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} />}
       {page === 'terminal' && machineId && tabId && <TerminalTabView machineId={machineId} tabId={tabId} panes={terminalPanes} connected={gatewayConnected && !!projections[machineId]?.connected} canControl={!!machines.find((machine) => machine.id === machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} pending={terminalPending && !standaloneTab && !terminalLookupTimedOut} startupPreset={pendingTerminalStartup} onStartupComplete={completeTerminalStartup} />}
@@ -255,5 +295,6 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
     <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projects={projects} threads={threads} floating={floating} machines={machines} thread={thread} focusedPane={focusedPane}
       mode={mode} onModeChange={changeMode} onToggleSidebar={toggleSidebar} onFocusPane={setFocusedPane} onTerminalAction={(action) => { const pane = thread?.panes.find((pane) => pane.id === focusedPane); if (thread && pane?.terminalId) terminals.command(thread.machineId, thread.id, pane.terminalId, action); }}
       onOpenTerminal={openTerminal} onClosePane={() => void closePane()} />
+    {armedPrefix && !paletteOpen && <PrefixOverlay prefix={armedPrefix} shortcuts={{ ...shortcuts, ...getShortcuts() }} />}
   </div>;
 }

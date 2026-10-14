@@ -1,6 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { ContextMenu } from '@base-ui/react/context-menu';
-import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, FolderTree, GitBranch, LayoutList, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Settings2, SquarePen, SquareTerminal, ImageUp, Pencil, Plus, Trash2, Unplug, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, Command, FolderTree, GitBranch, LayoutList, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Settings2, SquarePen, SquareTerminal, ImageUp, Pencil, Plus, Trash2, Unplug, X } from 'lucide-react';
 import { type Project, type Thread, harnessName, hasUnseenDone, relativeTime } from '../lib/models';
 import { isLaunching, launchFailed, launchLabel } from '../lib/launch';
 import type { Machine } from '../lib/machines';
@@ -18,6 +18,8 @@ import { groupProjectLocations } from '../client/project-groups';
 import { withTildeHome } from '../client/home-path';
 import { uuid } from '../lib/uuid';
 import { alertDialog, confirmDialog } from './dialogs';
+import { RENAME_THREAD_EVENT } from '../client/keyboard';
+import { formatShortcut } from './shortcuts';
 import { createTerminalTab, closeTerminalTab, deleteArchivedThreads, deleteArchivedWarning, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
 import { sidebarTabKey, type FloatingTab } from '../lib/floating';
 import { SidebarMetrics } from './SidebarMetrics';
@@ -44,6 +46,7 @@ type Props = {
   onCollapse: () => void;
   onCloseMobile: () => void;
   onOpenPalette?: () => void;
+  paletteShortcut?: string;
   updateAction?: ReactNode;
 };
 
@@ -88,6 +91,14 @@ const ThreadRow = memo(function ThreadRow({ thread, project, machineName, curren
   const ArchiveIcon = archived ? ArchiveRestore : Archive;
   const archiveLabel = archived ? `Unarchive ${thread.title}` : `Archive ${thread.title}`;
   const [renaming, setRenaming] = useState(false);
+  useEffect(() => {
+    if (!current) return;
+    const onRenameRequest = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === thread.id) setRenaming(true);
+    };
+    window.addEventListener(RENAME_THREAD_EVENT, onRenameRequest);
+    return () => window.removeEventListener(RENAME_THREAD_EVENT, onRenameRequest);
+  }, [current, thread.id]);
   const editor = renaming ? <ThreadTitleEditor thread={thread} onDone={() => setRenaming(false)} onError={reportFailure} /> : undefined;
   const flipId = thread.bindingState === 'attached' && thread.tabId ? sidebarTabKey(thread.machineId, thread.tabId) : thread.id;
   return <ContextMenu.Root>
@@ -232,7 +243,7 @@ function DetachedThreads({ threads, renderThread }: { threads: Thread[]; renderT
   </section>;
 }
 
-export function Sidebar({ projects, threads, archived = [], floating = [], detached = [], ownedTabs = new Map(), machines, currentId, currentMachineId, currentTab, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile, onOpenPalette, updateAction }: Props) {
+export function Sidebar({ projects, threads, archived = [], floating = [], detached = [], ownedTabs = new Map(), machines, currentId, currentMachineId, currentTab, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile, onOpenPalette, paletteShortcut = 'meta+k', updateAction }: Props) {
   const [closedProjects, setClosedProjects] = useState<string[]>([]);
   const [collapseMotionVersion, setCollapseMotionVersion] = useState(0);
   useEffect(() => {
@@ -313,14 +324,14 @@ export function Sidebar({ projects, threads, archived = [], floating = [], detac
             <ProjectGroupHeader project={project} machine={machines.find((machine) => machine.id === (project.machineId ?? 'local'))} closed={closedProjects.includes(id)} onToggle={() => toggleProject(id)} />
             {!closedProjects.includes(id) && threads.filter((thread) => locations.includes(thread.projectId)).map((thread) => threadLink(thread, false))}
           </section>)}{terminalsDivider}{floating.map(terminalLink)}</> : <>{threads.map((thread) => threadLink(thread, true))}{terminalsDivider}{floating.map(terminalLink)}</>}
-          {!threads.length && !floating.length && !archived.length && !detached.length && <p className="sidebar-empty">No agents or terminals yet. Press ⌘K to start one.</p>}
+          {!threads.length && !floating.length && !archived.length && !detached.length && <p className="sidebar-empty">No agents or terminals yet. Press {formatShortcut(paletteShortcut)} to start one.</p>}
         </nav>
         {!!detached.length && <DetachedThreads threads={detached} renderThread={(thread) => threadLink(thread, true)} />}
         {!!archived.length && <ArchivedThreads threads={archived} renderThread={(thread) => threadLink(thread, true)} />}
         <div className="sidebar-footer">
           <a className="sidebar-settings" href="/settings"><Settings2 size={15} /> Settings</a>
           {updateAction}
-          <Tooltip label="Open command palette"><button type="button" className="sidebar-palette" aria-label="Open command palette" onClick={onOpenPalette}><kbd>⌘K</kbd></button></Tooltip>
+          <Tooltip label={`Open command palette (${formatShortcut(paletteShortcut)})`}><button type="button" className="sidebar-palette" aria-label={`Open command palette (${formatShortcut(paletteShortcut)})`} onClick={onOpenPalette}><Command size={15} aria-hidden="true" /></button></Tooltip>
         </div>
       </>}
     </aside>

@@ -262,3 +262,14 @@ it('serves update status and starts updates only when a service is attached', as
   expect((await updating.inject({ method: 'POST', url: '/api/restart', headers })).statusCode).toBe(202);
   expect(started).toEqual(['start', 'restart']);
 });
+
+it('exposes the resolved Herdr keymap', async () => {
+  const { app } = await setup();
+  const response = await app.inject({ url: '/api/herdr-keys', headers: { host: 'localhost:4321' } });
+  expect(response.statusCode).toBe(200);
+  const body = response.json() as { prefix: string; prefixes: string[]; bindings: Record<string, string[]> };
+  expect(body.prefix).toEqual(expect.any(String));
+  expect(body.prefixes).toContain(body.prefix);
+  expect(body.bindings.close_pane.length).toBeGreaterThan(0);
+  expect(body.bindings.split_vertical.length).toBeGreaterThan(0);
+});

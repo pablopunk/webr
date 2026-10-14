@@ -107,9 +107,8 @@
 .thread-group + .thread-group { margin-top: 8px; }
 .sidebar-footer { display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; flex: none; border-top: 1px solid var(--line); }
 .sidebar-settings { display: flex; align-items: center; gap: 10px; height: 35px; flex: 1; padding: 0 12px; border-radius: 6px; color: var(--ink-soft); font-size: 13.5px; }
-.sidebar-palette { display: inline-flex; align-items: center; justify-content: center; padding: 3px 6px; border: 1px solid var(--line-strong); border-radius: 4px; background: transparent; color: var(--ink-soft); }
+.sidebar-palette { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--line-strong); border-radius: 6px; background: transparent; color: var(--ink-soft); }
 .sidebar-palette:hover { color: var(--ink); background: var(--surface-hover); }
-.sidebar-palette kbd { font: 10px/1 var(--font-mono); }
 .sidebar-update { display: inline-flex; flex: none; align-items: center; gap: 5px; padding: 3px 8px; border: 0; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 12px; }
 .sidebar-update:hover:not(:disabled) { filter: brightness(1.08); }
 .sidebar-update:disabled { opacity: .7; }
