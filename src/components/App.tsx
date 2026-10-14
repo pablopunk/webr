@@ -18,7 +18,7 @@ import { useStore } from 'zustand';
 import { RuntimeProvider, useRuntime, useRuntimeSelector } from '../client/provider';
 import type { Bootstrap } from '../shared/runtime';
 import type { Pane } from '../lib/models';
-import { appShortcutAction, armLeaderPrefix, sequenceAction, sequenceStarters, takeLeaderPrefix } from '../client/keyboard';
+import { appShortcutAction, armLeaderPrefix, sequenceAction, sequenceStarters, takeLeaderPrefix, requestThreadRename } from '../client/keyboard';
 import { perfAvailable, startPerf } from '../client/perf';
 import { closeThreadPane, openThreadTerminal } from '../client/thread-actions';
 import { canClosePane, paneToFocusAfterClosing } from '../lib/pane-strip';
@@ -209,6 +209,13 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
       if (action === 'toggleSidebar') toggleSidebar();
       if (action === 'openTerminal') openTerminal();
       if (action === 'closePane') void closePane();
+      if (action === 'renameThread' && page === 'thread' && thread) {
+        // The editor lives in the sidebar row, so make sure it is visible first.
+        if (window.matchMedia('(max-width: 760px)').matches) setMobileOpen(true);
+        else if (collapsed) toggleSidebar();
+        const id = thread.id;
+        requestAnimationFrame(() => requestThreadRename(id));
+      }
       if (action === 'newThread') void navigate(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`);
       if ((action === 'nextPane' || action === 'previousPane') && thread?.panes.length) {
         const index = thread.panes.findIndex((pane) => pane.id === focusedPane);
@@ -267,7 +274,7 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [thread, threads, floating, page, machineId, tabId, machines, bootstrap.machines, paletteOpen, toggleSidebar, openTerminal, closePane, focusedPane, setFocusedPane, shortcuts]);
+  }, [thread, threads, floating, page, machineId, tabId, machines, bootstrap.machines, paletteOpen, toggleSidebar, openTerminal, closePane, focusedPane, setFocusedPane, shortcuts, collapsed]);
 
   return <div className={`app-shell ${page === 'thread' || page === 'terminal' ? 'is-thread' : ''}`}>
     <Sidebar projects={projects} threads={threads} archived={archived} floating={floating} detached={detached} ownedTabs={ownedTabs} machines={machines} currentId={thread?.id} currentMachineId={page === 'terminal' ? machineId : thread?.machineId} currentTab={page === 'terminal' && machineId && tabId ? { machineId, tabId } : undefined} mode={mode} onModeChange={changeMode} collapsed={collapsed}

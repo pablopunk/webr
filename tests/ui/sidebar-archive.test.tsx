@@ -45,6 +45,15 @@ it('renames a thread in place after a double click and keeps the old name on Esc
   fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
   expect(screen.queryByRole('textbox')).toBeNull(); expect(requestsFor(fetch, renameEndpoint)).toHaveLength(1);
 });
+it('renames the current thread when asked through the rename event', async () => {
+  const fetch = answering(); vi.stubGlobal('fetch', fetch);
+  render(<Sidebar projects={[]} threads={exampleThreads().slice(0, 1)} archived={[]} machines={[]} mode="threads" onModeChange={() => {}} collapsed={false} mobileOpen={false} onCollapse={() => {}} onCloseMobile={() => {}} currentId="terminal-web-bridge" />);
+  expect(screen.queryByRole('textbox')).toBeNull();
+  window.dispatchEvent(new CustomEvent('webr:rename-thread', { detail: 'no-such-thread' }));
+  expect(screen.queryByRole('textbox')).toBeNull();
+  window.dispatchEvent(new CustomEvent('webr:rename-thread', { detail: 'terminal-web-bridge' }));
+  expect(await screen.findByRole('textbox', { name: 'Rename Build the web terminal bridge' })).toBeTruthy();
+});
 it('keeps internal recovery state out of sidebar labels', () => {
   const thread = { ...exampleThreads()[0], providerSession: { source: 'herdr', agent: 'claude', kind: 'id' as const, value: 'session-1' }, recovery: { state: 'needs_attention' as const, reason: 'conversation_missing' } };
   renderSidebar([thread], []);

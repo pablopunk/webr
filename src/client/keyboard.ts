@@ -24,6 +24,12 @@ export function peekLeaderPrefix(): string | null {
   return armedLeader;
 }
 
+// Ask the current thread's sidebar row to open its title editor.
+export const RENAME_THREAD_EVENT = 'webr:rename-thread';
+export function requestThreadRename(threadId: string): void {
+  window.dispatchEvent(new CustomEvent<string>(RENAME_THREAD_EVENT, { detail: threadId }));
+}
+
 export function appShortcutAction(event: KeyboardEvent, shortcuts: Record<ShortcutAction, string>) {
   if (event.repeat || event.defaultPrevented || event.isComposing) return;
   const target = event.target as HTMLElement | null;

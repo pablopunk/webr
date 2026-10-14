@@ -18,6 +18,7 @@ import { groupProjectLocations } from '../client/project-groups';
 import { withTildeHome } from '../client/home-path';
 import { uuid } from '../lib/uuid';
 import { alertDialog, confirmDialog } from './dialogs';
+import { RENAME_THREAD_EVENT } from '../client/keyboard';
 import { createTerminalTab, closeTerminalTab, deleteArchivedThreads, deleteArchivedWarning, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
 import { sidebarTabKey, type FloatingTab } from '../lib/floating';
 import { SidebarMetrics } from './SidebarMetrics';
@@ -88,6 +89,14 @@ const ThreadRow = memo(function ThreadRow({ thread, project, machineName, curren
   const ArchiveIcon = archived ? ArchiveRestore : Archive;
   const archiveLabel = archived ? `Unarchive ${thread.title}` : `Archive ${thread.title}`;
   const [renaming, setRenaming] = useState(false);
+  useEffect(() => {
+    if (!current) return;
+    const onRenameRequest = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === thread.id) setRenaming(true);
+    };
+    window.addEventListener(RENAME_THREAD_EVENT, onRenameRequest);
+    return () => window.removeEventListener(RENAME_THREAD_EVENT, onRenameRequest);
+  }, [current, thread.id]);
   const editor = renaming ? <ThreadTitleEditor thread={thread} onDone={() => setRenaming(false)} onError={reportFailure} /> : undefined;
   const flipId = thread.bindingState === 'attached' && thread.tabId ? sidebarTabKey(thread.machineId, thread.tabId) : thread.id;
   return <ContextMenu.Root>

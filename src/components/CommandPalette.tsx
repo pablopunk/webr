@@ -2,13 +2,14 @@ import { alertDialog, confirmDialog } from './dialogs';
 import { Tooltip } from './Tooltip';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThreadAvatar } from './ThreadAvatar';
-import { Archive, ArchiveRestore, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, FolderTree, Gauge, LayoutList, Monitor, Moon, PanelLeft, Settings2, SquarePen, SquareTerminal, Sun, TerminalSquare, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, FolderTree, Gauge, LayoutList, Monitor, Moon, PanelLeft, Pencil, Settings2, SquarePen, SquareTerminal, Sun, TerminalSquare, X } from 'lucide-react';
 import type { Project, Thread } from '../lib/models';
 import type { FloatingTab } from '../lib/floating';
 import { defaultShortcuts, formatShortcut, loadShortcuts, type ShortcutAction } from './shortcuts';
 import type { SidebarMode } from './Sidebar';
 import { applyTheme } from './ThemeControl';
 import { navigate } from 'astro:transitions/client';
+import { requestThreadRename } from '../client/keyboard';
 import { setThreadArchived } from '../client/thread-actions';
 import { canClosePane } from '../lib/pane-strip';
 import { perfAvailable, perfVisible, setPerfVisible } from '../client/perf';
@@ -65,6 +66,7 @@ export function CommandPalette({ open, onClose, projects, threads, floating = []
     ...(thread ? [
       { label: thread.archivedAt ? 'Unarchive thread' : 'Archive thread', icon: thread.archivedAt ? <ArchiveRestore size={16} /> : <Archive size={16} />, run: () => { void setThreadArchived(thread, !thread.archivedAt).catch(reportFailure); } },
       { label: 'Copy thread link', icon: <Copy size={16} />, run: () => { void navigator.clipboard.writeText(location.href); } },
+      { label: 'Rename thread', icon: <Pencil size={16} />, shortcut: 'renameThread' as const, run: () => requestThreadRename(thread.id) },
       ...(thread.bindingState === 'attached' ? [
         { label: 'New terminal', icon: <SquareTerminal size={16} />, shortcut: 'openTerminal' as const, run: onOpenTerminal },
         ...(canClosePane(thread, focusedPane) ? [{ label: 'Close pane', icon: <X size={16} />, shortcut: 'closePane' as const, run: onClosePane }] : []),

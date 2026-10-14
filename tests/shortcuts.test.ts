@@ -19,6 +19,7 @@ const keymap = {
   stock: {
     next_tab: ['ctrl+a n'],
     focus_pane_right: ['ctrl+a l'],
+    rename_tab: ['ctrl+a shift+t'],
   },
 };
 
@@ -32,6 +33,7 @@ it('maps Webr actions to the resolved Herdr bindings', () => {
     newThread: 'ctrl+a c',
     openTerminal: 'ctrl+a v',
     closePane: 'ctrl+a x',
+    renameThread: 'ctrl+a shift+t',
   });
 });
 

@@ -23,7 +23,7 @@ const keymap = {
     split_vertical: ['ctrl+a v'],
     close_pane: ['ctrl+a x'],
   },
-  stock: { close_pane: ['ctrl+a x'] },
+  stock: { close_pane: ['ctrl+a x'], rename_tab: ['ctrl+a shift+t'] },
 };
 
 const json = (body: unknown) => new Response(JSON.stringify(body));
@@ -54,6 +54,7 @@ it('defaults each action to the Herdr binding, prefix included', async () => {
   expect(triggerText('Next thread shortcut: Focus pane down')).toBe('⌃J');
   expect(triggerText('Previous thread shortcut: Focus pane up')).toBe('⌃K');
   expect(triggerText('Leader prefix: Herdr')).toBe('⌃A');
+  expect(triggerText('Rename thread shortcut: Rename tab (default)')).toBe('⌃A›⇧T');
 });
 
 it('reset restores the Herdr bindings over custom overrides', async () => {

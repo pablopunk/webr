@@ -1,9 +1,10 @@
-export type ShortcutAction = 'nextThread' | 'previousThread' | 'nextPane' | 'previousPane' | 'toggleSidebar' | 'newThread' | 'openTerminal' | 'closePane';
+export type ShortcutAction = 'nextThread' | 'previousThread' | 'nextPane' | 'previousPane' | 'toggleSidebar' | 'newThread' | 'openTerminal' | 'closePane' | 'renameThread';
 
 export const shortcutLabels: Record<ShortcutAction, string> = {
   nextThread: 'Next thread', previousThread: 'Previous thread',
   nextPane: 'Next pane', previousPane: 'Previous pane',
   toggleSidebar: 'Toggle sidebar', newThread: 'New thread', openTerminal: 'New terminal', closePane: 'Close pane',
+  renameThread: 'Rename thread',
 };
 
 // Which Herdr action each Webr action mirrors. The thread list runs
@@ -14,6 +15,7 @@ export const WEBR_TO_HERDR: Record<ShortcutAction, string> = {
   nextThread: 'focus_pane_down', previousThread: 'focus_pane_up',
   nextPane: 'focus_pane_right', previousPane: 'focus_pane_left',
   toggleSidebar: 'toggle_sidebar', newThread: 'new_tab', openTerminal: 'split_vertical', closePane: 'close_pane',
+  renameThread: 'rename_tab',
 };
 
 export type HerdrKeymap = {
@@ -29,6 +31,7 @@ export const defaultShortcuts: Record<ShortcutAction, string> = {
   nextThread: 'ctrl+b n', previousThread: 'ctrl+b p',
   nextPane: 'ctrl+b l', previousPane: 'ctrl+b h',
   toggleSidebar: 'ctrl+b b', newThread: 'ctrl+b c', openTerminal: 'ctrl+b v', closePane: 'ctrl+b x',
+  renameThread: 'ctrl+b shift+t',
 };
 
 const OVERRIDE_KEY = 'webr-shortcuts';
