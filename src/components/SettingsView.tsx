@@ -119,7 +119,7 @@ export function SettingsView({ onOpenSidebar }: {
     const full = recordingFirst.current ? `${recordingFirst.current} ${combo}` : combo;
     recordingFirst.current = null;
     setRecordingArmed(false);
-    if (isReservedShortcut(full) || full === 'meta+k') { setError('Choose a shortcut with a modifier that does not conflict with the browser or ⌘K.'); return; }
+    if (isReservedShortcut(full) || (full === 'meta+k' && action !== 'commandPalette')) { setError('Choose a shortcut with a modifier that does not conflict with the browser or ⌘K.'); return; }
     if (Object.entries(shortcuts).some(([name, key]) => name !== action && key === full)) { setError('That shortcut is already in use.'); return; }
     choose(action, full);
     setRecording(null);
@@ -148,7 +148,7 @@ export function SettingsView({ onOpenSidebar }: {
     <section><h2>New threads</h2><div className="settings-row"><span>New session behavior</span><div className="theme-control theme-control--labels" role="group" aria-label="New session behavior">{(Object.keys(newSessionBehaviorLabels) as NewSessionBehavior[]).map((choice) => <button key={choice} type="button" aria-pressed={behavior === choice} className={behavior === choice ? 'theme-option is-selected' : 'theme-option'} onClick={() => { setBehavior(choice); writeNewSessionBehavior(choice); }}>{newSessionBehaviorLabels[choice]}</button>)}</div></div></section>
     <RemoteAccess />
     <section id="shortcuts"><div className="settings-section-title"><h2>Keyboard shortcuts</h2><button onClick={reset}>Reset</button></div>
-      <p className="settings-note">Defaults mirror your Herdr keybindings ({formatShortcut(prefix)} prefix). Pick a Herdr binding or record a custom override. Press ⌘K for all actions and threads.</p>
+      <p className="settings-note">Defaults mirror your Herdr keybindings ({formatShortcut(prefix)} prefix). Pick a Herdr binding or record a custom override. Press {formatShortcut(shortcuts.commandPalette)} for all actions and threads.</p>
       <div className="settings-row" key="prefix"><span>Prefix</span>
         {recordingPrefix
           ? <button className="shortcut-key" data-recording="true" autoFocus onClick={() => { setRecordingPrefix(false); setError(''); }} onKeyDown={recordPrefixKey} aria-label="Record leader prefix">Press keys…</button>

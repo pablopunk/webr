@@ -49,6 +49,15 @@ export function sequenceAction(first: string, second: string, shortcuts: Record<
   return Object.entries(shortcuts).find(([, value]) => value === `${first} ${second}`)?.[0] as ShortcutAction | undefined;
 }
 
+// Whether this keypress toggles the command palette. Checked before the
+// palette-open guard so the same shortcut opens and closes it.
+export function paletteToggle(first: string | null, combo: string, shortcuts: Record<ShortcutAction, string>): boolean {
+  const value = shortcuts.commandPalette;
+  if (!value) return false;
+  if (first) return combo !== first && value === `${first} ${combo}`;
+  return !isSequence(value) && value === combo;
+}
+
 // True when a keydown participates in any app shortcut (single chord, prefix
 // starter, or sequence second step). Terminals defer such keys to the app
 // instead of sending them to the shell.

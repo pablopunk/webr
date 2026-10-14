@@ -56,6 +56,7 @@ it('defaults each action to the Herdr binding, prefix included', async () => {
   expect(triggerText('Previous thread shortcut: Focus pane up')).toBe('⌃K');
   expect(triggerText('Leader prefix: Herdr')).toBe('⌃A');
   expect(triggerText('Rename thread shortcut: Rename workspace')).toBe('⌃A›R');
+  expect(triggerText('Command palette shortcut: Custom')).toBe('⌘K');
 });
 
 it('reset restores the Herdr bindings over custom overrides', async () => {

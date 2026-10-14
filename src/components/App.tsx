@@ -18,7 +18,7 @@ import { useStore } from 'zustand';
 import { RuntimeProvider, useRuntime, useRuntimeSelector } from '../client/provider';
 import type { Bootstrap } from '../shared/runtime';
 import type { Pane } from '../lib/models';
-import { appShortcutAction, armLeaderPrefix, sequenceAction, sequenceStarters, takeLeaderPrefix, requestThreadRename } from '../client/keyboard';
+import { appShortcutAction, armLeaderPrefix, paletteToggle, sequenceAction, sequenceStarters, takeLeaderPrefix, requestThreadRename } from '../client/keyboard';
 import { perfAvailable, startPerf } from '../client/perf';
 import { closeThreadPane, openThreadTerminal } from '../client/thread-actions';
 import { canClosePane, paneToFocusAfterClosing } from '../lib/pane-strip';
@@ -247,13 +247,13 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
       if (!combo) return;
       // Consume any armed prefix first so it cannot go stale behind the palette.
       const first = takeLeaderPrefix();
-      if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k') {
-        event.preventDefault(); setPaletteOpen((value) => !value); return;
-      }
-      if (paletteOpen || event.defaultPrevented) return;
       // Read storage live so changes made in Settings (including the prefix)
       // apply without remounting; state covers the async Herdr keymap load.
       const stored = { ...shortcuts, ...getShortcuts() };
+      if (paletteToggle(first, combo, stored)) {
+        event.preventDefault(); setPaletteOpen((value) => !value); return;
+      }
+      if (paletteOpen || event.defaultPrevented) return;
       if (first) {
         // Pressing the prefix twice sends one literal prefix to the terminal.
         if (combo === first) return;
@@ -278,7 +278,7 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
 
   return <div className={`app-shell ${page === 'thread' || page === 'terminal' ? 'is-thread' : ''}`}>
     <Sidebar projects={projects} threads={threads} archived={archived} floating={floating} detached={detached} ownedTabs={ownedTabs} machines={machines} currentId={thread?.id} currentMachineId={page === 'terminal' ? machineId : thread?.machineId} currentTab={page === 'terminal' && machineId && tabId ? { machineId, tabId } : undefined} mode={mode} onModeChange={changeMode} collapsed={collapsed}
-      mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} updateAction={<UpdateButton />} />
+      mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} paletteShortcut={shortcuts.commandPalette} updateAction={<UpdateButton />} />
     <div className="main-panel">
       {page === 'thread' && thread && <ThreadView thread={thread} connected={gatewayConnected && !!projections[thread.machineId]?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} />}
       {page === 'terminal' && machineId && tabId && <TerminalTabView machineId={machineId} tabId={tabId} panes={terminalPanes} connected={gatewayConnected && !!projections[machineId]?.connected} canControl={!!machines.find((machine) => machine.id === machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} pending={terminalPending && !standaloneTab && !terminalLookupTimedOut} startupPreset={pendingTerminalStartup} onStartupComplete={completeTerminalStartup} />}

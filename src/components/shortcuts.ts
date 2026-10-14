@@ -1,17 +1,19 @@
-export type ShortcutAction = 'nextThread' | 'previousThread' | 'nextPane' | 'previousPane' | 'toggleSidebar' | 'newThread' | 'openTerminal' | 'closePane' | 'renameThread';
+export type ShortcutAction = 'nextThread' | 'previousThread' | 'nextPane' | 'previousPane' | 'toggleSidebar' | 'newThread' | 'openTerminal' | 'closePane' | 'renameThread' | 'commandPalette';
 
 export const shortcutLabels: Record<ShortcutAction, string> = {
   nextThread: 'Next thread', previousThread: 'Previous thread',
   nextPane: 'Next pane', previousPane: 'Previous pane',
   toggleSidebar: 'Toggle sidebar', newThread: 'New thread', openTerminal: 'New terminal', closePane: 'Close pane',
-  renameThread: 'Rename thread',
+  renameThread: 'Rename thread', commandPalette: 'Command palette',
 };
 
 // Which Herdr action each Webr action mirrors. The thread list runs
 // vertically, so thread navigation follows focus_pane_down/up (matching
 // up/down muscle memory); panes sit on a horizontal strip, so pane
 // navigation follows focus_pane_left/right.
-export const WEBR_TO_HERDR: Record<ShortcutAction, string> = {
+// Actions without an entry keep their built-in default (e.g. the command
+// palette stays on ⌘K: no Herdr binding fits a web palette).
+export const WEBR_TO_HERDR: Partial<Record<ShortcutAction, string>> = {
   nextThread: 'focus_pane_down', previousThread: 'focus_pane_up',
   nextPane: 'focus_pane_right', previousPane: 'focus_pane_left',
   toggleSidebar: 'toggle_sidebar', newThread: 'new_tab', openTerminal: 'split_vertical', closePane: 'close_pane',
@@ -31,7 +33,7 @@ export const defaultShortcuts: Record<ShortcutAction, string> = {
   nextThread: 'ctrl+b n', previousThread: 'ctrl+b p',
   nextPane: 'ctrl+b l', previousPane: 'ctrl+b h',
   toggleSidebar: 'ctrl+b b', newThread: 'ctrl+b c', openTerminal: 'ctrl+b v', closePane: 'ctrl+b x',
-  renameThread: 'ctrl+b shift+w',
+  renameThread: 'ctrl+b shift+w', commandPalette: 'meta+k',
 };
 
 const OVERRIDE_KEY = 'webr-shortcuts';

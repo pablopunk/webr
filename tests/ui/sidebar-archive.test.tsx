@@ -54,6 +54,10 @@ it('renames the current thread when asked through the rename event', async () =>
   window.dispatchEvent(new CustomEvent('webr:rename-thread', { detail: 'terminal-web-bridge' }));
   expect(await screen.findByRole('textbox', { name: 'Rename Build the web terminal bridge' })).toBeTruthy();
 });
+it('shows the palette shortcut on its footer button', () => {
+  render(<Sidebar projects={[]} threads={exampleThreads().slice(0, 1)} archived={[]} machines={[]} mode="threads" onModeChange={() => {}} collapsed={false} mobileOpen={false} onCollapse={() => {}} onCloseMobile={() => {}} paletteShortcut="ctrl+a p" />);
+  expect(screen.getByRole('button', { name: 'Open command palette (⌃A P)' })).toBeTruthy();
+});
 it('keeps internal recovery state out of sidebar labels', () => {
   const thread = { ...exampleThreads()[0], providerSession: { source: 'herdr', agent: 'claude', kind: 'id' as const, value: 'session-1' }, recovery: { state: 'needs_attention' as const, reason: 'conversation_missing' } };
   renderSidebar([thread], []);

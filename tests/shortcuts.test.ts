@@ -36,6 +36,7 @@ it('maps Webr actions to the resolved Herdr bindings', () => {
     openTerminal: 'ctrl+a v',
     closePane: 'ctrl+a x',
     renameThread: 'ctrl+a r',
+    commandPalette: 'meta+k',
   });
 });
 
