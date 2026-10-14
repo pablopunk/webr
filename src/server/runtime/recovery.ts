@@ -6,11 +6,25 @@ export function sameSession(a: ProviderSession, b: ProviderSession) {
   return a.agent === b.agent && a.kind === b.kind && a.value === b.value;
 }
 
+const trimTrailingSeparators = (path: string) => path.replace(/[\\/]+$/, '');
+const separatorOf = (path: string) => path.includes('/') ? '/' : '\\';
+const isWithin = (root: string, path: string) => { const base = trimTrailingSeparators(root); return path === base || path.startsWith(base + separatorOf(base)); };
+const parentOf = (path: string) => { const trimmed = trimTrailingSeparators(path); return trimmed.slice(0, Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))); };
+const MIN_SIBLING_PARENT_SEGMENTS = 4;
+const isDeepEnoughToShareSiblings = (parent: string) => parent.split(/[\\/]/).filter(Boolean).length >= MIN_SIBLING_PARENT_SEGMENTS;
+
 // Paths come from Herdr on the target host. Never canonicalize an SSH path on the gateway.
-function wrongLocation(thread: Thread, pane: NativePane, snapshot: NativeSnapshot) {
+export function isSameOrSiblingWorktree(expected: string, cwd: string) {
+  const parent = parentOf(expected);
+  return isWithin(expected, cwd) || isDeepEnoughToShareSiblings(parent) && cwd !== parent && isWithin(parent, cwd);
+}
+
+function wrongLocation(thread: Thread, pane: NativePane, snapshot: NativeSnapshot, sessionProven: boolean) {
   const cwd = pane.foreground_cwd ?? pane.cwd;
   const worktree = snapshot.workspaces.find((workspace) => workspace.workspace_id === pane.workspace_id)?.worktree;
-  return !!(thread.expectedCwd && cwd !== thread.expectedCwd ||
+  const cwdMoved = !!thread.expectedCwd && cwd !== thread.expectedCwd;
+  const cwdUnacceptable = cwdMoved && !(sessionProven && !!cwd && isSameOrSiblingWorktree(thread.expectedCwd!, cwd));
+  return !!(cwdUnacceptable ||
     thread.expectedRepository && worktree && worktree.repo_key !== thread.expectedRepository ||
     thread.expectedCheckout && worktree && worktree.checkout_path !== thread.expectedCheckout);
 }
@@ -58,9 +72,9 @@ export function recoverThread(thread: Thread, anchors: string[], alias: string |
   const cwd = reported.foreground_cwd ?? reported.cwd;
   if (!cwd) return fail('cwd_missing', [reported.tab_id]);
   if (worktreeUnavailable(thread, reported, snapshot)) return fail('worktree_unverified', [reported.tab_id]);
-  if (wrongLocation(thread, reported, snapshot)) return fail('worktree_changed', [reported.tab_id]);
+  if (wrongLocation(thread, reported, snapshot, !!thread.providerSession && sameSession(thread.providerSession, session))) return fail('worktree_changed', [reported.tab_id]);
   return {
-    thread: { ...thread, providerSession: session, agent: session.agent, expectedCwd: thread.expectedCwd ?? cwd, observedCwd: cwd,
+    thread: { ...thread, providerSession: session, agent: session.agent, expectedCwd: cwd, observedCwd: cwd,
       expectedRepository: thread.expectedRepository ?? worktree?.repo_key, expectedCheckout: thread.expectedCheckout ?? worktree?.checkout_path,
       recovery: { state: restoring ? 'restoring' : reported.agent === session.agent ? 'active' : 'known' } }, tabId, unsafe: false,
   };

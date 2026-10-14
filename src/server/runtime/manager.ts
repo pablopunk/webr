@@ -11,7 +11,7 @@ import type { MetadataDatabase } from '../storage/database';
 import type { Bootstrap, Projection } from '../../shared/runtime';
 import type { Machine } from '../../lib/machines';
 import { LaunchJournal } from './launch';
-import { sameSession } from './recovery';
+import { isSameOrSiblingWorktree, sameSession } from './recovery';
 import { createWorkspace, type CreatedWorkspace } from './workspace';
 
 const CATALOG_TTL_MS = 5 * 60_000;
@@ -137,8 +137,8 @@ export class RuntimeManager extends EventEmitter {
     const report = reports[0];
     const worktree = snapshot.workspaces.find((workspace) => workspace.workspace_id === report?.workspace_id)?.worktree;
     const cwd = report?.foreground_cwd ?? report?.cwd;
-    if (report && (!cwd || report.agent && report.agent !== report.agent_session!.agent || row.metadata.expectedCwd && row.metadata.expectedCwd !== cwd || row.metadata.expectedRepository && worktree?.repo_key !== row.metadata.expectedRepository || row.metadata.expectedCheckout && worktree?.checkout_path !== row.metadata.expectedCheckout)) throw new Error('worktree_changed');
-    const identity = report ? { providerSession: report.agent_session!, expectedCwd: row.metadata.expectedCwd ?? cwd!, observedCwd: cwd!, expectedRepository: row.metadata.expectedRepository ?? worktree?.repo_key, expectedCheckout: row.metadata.expectedCheckout ?? worktree?.checkout_path, agent: report.agent_session!.agent } : {};
+    if (report && (!cwd || report.agent && report.agent !== report.agent_session!.agent || row.metadata.expectedCwd && row.metadata.expectedCwd !== cwd && !(row.metadata.providerSession && isSameOrSiblingWorktree(row.metadata.expectedCwd, cwd!)) || row.metadata.expectedRepository && worktree?.repo_key !== row.metadata.expectedRepository || row.metadata.expectedCheckout && worktree?.checkout_path !== row.metadata.expectedCheckout)) throw new Error('worktree_changed');
+    const identity = report ? { providerSession: report.agent_session!, expectedCwd: cwd!, observedCwd: cwd!, expectedRepository: row.metadata.expectedRepository ?? worktree?.repo_key, expectedCheckout: row.metadata.expectedCheckout ?? worktree?.checkout_path, agent: report.agent_session!.agent } : {};
     this.database.saveThread({ ...row.metadata, ...identity, session: supervisor.target.session, tabId: tab, bindingFingerprint: supervisor.target.fingerprint, bindingConfigVersion: supervisor.target.configVersion, semanticSignature: undefined }, terminalIds, tab); this.publish(supervisor);
   }
   private workspacesWithThreads(machineId: string) {

@@ -61,6 +61,36 @@ it.each(['conversation', 'cwd', 'repository', 'checkout', 'owner'] as const)('re
   expect(thread.panes).toEqual([]);
 });
 
+it('follows the agent to a sibling worktree of the same conversation and re-pins the location', () => {
+  const { db, target, original } = fixture();
+  const row = db.threadRows()[0]; db.saveThread({ ...row.metadata, expectedCwd: '/home/u/worktrees/repo/old' }, row.anchors, row.alias);
+  target.state.panes[0].foreground_cwd = '/home/u/worktrees/repo/new';
+  const thread = reconcile(db, target, target.state).threads[0];
+  expect(thread).toMatchObject({ id: original.id, bindingState: 'attached', expectedCwd: '/home/u/worktrees/repo/new', observedCwd: '/home/u/worktrees/repo/new', recovery: { state: 'active' } });
+  expect(reconcile(db, target, target.state).threads[0].recovery).toEqual({ state: 'active' });
+});
+
+it('heals a thread stuck on worktree_changed once the cwd is a sibling worktree', () => {
+  const { db, target } = fixture();
+  const row = db.threadRows()[0]; db.saveThread({ ...row.metadata, expectedCwd: '/home/u/worktrees/repo/old', recovery: { state: 'needs_attention', reason: 'worktree_changed' } }, row.anchors, row.alias);
+  target.state.panes[0].foreground_cwd = '/home/u/worktrees/repo/new';
+  expect(reconcile(db, target, target.state).threads[0]).toMatchObject({ bindingState: 'attached', recovery: { state: 'active' } });
+});
+
+it.each(['/home/u/worktrees/repo-evil/x', '/home/u/worktrees', '/elsewhere/a/b/c'])('rejects a cwd move to %s', (cwd) => {
+  const { db, target } = fixture();
+  const row = db.threadRows()[0]; db.saveThread({ ...row.metadata, expectedCwd: '/home/u/worktrees/repo/old' }, row.anchors, row.alias);
+  target.state.panes[0].foreground_cwd = cwd;
+  expect(reconcile(db, target, target.state).threads[0]).toMatchObject({ bindingState: 'detached', recovery: { reason: 'worktree_changed' } });
+});
+
+it('keeps a sibling cwd move strict when the thread has no saved conversation', () => {
+  const { db, target } = fixture();
+  const row = db.threadRows()[0]; db.saveThread({ ...row.metadata, providerSession: undefined, expectedCwd: '/home/u/worktrees/repo/old' }, row.anchors, row.alias);
+  target.state.panes[0].foreground_cwd = '/home/u/worktrees/repo/new';
+  expect(reconcile(db, target, target.state).threads[0].bindingState).toBe('detached');
+});
+
 it('keeps each anchored tab attached when two live tabs report the same provider session', () => {
   const { db, target, original } = fixture();
   target.state.tabs.push({ tab_id: 'w1:t2', workspace_id: 'w1', label: 'Duplicate' });
