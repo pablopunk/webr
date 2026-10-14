@@ -13,6 +13,7 @@ const keymap = {
     focus_pane_up: ['ctrl+k'],
     toggle_sidebar: ['ctrl+a b'],
     new_tab: ['ctrl+a c'],
+    rename_workspace: ['ctrl+a r'],
     split_vertical: ['ctrl+a v', 'ctrl+a ctrl+s'],
     close_pane: ['ctrl+a x'],
   },
@@ -20,6 +21,7 @@ const keymap = {
     next_tab: ['ctrl+a n'],
     focus_pane_right: ['ctrl+a l'],
     rename_tab: ['ctrl+a shift+t'],
+    rename_workspace: ['ctrl+a shift+w'],
   },
 };
 
@@ -33,7 +35,7 @@ it('maps Webr actions to the resolved Herdr bindings', () => {
     newThread: 'ctrl+a c',
     openTerminal: 'ctrl+a v',
     closePane: 'ctrl+a x',
-    renameThread: 'ctrl+a shift+t',
+    renameThread: 'ctrl+a r',
   });
 });
 

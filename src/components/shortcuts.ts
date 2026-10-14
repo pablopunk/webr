@@ -15,7 +15,7 @@ export const WEBR_TO_HERDR: Record<ShortcutAction, string> = {
   nextThread: 'focus_pane_down', previousThread: 'focus_pane_up',
   nextPane: 'focus_pane_right', previousPane: 'focus_pane_left',
   toggleSidebar: 'toggle_sidebar', newThread: 'new_tab', openTerminal: 'split_vertical', closePane: 'close_pane',
-  renameThread: 'rename_tab',
+  renameThread: 'rename_workspace',
 };
 
 export type HerdrKeymap = {
@@ -31,7 +31,7 @@ export const defaultShortcuts: Record<ShortcutAction, string> = {
   nextThread: 'ctrl+b n', previousThread: 'ctrl+b p',
   nextPane: 'ctrl+b l', previousPane: 'ctrl+b h',
   toggleSidebar: 'ctrl+b b', newThread: 'ctrl+b c', openTerminal: 'ctrl+b v', closePane: 'ctrl+b x',
-  renameThread: 'ctrl+b shift+t',
+  renameThread: 'ctrl+b shift+w',
 };
 
 const OVERRIDE_KEY = 'webr-shortcuts';
