@@ -62,6 +62,19 @@ it('refuses to close a thread-owned tab', async () => {
   await expect(manager.closeTab('fixture', thread.tabId, true)).rejects.toThrow('binding_conflict');
 });
 
+it('closes a shell tab that only has an unlisted layout thread record', async () => {
+  const target = new FakeTarget();
+  const pane = target.state.panes[0];
+  target.state.tabs.push({ tab_id: 'w1:t9', workspace_id: 'w1', label: 'Shell' });
+  target.state.panes.push({ ...pane, pane_id: 'w1:p9', terminal_id: 'term_shell', tab_id: 'w1:t9', agent: null, agent_session: null, focused: false });
+  const db = database();
+  const manager = new RuntimeManager(db, [target]); cleanups.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const template = manager.bootstrap().threads[0];
+  db.saveThread({ ...template, id: crypto.randomUUID(), agent: '', providerSession: undefined, tabId: 'w1:t9', panes: [], bindingState: 'attached' }, ['term_shell'], 'w1:t9');
+  expect(await manager.closeTab('fixture', 'w1:t9', true)).toEqual({ closed: true, busy: false });
+});
+
 it('reports a missing tab', async () => {
   const target = new FakeTarget();
   const manager = new RuntimeManager(database(), [target]); cleanups.push(() => manager.close()); manager.start();

@@ -260,8 +260,7 @@ export class RuntimeManager extends EventEmitter {
     const snapshot = await supervisor.readFresh();
     const tab = snapshot.tabs.find((item) => item.tab_id === tabId);
     if (!tab) throw new Error('tab_not_found');
-    if (this.threadOwnsTab(machineId, tabId)
-      || this.projections.get(machineId)?.threads.some((thread) => thread.bindingState === 'attached' && thread.tabId === tabId)) throw new Error('binding_conflict');
+    if (this.listedThreadOwnsTab(machineId, tabId)) throw new Error('binding_conflict');
     const panes = snapshot.panes.filter((pane) => pane.tab_id === tabId);
     if (!force && supervisor.target.paneBusy) {
       for (const pane of panes) {
@@ -340,6 +339,10 @@ export class RuntimeManager extends EventEmitter {
       }
     }
     return { deleted, orphanTabsDeleted, failed, skippedMachines: [...new Set(skippedMachines)] };
+  }
+  private listedThreadOwnsTab(machineId: string, tabId: string) {
+    return this.database.threadRows(machineId).some((row) => row.alias === tabId && isListedThread(row.metadata))
+      || this.projections.get(machineId)?.threads.some((thread) => thread.tabId === tabId && isListedThread(thread)) === true;
   }
   private threadOwnsTab(machineId: string, tabId: string) {
     return this.database.threadRows(machineId).some((row) => row.alias === tabId)

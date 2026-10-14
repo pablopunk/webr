@@ -25,7 +25,7 @@ import { canClosePane, paneToFocusAfterClosing } from '../lib/pane-strip';
 import { usePaneWindowStart, useNarrowScreen } from '../client/pane-window';
 import { alertDialog, confirmDialog } from './dialogs';
 import { useClearDoneOnVisit } from '../client/clear-done-on-visit';
-import { decideFlipNavigation, floatingTabsFromProjections, partitionSidebar } from '../lib/floating';
+import { decideFlipNavigation, floatingTabsFromProjections, partitionSidebar, sidebarTabKey } from '../lib/floating';
 import { carriesFiles } from '../client/image-attach';
 import { trackVisualViewport } from '../client/visual-viewport';
 import { terminalStartupStorageKey, type TerminalStartupPreset } from '../client/terminal-presets';
@@ -106,6 +106,28 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
     if (thread) shownThreadId.current = thread.id;
     else if (page === 'thread' && shownThreadId.current === threadId) void navigate('/');
   }, [thread, page, threadId]);
+
+  const sidebarOrder = useMemo(() => [
+    ...threads.map((item) => ({ threadId: item.id, tab: ownedTabs.get(item.id) })),
+    ...floating.map((tab) => ({ threadId: undefined, tab })),
+  ], [threads, floating, ownedTabs]);
+  const viewedTerminalSlot = useRef<{ key: string; index: number } | undefined>(undefined);
+  useEffect(() => {
+    if (page !== 'terminal' || !machineId || !tabId) { viewedTerminalSlot.current = undefined; return; }
+    const key = sidebarTabKey(machineId, tabId);
+    if (standaloneTab?.panes.length) {
+      viewedTerminalSlot.current = { key, index: sidebarOrder.findIndex((row) => row.tab && sidebarTabKey(row.tab.machineId, row.tab.tabId) === key) };
+      return;
+    }
+    if (viewedTerminalSlot.current?.key !== key) return;
+    const next = sidebarOrder[Math.min(viewedTerminalSlot.current.index, sidebarOrder.length - 1)];
+    viewedTerminalSlot.current = undefined;
+    if (!next) { void navigate('/'); return; }
+    if (next.threadId) { void navigate(`/threads/${encodeURIComponent(next.threadId)}`); return; }
+    const machine = machines.find((item) => item.id === next.tab!.machineId);
+    const session = next.tab!.session || machine?.session || 'default';
+    void navigate(`/sessions/${encodeURIComponent(session)}/tabs/${encodeURIComponent(next.tab!.tabId)}?machine=${encodeURIComponent(next.tab!.machineId)}`);
+  }, [page, machineId, tabId, standaloneTab, sidebarOrder, machines]);
 
   const flipNavigated = useRef<string>('');
   const allThreads = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id])));
