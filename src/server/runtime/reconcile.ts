@@ -84,10 +84,18 @@ export function reconcile(database: MetadataDatabase, target: TargetAdapter, sna
     const metadata = occupied ? { ...recovered.thread, recovery: { state: 'needs_attention' as const, reason: 'binding_conflict' } } : recovered.thread;
     const operation = operations.find((operation) => operation.threadId === row.id);
     const status: Thread['status'] = attached ? paneStatus(panes) ?? 'unknown' : 'unknown';
-    const latchEdge = attached && status === 'done' && row.metadata.unseenDone !== true;
+    // Keep an acknowledged DONE latched off until we have observed a known
+    // non-DONE state. In particular, repeated snapshots of a still-DONE pane
+    // must not undo the visit acknowledgement.
+    const latchEdge = attached && status === 'done' && (
+      row.metadata.unseenDone === undefined ||
+      row.metadata.unseenDone === false && row.metadata.status !== 'done' && row.metadata.status !== 'unknown'
+    );
     const now = latchEdge ? new Date().toISOString() : undefined;
     const unseenDone = latchEdge ? true : row.metadata.unseenDone;
-    const doneAt = latchEdge ? (row.metadata.doneAt ?? now!) : row.metadata.doneAt;
+    const doneAt = latchEdge
+      ? row.metadata.unseenDone === false ? now! : row.metadata.doneAt ?? now!
+      : row.metadata.doneAt;
     const thread: Thread = { ...metadata, unseenDone, doneAt, tabId: attached ? tab!.tab_id : metadata.tabId, title: attached ? threadTitle(tab?.label, panes, metadata.title) : metadata.title, projectId: attached ? tabProjects.get(tab!.tab_id) ?? metadata.projectId : metadata.projectId, bindingState: attached ? 'attached' : operation && !row.anchors.length ? 'pending' : 'detached', status, agent: attached ? panes.find((pane) => pane.agent)?.agent ?? metadata.agent : metadata.agent, semanticSignature: attached ? signature : metadata.semanticSignature, updatedAt: advancesActivity(row.metadata.status, status) ? now ?? new Date().toISOString() : metadata.updatedAt, panes: orderPanes(panes.map((pane) => ({ id: pane.pane_id, terminalId: pane.terminal_id, title: pane.title ?? pane.terminal_title_stripped ?? pane.agent ?? 'Shell', kind: pane.agent ? 'agent' as const : 'shell' as const })), metadata.paneOrder), operation: operation ? { id: operation.id, state: operation.state, step: operation.step } : undefined };
     const persisted = { ...thread, panes: [], operation: undefined };
     const anchors = attached ? panes.map((pane) => pane.terminal_id) : row.anchors;
