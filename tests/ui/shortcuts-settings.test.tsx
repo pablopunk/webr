@@ -41,20 +41,33 @@ const renderSettings = () => render(
   </QueryClientProvider>,
 );
 
+// Triggers render kbd chips, so assert on their concatenated text.
+const triggerText = (name: string) => screen.getByRole('combobox', { name }).textContent;
+
 it('defaults each action to the Herdr binding, prefix included', async () => {
   stubFetch();
   renderSettings();
   await waitFor(() => expect(screen.getByText(/\(⌃A prefix\)/)).toBeTruthy());
-  expect(screen.getByText('⌃A X')).toBeTruthy();
-  expect(screen.getByText('⇧→')).toBeTruthy();
-  expect(screen.getByText('⇧←')).toBeTruthy();
+  expect(triggerText('Close pane shortcut: Close pane')).toBe('⌃A›X');
+  expect(triggerText('Next thread shortcut: Next tab')).toBe('⇧→');
+  expect(triggerText('Previous thread shortcut: Previous tab')).toBe('⇧←');
+  expect(triggerText('Leader prefix: Herdr')).toBe('⌃A');
 });
 
 it('reset restores the Herdr bindings over custom overrides', async () => {
   stubFetch();
   localStorage.setItem('webr-shortcuts', JSON.stringify({ closePane: 'ctrl+q' }));
   renderSettings();
-  await waitFor(() => expect(screen.getByText('⌃Q')).toBeTruthy());
+  await waitFor(() => expect(triggerText('Close pane shortcut: Custom')).toBe('⌃Q'));
   fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
-  await waitFor(() => expect(screen.getByText('⌃A X')).toBeTruthy());
+  await waitFor(() => expect(triggerText('Close pane shortcut: Close pane')).toBe('⌃A›X'));
+});
+
+it('rebases Herdr bindings onto a custom prefix', async () => {
+  stubFetch();
+  localStorage.setItem('webr-shortcut-prefix', 'ctrl+space');
+  renderSettings();
+  await waitFor(() => expect(screen.getByText(/\(⌃Space prefix\)/)).toBeTruthy());
+  expect(triggerText('Leader prefix: Custom')).toBe('⌃Space');
+  expect(triggerText('Close pane shortcut: Close pane')).toBe('⌃Space›X');
 });

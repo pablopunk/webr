@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { formatShortcut, herdrDefaultsForWebr, isReservedShortcut, shortcutSequence } from '../src/components/shortcuts';
+import { formatShortcut, getEffectivePrefix, herdrActionLabel, herdrDefaultsForWebr, isReservedShortcut, keymapWithPrefix, rebaseCombo, shortcutSequence } from '../src/components/shortcuts';
 
 const keymap = {
   prefix: 'ctrl+a',
@@ -38,6 +38,29 @@ it('formats prefix sequences and direct chords', () => {
   expect(formatShortcut('shift+right')).toBe('⇧→');
   expect(formatShortcut('ctrl+h')).toBe('⌃H');
   expect(shortcutSequence('ctrl+a shift+x')).toEqual([['⌃', 'A'], ['⇧', 'X']]);
+});
+
+it('prettifies Herdr action names for dropdown labels', () => {
+  expect(herdrActionLabel('close_pane')).toBe('Close pane');
+  expect(herdrActionLabel('split_vertical')).toBe('Split vertical');
+  expect(herdrActionLabel('goto')).toBe('Go to');
+  expect(herdrActionLabel('copy_mode (default)')).toBe('Copy mode (default)');
+});
+it('rebases prefix sequences onto another prefix', () => {
+  expect(rebaseCombo('ctrl+a x', 'ctrl+a', 'ctrl+space')).toBe('ctrl+space x');
+  expect(rebaseCombo('ctrl+h', 'ctrl+a', 'ctrl+space')).toBe('ctrl+h');
+  expect(rebaseCombo('ctrl+b n', 'ctrl+b', 'ctrl+b')).toBe('ctrl+b n');
+});
+
+it('re-expresses a keymap under another prefix', () => {
+  const rebased = keymapWithPrefix(keymap, 'ctrl+space');
+  expect(rebased.prefix).toBe('ctrl+space');
+  expect(rebased.bindings.close_pane).toEqual(['ctrl+space x']);
+  expect(rebased.bindings.focus_pane_right).toEqual(['ctrl+l']);
+});
+
+it('falls back to the stock prefix without storage', () => {
+  expect(getEffectivePrefix()).toBe('ctrl+b');
 });
 
 it('reserves browser shortcuts but allows Herdr-style chords', () => {

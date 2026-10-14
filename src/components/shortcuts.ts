@@ -32,6 +32,10 @@ export const defaultShortcuts: Record<ShortcutAction, string> = {
 
 const OVERRIDE_KEY = 'webr-shortcuts';
 const HERDR_CACHE_KEY = 'webr-herdr-shortcuts';
+const PREFIX_KEY = 'webr-shortcut-prefix';
+export const FALLBACK_PREFIX = 'ctrl+b';
+
+type HerdrCache = { prefix: string; prefixes: string[]; defaults: Record<string, string> };
 
 export function herdrDefaultsForWebr(keymap: HerdrKeymap): Record<ShortcutAction, string> {
   const next = { ...defaultShortcuts };
@@ -53,8 +57,55 @@ const readStored = (key: string): Record<string, string> => {
 const validOverrides = (entries: Record<string, string>) =>
   Object.fromEntries(Object.entries(entries).filter(([action]) => Object.hasOwn(defaultShortcuts, action)));
 
+function readCache(): HerdrCache | undefined {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HERDR_CACHE_KEY) ?? 'null') as HerdrCache | null;
+    if (!raw || typeof raw !== 'object' || typeof raw.prefix !== 'string' || typeof raw.defaults !== 'object') return undefined;
+    return raw;
+  } catch {
+    return undefined;
+  }
+}
+
+export function getPrefixOverride(): string | undefined {
+  try {
+    const value = localStorage.getItem(PREFIX_KEY);
+    return value || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function getEffectivePrefix(): string {
+  return getPrefixOverride() ?? readCache()?.prefix ?? FALLBACK_PREFIX;
+}
+
+// Rebase a combo from one prefix to another ("ctrl+a x" -> "ctrl+space x").
+// Direct chords without a prefix pass through untouched.
+export function rebaseCombo(combo: string, from: string, to: string): string {
+  if (!from || from === to || !isSequence(combo)) return combo;
+  const parts = sequenceParts(combo);
+  return parts[0] === from ? [to, ...parts.slice(1)].join(' ') : combo;
+}
+
+// Same keymap, but every binding re-expressed under another prefix.
+export function keymapWithPrefix(keymap: HerdrKeymap, prefix: string): HerdrKeymap {
+  if (prefix === keymap.prefix) return keymap;
+  const rebaseAll = (bindings: Record<string, string[]>) =>
+    Object.fromEntries(Object.entries(bindings).map(([action, combos]) => [action, combos.map((combo) => rebaseCombo(combo, keymap.prefix, prefix))]));
+  return { prefix, prefixes: keymap.prefixes, bindings: rebaseAll(keymap.bindings), stock: rebaseAll(keymap.stock) };
+}
+
 export function getShortcuts(): Record<ShortcutAction, string> {
-  return { ...defaultShortcuts, ...validOverrides(readStored(HERDR_CACHE_KEY)), ...validOverrides(readStored(OVERRIDE_KEY)) };
+  const effective = getEffectivePrefix();
+  const stock = Object.fromEntries(
+    Object.entries(defaultShortcuts).map(([action, combo]) => [action, rebaseCombo(combo, FALLBACK_PREFIX, effective)]));
+  const cache = readCache();
+  const herdr = cache
+    ? validOverrides(Object.fromEntries(
+      Object.entries(cache.defaults).map(([action, combo]) => [action, rebaseCombo(combo, cache.prefix, effective)])))
+    : {};
+  return { ...stock, ...herdr, ...validOverrides(readStored(OVERRIDE_KEY)) } as Record<ShortcutAction, string>;
 }
 
 let keymapPromise: Promise<HerdrKeymap | undefined> | undefined;
@@ -72,11 +123,36 @@ export function loadShortcuts(): Promise<Record<ShortcutAction, string>> {
   return loadHerdrKeymap().then((keymap) => {
     if (keymap) {
       try {
-        localStorage.setItem(HERDR_CACHE_KEY, JSON.stringify(herdrDefaultsForWebr(keymap)));
+        const effective = getPrefixOverride() ?? keymap.prefix;
+        const defaults = herdrDefaultsForWebr(keymap);
+        const rebased = Object.fromEntries(
+          Object.entries(defaults).map(([action, combo]) => [action, rebaseCombo(combo, keymap.prefix, effective)]));
+        const cache: HerdrCache = { prefix: keymap.prefix, prefixes: keymap.prefixes, defaults: rebased };
+        localStorage.setItem(HERDR_CACHE_KEY, JSON.stringify(cache));
       } catch { /* Storage unavailable; stock defaults still apply. */ }
     }
     return getShortcuts();
   });
+}
+
+export function setPrefixOverride(prefix: string | undefined): void {
+  try {
+    if (prefix) localStorage.setItem(PREFIX_KEY, prefix);
+    else localStorage.removeItem(PREFIX_KEY);
+  } catch { /* Storage unavailable. */ }
+}
+
+// Drop custom overrides that exactly match a Herdr-provided combo, so those
+// actions re-adopt the new prefix instead of going stale.
+export function pruneOfferedOverrides(offered: string[]): void {
+  try {
+    const overrides = validOverrides(readStored(OVERRIDE_KEY));
+    let changed = false;
+    for (const [action, combo] of Object.entries(overrides)) {
+      if (offered.includes(combo)) { delete overrides[action]; changed = true; }
+    }
+    if (changed) localStorage.setItem(OVERRIDE_KEY, JSON.stringify(overrides));
+  } catch { /* Storage unavailable. */ }
 }
 
 export function saveShortcut(action: ShortcutAction, combo: string): void {
@@ -96,6 +172,16 @@ const keySymbols: Record<string, string> = {
   ctrl: '⌃', alt: '⌥', meta: '⌘', shift: '⇧', space: 'Space', escape: 'Esc', tab: 'Tab',
   minus: '-', plus: '+', comma: ',', left: '←', right: '→', up: '↑', down: '↓',
 };
+
+// "close_pane" -> "Close pane" for dropdown labels.
+const herdrActionOverrides: Record<string, string> = { goto: 'Go to' };
+export function herdrActionLabel(action: string): string {
+  const stock = action.endsWith(' (default)');
+  const base = stock ? action.slice(0, -' (default)'.length) : action;
+  const words = (herdrActionOverrides[base] ?? base).split('_');
+  const friendly = words.map((word, index) => index === 0 && word ? word[0].toUpperCase() + word.slice(1) : word).join(' ');
+  return stock ? `${friendly} (default)` : friendly;
+}
 
 // Combos are single chords ("ctrl+h") or prefix sequences ("ctrl+a x").
 export const isSequence = (combo: string): boolean => combo.includes(' ');

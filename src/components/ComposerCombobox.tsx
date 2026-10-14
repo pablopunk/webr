@@ -8,6 +8,8 @@ export type ComposerOption = {
   label: string;
   shortLabel?: string;
   icon?: ReactNode;
+  detail?: ReactNode;
+  searchText?: string;
   disabled?: boolean;
 };
 
@@ -18,7 +20,7 @@ export function ComposerCombobox({ label, value, options, onChange, icon, allowC
   const [query, setQuery] = useState('');
   const selected = options.find((option) => option.value === value) ?? { value, label: value };
   const search = query.trim();
-  const items = options.filter((option) => option.label.toLowerCase().includes(search.toLowerCase()));
+  const items = options.filter((option) => `${option.label} ${option.searchText ?? ''}`.toLowerCase().includes(search.toLowerCase()));
   const custom = allowCustom && search && !options.some((option) => option.value === search)
     ? { value: search, label: `Use “${search}”` } : null;
 
@@ -28,7 +30,9 @@ export function ComposerCombobox({ label, value, options, onChange, icon, allowC
     onValueChange={(option) => { if (option && !option.disabled) onChange(option.value); }}>
     <Tooltip label={`${label}: ${selected.label}`}><Combobox.Trigger className="composer-select" aria-label={`${label}: ${selected.label}`}>
       <span className="composer-select-icon" aria-hidden="true">{selected.icon ?? icon}</span>
-      <span className="composer-select-label">{selected.shortLabel ?? (selected.label || label)}</span>
+      {selected.detail
+        ? <span className="composer-select-label composer-select-label--chips" aria-hidden="true">{selected.detail}</span>
+        : <span className="composer-select-label">{selected.shortLabel ?? (selected.label || label)}</span>}
       <ChevronDown className="composer-select-caret" size={11} aria-hidden="true" />
     </Combobox.Trigger></Tooltip>
     <Combobox.Portal>
@@ -39,6 +43,7 @@ export function ComposerCombobox({ label, value, options, onChange, icon, allowC
           <Combobox.List className="composer-select-list">
             {(option: ComposerOption) => <Combobox.Item key={option.value} value={option} disabled={option.disabled} className="composer-select-option">
               {option.icon && <span className="composer-select-option-icon" aria-hidden="true">{option.icon}</span>}<span className="composer-select-option-label">{option.label}</span>
+              {option.detail && <span className="composer-select-option-detail" aria-hidden="true">{option.detail}</span>}
               <Combobox.ItemIndicator className="composer-select-check"><Check size={14} /></Combobox.ItemIndicator>
             </Combobox.Item>}
           </Combobox.List>

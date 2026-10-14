@@ -247,6 +247,9 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
         event.preventDefault(); setPaletteOpen((value) => !value); return;
       }
       if (paletteOpen || event.defaultPrevented) return;
+      // Read storage live so changes made in Settings (including the prefix)
+      // apply without remounting; state covers the async Herdr keymap load.
+      const stored = { ...shortcuts, ...getShortcuts() };
       // A pending prefix starter (e.g. ctrl+a) turns the next keypress into a
       // Herdr-style sequence ("ctrl+a x"); anything else falls through.
       if (pendingPrefix.current) {
@@ -254,19 +257,19 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
         pendingPrefix.current = null;
         window.clearTimeout(pendingTimer.current);
         const combo = keyCombo(event);
-        const sequenced = combo ? sequenceAction(first, combo, shortcuts) : undefined;
+        const sequenced = combo ? sequenceAction(first, combo, stored) : undefined;
         if (sequenced) { event.preventDefault(); runAction(sequenced); return; }
         if (!combo) return;
-        if (sequenceStarters(shortcuts).has(combo)) { event.preventDefault(); armPrefix(combo); return; }
-        const single = appShortcutAction(event, shortcuts);
+        if (sequenceStarters(stored).has(combo)) { event.preventDefault(); armPrefix(combo); return; }
+        const single = appShortcutAction(event, stored);
         if (!single) return;
         event.preventDefault();
         runAction(single);
         return;
       }
       const combo = keyCombo(event);
-      if (combo && sequenceStarters(shortcuts).has(combo)) { event.preventDefault(); armPrefix(combo); return; }
-      const action = appShortcutAction(event, shortcuts);
+      if (combo && sequenceStarters(stored).has(combo)) { event.preventDefault(); armPrefix(combo); return; }
+      const action = appShortcutAction(event, stored);
       if (!action) return;
       event.preventDefault();
       runAction(action);
