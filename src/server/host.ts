@@ -9,6 +9,7 @@ import type { RuntimeManager } from './runtime/manager';
 import { launchInput, opaqueId } from '../shared/runtime';
 import { registerWebsockets } from './websockets';
 import { createWorkspace } from './runtime/workspace';
+import { loadHerdrKeymap } from './herdr-keys';
 import { perfLog, perfLogEnabled } from './perf-log';
 import { Auth, type AuthOptions } from './auth/auth';
 import { isTrustedHost } from './auth/access';
@@ -70,6 +71,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     return manager.catalog(machineId, projectId);
   });
   app.get('/api/runtime', async () => manager.bootstrap());
+  app.get('/api/herdr-keys', async () => loadHerdrKeymap());
   app.get('/api/metrics', async () => {
     const cores = cpus();
     const currentCpu = cores.reduce((total, cpu) => ({ idle: total.idle + cpu.times.idle, total: total.total + Object.values(cpu.times).reduce((sum, time) => sum + time, 0) }), { idle: 0, total: 0 });

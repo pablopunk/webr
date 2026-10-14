@@ -2,19 +2,31 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TerminalInput } from '../../src/components/TerminalInput';
-import { appShortcutAction } from '../../src/client/keyboard';
-import { defaultShortcuts } from '../../src/components/shortcuts';
+import { appShortcutAction, sequenceAction, sequenceStarters } from '../../src/client/keyboard';
+import { defaultShortcuts, keyCombo } from '../../src/components/shortcuts';
 import { bindTerminalGestures } from '../../src/client/terminal-gestures';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 it('routes application shortcuts once in terminal capture, but preserves editing keys in composer and search', async () => {
   const native = vi.fn(); const app = vi.fn();
-  const capture = (event: KeyboardEvent) => { const action = appShortcutAction(event, defaultShortcuts); if (action) { event.preventDefault(); app(action); } };
+  let pending: string | null = null;
+  const capture = (event: KeyboardEvent) => {
+    if (pending) {
+      const first = pending; pending = null;
+      const combo = keyCombo(event);
+      const sequenced = combo ? sequenceAction(first, combo, defaultShortcuts) : undefined;
+      if (sequenced) { event.preventDefault(); app(sequenced); return; }
+    }
+    const combo = keyCombo(event);
+    if (combo && sequenceStarters(defaultShortcuts).has(combo)) { event.preventDefault(); pending = combo; return; }
+    const action = appShortcutAction(event, defaultShortcuts); if (action) { event.preventDefault(); app(action); }
+  };
   window.addEventListener('keydown', capture, true);
   try {
     render(<><TerminalInput onInput={native} /><textarea aria-label="Composer" /><input aria-label="Search" /></>);
     const user = userEvent.setup(); screen.getByLabelText('Terminal input').focus();
-    await user.keyboard('{Control>}h{/Control}'); expect(app).toHaveBeenCalledExactlyOnceWith('previousPane'); expect(native).not.toHaveBeenCalled();
+    await user.keyboard('{Control>}b{/Control}'); expect(pending).toBe('ctrl+b'); expect(native).not.toHaveBeenCalled();
+    await user.keyboard('h'); expect(app).toHaveBeenCalledExactlyOnceWith('previousPane'); expect(native).not.toHaveBeenCalled();
     await user.keyboard('{Control>}c{/Control}'); expect(native).toHaveBeenCalledExactlyOnceWith('\x03');
     screen.getByLabelText('Composer').focus(); await user.keyboard('{Control>}h{/Control}'); screen.getByLabelText('Search').focus(); await user.keyboard('{Control>}j{/Control}'); expect(app).toHaveBeenCalledTimes(1);
   } finally { window.removeEventListener('keydown', capture, true); }

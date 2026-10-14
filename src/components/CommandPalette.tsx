@@ -5,7 +5,7 @@ import { ThreadAvatar } from './ThreadAvatar';
 import { Archive, ArchiveRestore, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, FolderTree, Gauge, LayoutList, Monitor, Moon, PanelLeft, Settings2, SquarePen, SquareTerminal, Sun, TerminalSquare, X } from 'lucide-react';
 import type { Project, Thread } from '../lib/models';
 import type { FloatingTab } from '../lib/floating';
-import { defaultShortcuts, formatShortcut, getShortcuts, type ShortcutAction } from './shortcuts';
+import { defaultShortcuts, formatShortcut, loadShortcuts, type ShortcutAction } from './shortcuts';
 import type { SidebarMode } from './Sidebar';
 import { applyTheme } from './ThemeControl';
 import { navigate } from 'astro:transitions/client';
@@ -32,7 +32,7 @@ export function CommandPalette({ open, onClose, projects, threads, floating = []
   useEffect(() => {
     if (!open) return;
     setQuery(''); setSelected(0);
-    setShortcuts(getShortcuts());
+    void loadShortcuts().then((next) => setShortcuts(next));
     requestAnimationFrame(() => input.current?.focus());
   }, [open]);
 
@@ -103,7 +103,7 @@ export function CommandPalette({ open, onClose, projects, threads, floating = []
       <input ref={input} aria-label="Search commands and threads" placeholder="Search threads and actions…" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(0); }} />
       <div className="palette-results" role="listbox" aria-label="Results">
         {matching.map((command, index) => <button role="option" aria-selected={selected === index} className={selected === index ? 'is-selected' : ''} key={`${command.label}-${index}`} onMouseEnter={() => setSelected(index)} onClick={() => run(command)}>
-          <span className="palette-icon" aria-hidden="true">{command.icon}</span><span className="palette-label">{command.label}</span>{command.detail && <small>{command.detail}</small>}{command.shortcut && <Tooltip label={shortcuts[command.shortcut]}><kbd>{formatShortcut(shortcuts[command.shortcut])}</kbd></Tooltip>}
+          <span className="palette-icon" aria-hidden="true">{command.icon}</span><span className="palette-label">{command.label}</span>{command.detail && <small>{command.detail}</small>}{command.shortcut && <Tooltip label={formatShortcut(shortcuts[command.shortcut])}><kbd>{formatShortcut(shortcuts[command.shortcut])}</kbd></Tooltip>}
         </button>)}
         {!matching.length && <p>No results</p>}
       </div>

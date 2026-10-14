@@ -11,14 +11,14 @@ import { UpdateButton } from './UpdateButton';
 import { applyTheme } from './ThemeControl';
 import { ThreadView } from './ThreadView';
 import { TerminalTabView } from './TerminalTabView';
-import { getShortcuts } from './shortcuts';
+import { getShortcuts, keyCombo, loadShortcuts, type ShortcutAction } from './shortcuts';
 import { navigate } from 'astro:transitions/client';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from 'zustand';
 import { RuntimeProvider, useRuntime, useRuntimeSelector } from '../client/provider';
 import type { Bootstrap } from '../shared/runtime';
 import type { Pane } from '../lib/models';
-import { appShortcutAction } from '../client/keyboard';
+import { appShortcutAction, sequenceAction, sequenceStarters } from '../client/keyboard';
 import { perfAvailable, startPerf } from '../client/perf';
 import { closeThreadPane, openThreadTerminal } from '../client/thread-actions';
 import { canClosePane, paneToFocusAfterClosing } from '../lib/pane-strip';
@@ -63,6 +63,15 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcuts, setShortcuts] = useState(getShortcuts);
+  const pendingPrefix = useRef<string | null>(null);
+  const pendingTimer = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    void loadShortcuts().then((next) => { if (live) setShortcuts(next); });
+    return () => { live = false; };
+  }, []);
+  useEffect(() => () => window.clearTimeout(pendingTimer.current), []);
   const [pendingTerminalStartup, setPendingTerminalStartup] = useState<TerminalStartupPreset>();
   const [terminalLookupTimedOut, setTerminalLookupTimedOut] = useState(false);
   useEffect(() => {
@@ -199,25 +208,20 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
   }, []);
 
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.repeat || event.isComposing) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('[data-recording="true"]')) return;
-      if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k') {
-        event.preventDefault(); setPaletteOpen((value) => !value); return;
-      }
-      if (paletteOpen || event.defaultPrevented) return;
-      const action = appShortcutAction(event, getShortcuts());
-      if (!action) return;
-      event.preventDefault();
+    const armPrefix = (combo: string) => {
+      pendingPrefix.current = combo;
+      window.clearTimeout(pendingTimer.current);
+      pendingTimer.current = window.setTimeout(() => { pendingPrefix.current = null; }, 1500);
+    };
+    const runAction = (action: ShortcutAction) => {
       if (action === 'toggleSidebar') toggleSidebar();
       if (action === 'openTerminal') openTerminal();
       if (action === 'closePane') void closePane();
-       if (action === 'newThread') void navigate(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`);
-       if ((action === 'nextPane' || action === 'previousPane') && thread?.panes.length) {
-         const index = thread.panes.findIndex((pane) => pane.id === focusedPane);
-         setFocusedPane(thread.panes[(index + (action === 'nextPane' ? 1 : -1) + thread.panes.length) % thread.panes.length].id);
-       }
+      if (action === 'newThread') void navigate(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`);
+      if ((action === 'nextPane' || action === 'previousPane') && thread?.panes.length) {
+        const index = thread.panes.findIndex((pane) => pane.id === focusedPane);
+        setFocusedPane(thread.panes[(index + (action === 'nextPane' ? 1 : -1) + thread.panes.length) % thread.panes.length].id);
+      }
       if ((action === 'nextThread' || action === 'previousThread') && (threads.length || floating.length)) {
         const items: ({ kind: 'thread'; id: string } | { kind: 'terminal'; machineId: string; tabId: string; session: string })[] = [
           ...threads.map((item) => ({ kind: 'thread' as const, id: item.id })),
@@ -235,9 +239,41 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
         }
       }
     };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.repeat || event.isComposing) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-recording="true"]')) return;
+      if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k') {
+        event.preventDefault(); setPaletteOpen((value) => !value); return;
+      }
+      if (paletteOpen || event.defaultPrevented) return;
+      // A pending prefix starter (e.g. ctrl+a) turns the next keypress into a
+      // Herdr-style sequence ("ctrl+a x"); anything else falls through.
+      if (pendingPrefix.current) {
+        const first = pendingPrefix.current;
+        pendingPrefix.current = null;
+        window.clearTimeout(pendingTimer.current);
+        const combo = keyCombo(event);
+        const sequenced = combo ? sequenceAction(first, combo, shortcuts) : undefined;
+        if (sequenced) { event.preventDefault(); runAction(sequenced); return; }
+        if (!combo) return;
+        if (sequenceStarters(shortcuts).has(combo)) { event.preventDefault(); armPrefix(combo); return; }
+        const single = appShortcutAction(event, shortcuts);
+        if (!single) return;
+        event.preventDefault();
+        runAction(single);
+        return;
+      }
+      const combo = keyCombo(event);
+      if (combo && sequenceStarters(shortcuts).has(combo)) { event.preventDefault(); armPrefix(combo); return; }
+      const action = appShortcutAction(event, shortcuts);
+      if (!action) return;
+      event.preventDefault();
+      runAction(action);
+    };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [thread, threads, floating, page, machineId, tabId, machines, bootstrap.machines, paletteOpen, toggleSidebar, openTerminal, closePane, focusedPane, setFocusedPane]);
+  }, [thread, threads, floating, page, machineId, tabId, machines, bootstrap.machines, paletteOpen, toggleSidebar, openTerminal, closePane, focusedPane, setFocusedPane, shortcuts]);
 
   return <div className={`app-shell ${page === 'thread' || page === 'terminal' ? 'is-thread' : ''}`}>
     <Sidebar projects={projects} threads={threads} archived={archived} floating={floating} detached={detached} ownedTabs={ownedTabs} machines={machines} currentId={thread?.id} currentMachineId={page === 'terminal' ? machineId : thread?.machineId} currentTab={page === 'terminal' && machineId && tabId ? { machineId, tabId } : undefined} mode={mode} onModeChange={changeMode} collapsed={collapsed}
