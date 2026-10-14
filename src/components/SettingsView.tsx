@@ -4,17 +4,9 @@ import { ThemeControl } from './ThemeControl';
 import { RemoteAccess } from './RemoteAccess';
 import { UpdateSetting } from './UpdateSetting';
 import { ComposerCombobox, type ComposerOption } from './ComposerCombobox';
+import { ShortcutChips } from './ShortcutChips';
 import { newSessionBehaviorLabels, readNewSessionBehavior, writeNewSessionBehavior, type NewSessionBehavior } from '../client/new-session-behavior';
-import { defaultShortcuts, FALLBACK_PREFIX, formatShortcut, getEffectivePrefix, herdrActionLabel, isReservedShortcut, keyCombo, keymapWithPrefix, loadHerdrKeymap, loadShortcuts, pruneOfferedOverrides, resetShortcuts, saveShortcut, setPrefixOverride, shortcutLabels, shortcutSequence, type HerdrKeymap, type ShortcutAction } from './shortcuts';
-
-function ShortcutChips({ combo }: { combo: string }) {
-  return <span className="kbd-chips" aria-hidden="true">
-    {shortcutSequence(combo).map((chord, index) => <span key={index} style={{ display: 'contents' }}>
-      {index > 0 && <span className="composer-select-keys-sep">›</span>}
-      {chord.map((key, keyIndex) => <kbd key={keyIndex}>{key}</kbd>)}
-    </span>)}
-  </span>;
-}
+import { defaultShortcuts, FALLBACK_PREFIX, formatShortcut, getEffectivePrefix, herdrActionLabel, isReservedShortcut, keyCombo, keymapWithPrefix, loadHerdrKeymap, loadShortcuts, pruneOfferedOverrides, resetShortcuts, saveShortcut, setPrefixOverride, shortcutLabels, type HerdrKeymap, type ShortcutAction } from './shortcuts';
 
 export function SettingsView({ onOpenSidebar }: {
   onOpenSidebar: () => void;

@@ -12,6 +12,13 @@
 .palette-results button kbd { min-width: 34px; margin-left: 6px; padding: 3px 5px; border: 1px solid var(--line-strong); border-radius: 4px; color: var(--ink-soft); font: 10px var(--font-mono); text-align: center; white-space: nowrap; }
 .palette-results p { padding: 4px 10px; color: var(--ink-muted); }
 .palette-help { display: flex; gap: 14px; padding: 9px 14px; border-top: 1px solid var(--line); color: var(--ink-soft); font: 10px var(--font-mono); }
+.prefix-overlay { position: fixed; z-index: 25; inset: auto 0 0 0; display: flex; justify-content: center; padding: 0 16px 20px; pointer-events: none; }
+.prefix-panel { min-width: min(320px, calc(100vw - 32px)); max-height: 44vh; overflow-y: auto; border: 1px solid var(--card-edge); border-radius: 10px; background: var(--surface); box-shadow: inset 0 1px 2px rgb(255 255 255 / 12%), 0 16px 60px rgb(0 0 0 / 22%); padding: 10px 12px; }
+.prefix-title { display: flex; align-items: center; gap: 8px; padding: 2px 4px 8px; color: var(--ink-soft); font-size: 12px; }
+.prefix-rows { display: grid; gap: 2px; }
+.prefix-row { display: flex; align-items: center; gap: 10px; padding: 3px 4px; color: var(--ink); font-size: 13px; }
+.prefix-row .kbd-chips { flex: none; }
+.prefix-hint { padding: 8px 4px 2px; color: var(--ink-muted); font-size: 11px; }
 .dialog-backdrop { position: fixed; z-index: 40; inset: 0; background: rgb(0 0 0 / 43%); }
 .dialog { position: fixed; z-index: 41; top: 50%; left: 50%; width: min(400px, calc(100vw - 32px)); padding: 18px; transform: translate(-50%, -50%); border: 1px solid var(--card-edge); border-radius: 10px; background: var(--surface); color: var(--ink); box-shadow: inset 0 1px 2px rgb(255 255 255 / 12%), 0 16px 60px rgb(0 0 0 / 22%); outline: 0; }
 .dialog-message { margin: 0 0 16px; font-size: 15px; line-height: 1.5; }

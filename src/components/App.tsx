@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Command, PanelLeft } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
+import { PrefixOverlay } from './PrefixOverlay';
 import { PerfOverlay } from './PerfOverlay';
 import { PairingPrompt } from './PairingPrompt';
 import { CrashReport } from './CrashReport';
@@ -18,7 +19,7 @@ import { useStore } from 'zustand';
 import { RuntimeProvider, useRuntime, useRuntimeSelector } from '../client/provider';
 import type { Bootstrap } from '../shared/runtime';
 import type { Pane } from '../lib/models';
-import { appShortcutAction, armLeaderPrefix, paletteToggle, sequenceAction, sequenceStarters, takeLeaderPrefix, requestThreadRename } from '../client/keyboard';
+import { appShortcutAction, armLeaderPrefix, paletteToggle, sequenceAction, sequenceStarters, subscribeLeaderPrefix, takeLeaderPrefix, requestThreadRename } from '../client/keyboard';
 import { perfAvailable, startPerf } from '../client/perf';
 import { closeThreadPane, openThreadTerminal } from '../client/thread-actions';
 import { canClosePane, paneToFocusAfterClosing } from '../lib/pane-strip';
@@ -64,11 +65,13 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcuts, setShortcuts] = useState(getShortcuts);
+  const [armedPrefix, setArmedPrefix] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
     void loadShortcuts().then((next) => { if (live) setShortcuts(next); });
     return () => { live = false; };
   }, []);
+  useEffect(() => subscribeLeaderPrefix(setArmedPrefix), []);
   const [pendingTerminalStartup, setPendingTerminalStartup] = useState<TerminalStartupPreset>();
   const [terminalLookupTimedOut, setTerminalLookupTimedOut] = useState(false);
   useEffect(() => {
@@ -292,5 +295,6 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
     <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projects={projects} threads={threads} floating={floating} machines={machines} thread={thread} focusedPane={focusedPane}
       mode={mode} onModeChange={changeMode} onToggleSidebar={toggleSidebar} onFocusPane={setFocusedPane} onTerminalAction={(action) => { const pane = thread?.panes.find((pane) => pane.id === focusedPane); if (thread && pane?.terminalId) terminals.command(thread.machineId, thread.id, pane.terminalId, action); }}
       onOpenTerminal={openTerminal} onClosePane={() => void closePane()} />
+    {armedPrefix && !paletteOpen && <PrefixOverlay prefix={armedPrefix} shortcuts={{ ...shortcuts, ...getShortcuts() }} />}
   </div>;
 }

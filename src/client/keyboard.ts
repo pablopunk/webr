@@ -2,21 +2,35 @@ import { isSequence, keyCombo, sequenceParts, type ShortcutAction } from '../com
 
 // Armed leader-prefix state, shared between the app handler (which arms it)
 // and terminal panes (which must see it to pass a doubled prefix through).
+// Listeners drive the which-key overlay.
 let armedLeader: string | null = null;
 let armedTimer: ReturnType<typeof setTimeout> | undefined;
+type LeaderListener = (armed: string | null) => void;
+const leaderListeners = new Set<LeaderListener>();
+
+const setArmedLeader = (value: string | null) => {
+  if (armedLeader === value) return;
+  armedLeader = value;
+  for (const listener of [...leaderListeners]) listener(value);
+};
+
+export function subscribeLeaderPrefix(listener: LeaderListener): () => void {
+  leaderListeners.add(listener);
+  return () => { leaderListeners.delete(listener); };
+}
 
 export function armLeaderPrefix(combo: string, timeoutMs = 1500): void {
-  armedLeader = combo;
+  setArmedLeader(combo);
   if (armedTimer) clearTimeout(armedTimer);
-  armedTimer = setTimeout(() => { armedLeader = null; }, timeoutMs);
+  armedTimer = setTimeout(() => setArmedLeader(null), timeoutMs);
 }
 
 // Take a pending prefix, clearing it. Pure modifier presses must callers
 // check keyCombo first: they must never consume the armed state.
 export function takeLeaderPrefix(): string | null {
   const first = armedLeader;
-  armedLeader = null;
   if (armedTimer) { clearTimeout(armedTimer); armedTimer = undefined; }
+  setArmedLeader(null);
   return first;
 }
 
