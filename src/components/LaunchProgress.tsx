@@ -1,6 +1,6 @@
 import { CircleAlert, CircleCheck, Circle, LoaderCircle } from 'lucide-react';
 import type { Thread } from '../lib/models';
-import { launchFailed, launchStepIndex, launchSteps } from '../lib/launch';
+import { launchFailed, launchFailureMessage, launchStepIndex, launchStepLabel, launchSteps } from '../lib/launch';
 
 export function LaunchProgress({ thread }: { thread: Thread }) {
   const failed = launchFailed(thread);
@@ -12,11 +12,11 @@ export function LaunchProgress({ thread }: { thread: Thread }) {
       {launchSteps.map((step, index) => {
         const state = index < current ? 'done' : index === current ? (failed ? 'failed' : 'active') : 'waiting';
         const Icon = state === 'done' ? CircleCheck : state === 'failed' ? CircleAlert : state === 'active' ? LoaderCircle : Circle;
-        return <li key={step.id} className={`launch-step is-${state}`} aria-current={state === 'active' ? 'step' : undefined}><Icon size={16} strokeWidth={1.8} aria-hidden="true" />{step.label}</li>;
+        return <li key={step.id} className={`launch-step is-${state}`} aria-current={state === 'active' ? 'step' : undefined}><Icon size={16} strokeWidth={1.8} aria-hidden="true" />{launchStepLabel(step.id, thread.worktree)}</li>;
       })}
     </ol>
     {failed && <div className="launch-failure" role="alert">
-      <p>Herdr stopped while {launchSteps[current].label.toLowerCase()}. The worktree or agent may already exist. Webr will not automatically resend an initial prompt whose delivery is uncertain; check the session in Herdr before starting another thread.</p>
+      <p>Launch stopped while {launchStepLabel(launchSteps[current].id, thread.worktree).toLowerCase()}. {launchFailureMessage(thread.operation?.step ?? 'validate', thread.worktree)}</p>
       <a className="launch-retry" href={`/new?project=${encodeURIComponent(thread.projectId)}`}>Start a new thread</a>
     </div>}
   </main>;

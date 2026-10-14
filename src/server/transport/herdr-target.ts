@@ -180,8 +180,11 @@ export class HerdrTarget implements TargetAdapter {
     if (!pane) throw new Error('created_pane_changed');
     const worktree = snapshot.workspaces.find((workspace) => workspace.workspace_id === created.workspaceId)?.worktree;
     const observedCwd = pane.foreground_cwd ?? pane.cwd ?? undefined;
-    const expectedCwd = worktree?.checkout_path ?? created.expectedCwd ?? observedCwd;
-    if (expectedCwd && observedCwd && expectedCwd !== observedCwd) throw new Error('launch_worktree_mismatch');
+    // A tab can be created inside an existing worktree workspace while explicitly
+    // targeting another checkout. Only a launch that requested a new worktree
+    // should use the workspace's checkout path as its expected cwd.
+    const expectedCwd = input.worktree ? worktree?.checkout_path ?? created.expectedCwd ?? observedCwd : created.expectedCwd ?? observedCwd;
+    if (expectedCwd && observedCwd && expectedCwd !== observedCwd) throw new Error(input.worktree ? 'launch_worktree_mismatch' : 'launch_location_mismatch');
     return { ...created, ...(expectedCwd ? { expectedCwd } : {}), ...(observedCwd ? { observedCwd } : {}),
       ...(worktree ? { expectedRepository: worktree.repo_key, expectedCheckout: worktree.checkout_path } : {}) };
   }

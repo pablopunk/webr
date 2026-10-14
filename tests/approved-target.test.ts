@@ -102,3 +102,12 @@ it('captures native cwd and worktree identity before agent startup', async () =>
   const input = { ...launch, machineId: target.id, projectId: '0123-fixture:project' };
   expect(await target.create(input, randomUUID())).toMatchObject({ expectedCwd: '/fixture/checkout', expectedRepository: 'fixture', expectedCheckout: '/fixture/checkout' });
 });
+it('keeps an existing worktree workspace checkout from overriding a plain-tab launch location', async () => {
+  const { target, state, calls } = await setup(); await target.snapshot();
+  state.workspaces[0].worktree!.checkout_path = '/fixture/existing-worktree';
+  state.workspaces[0].worktree!.is_linked_worktree = true;
+  const input = { ...launch, machineId: target.id, projectId: '0123-fixture:project', worktree: false };
+  const created = await target.create(input, randomUUID());
+  expect(created).toMatchObject({ expectedCwd: '/fixture', observedCwd: '/fixture', expectedCheckout: '/fixture/existing-worktree' });
+  expect(calls.some((call) => call.method === 'tab.create')).toBe(true);
+});

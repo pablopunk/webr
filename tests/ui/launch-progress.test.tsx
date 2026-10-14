@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { isListedThread } from '../../src/lib/launch';
+import { isListedThread, launchFailureMessage, launchStepLabel } from '../../src/lib/launch';
 import type { Thread } from '../../src/lib/models';
 
 const thread = (overrides: Partial<Thread> = {}): Thread => ({ id: 't1', avatarIndex: 0, projectId: 'local:p', machineId: 'local', title: 'Fix the bug', prompt: 'Fix the bug in the parser', agent: 'claude', model: 'Default', status: 'unknown', updatedAt: new Date().toISOString(), branch: '', worktree: true, session: 'default', tabId: '', panes: [], bindingState: 'pending', operation: { id: 'o1', state: 'running', step: 'checkout' }, ...overrides });
@@ -12,4 +12,13 @@ it('keeps persisted agent intent visible after failures and disconnection while 
   expect(isListedThread(thread({ operation: undefined, bindingState: 'detached' }))).toBe(true);
   expect(isListedThread(thread({ agent: '', operation: undefined, bindingState: 'attached' }))).toBe(false);
   expect(isListedThread(thread({ operation: undefined, bindingState: 'attached', panes: [agentPane] }))).toBe(true);
+});
+
+it('describes the actual launch resource and whether prompt delivery is uncertain', () => {
+  expect(launchStepLabel('checkout', false)).toBe('Creating the tab');
+  expect(launchStepLabel('checkout', true)).toBe('Creating the worktree');
+  expect(launchStepLabel('checkout_complete', false)).toBe('Starting the agent');
+  expect(launchFailureMessage('checkout', false)).toContain('The tab may already exist');
+  expect(launchFailureMessage('checkout', false)).toContain('your prompt was not sent');
+  expect(launchFailureMessage('prompt', true)).toContain('Prompt delivery is uncertain');
 });

@@ -51,7 +51,7 @@ export class LaunchJournal {
         if (capture.providerSession && thread.providerSession && !sameSession(capture.providerSession, thread.providerSession)) throw new Error('agent_session_mismatch');
         // Reconciliation may already have captured a later provider report.
         // Missing startup reports must never overwrite that durable identity.
-        if (thread.expectedCwd && capture.observedCwd && thread.expectedCwd !== capture.observedCwd) throw new Error('launch_worktree_mismatch');
+        if (thread.expectedCwd && capture.observedCwd && thread.expectedCwd !== capture.observedCwd) throw new Error(input.worktree ? 'launch_worktree_mismatch' : 'launch_location_mismatch');
         if (thread.expectedRepository && capture.expectedRepository && thread.expectedRepository !== capture.expectedRepository || thread.expectedCheckout && capture.expectedCheckout && thread.expectedCheckout !== capture.expectedCheckout) throw new Error('launch_worktree_mismatch');
         thread = { ...thread, ...capture, expectedCwd: thread.expectedCwd ?? capture.expectedCwd,
           observedCwd: capture.observedCwd ?? thread.observedCwd, expectedRepository: thread.expectedRepository ?? capture.expectedRepository, expectedCheckout: thread.expectedCheckout ?? capture.expectedCheckout };
