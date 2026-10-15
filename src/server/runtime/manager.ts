@@ -158,8 +158,6 @@ export class RuntimeManager extends EventEmitter {
       const identity = this.targetIdentity(supervisor);
       this.requireCurrentProjection(identity);
       if (!identity.target.writable) throw new Error('workspace_creation_unavailable');
-      await supervisor.readFresh();
-      this.requireCurrentProjection(identity);
       const created = await createWorkspaceInHerdr(this.database, identity.target, key, path, label);
       this.requireCurrentProjection(identity);
       supervisor.invalidate();
@@ -173,8 +171,6 @@ export class RuntimeManager extends EventEmitter {
       const identity = this.targetIdentity(supervisor);
       this.requireCurrentProjection(identity);
       if (!identity.target.writable) throw new Error('workspace_creation_unavailable');
-      await supervisor.readFresh();
-      this.requireCurrentProjection(identity);
       const created = await createWorkspaceInHerdr(this.database, identity.target, key, path, 'Terminal');
       this.requireCurrentProjection(identity);
       this.registerPendingTerminal(supervisor, created);
