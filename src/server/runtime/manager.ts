@@ -196,10 +196,11 @@ export class RuntimeManager extends EventEmitter {
       this.requireCurrentProjection(identity);
       if (!identity.target.writable || !identity.target.createWorkspace) throw new Error('workspace_creation_unavailable');
       if (!operation.input) throw new Error('create_input_unavailable');
-      const input = operation.kind === 'workspace' ? workspaceCreateInput.parse(operation.input) : terminalCreateInput.parse(operation.input);
+      const workspaceInput = operation.kind === 'workspace' ? workspaceCreateInput.parse(operation.input) : undefined;
+      const input = workspaceInput ?? terminalCreateInput.parse(operation.input);
       this.database.updateCreateOperation(operationId, 'running', 'create', {});
       effectStarted = true;
-      const label = 'label' in input ? input.label : 'Terminal';
+      const label = workspaceInput?.label ?? 'Terminal';
       const created = createOperationResult.parse(await identity.target.createWorkspace(input.path, label, operation.nativeRequestId));
       if (!this.hasCurrentProjection(identity)) throw new Error('create_target_changed');
       if (operation.kind === 'terminal') this.registerPendingTerminal(supervisor, created);
