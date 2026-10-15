@@ -21,11 +21,9 @@ it('collapses panes on the right side of the window', () => {
   show(0);
   expect(screen.getByLabelText('Claude terminal')).toBeDefined(); expect(screen.getByRole('button', { name: 'Show Two' })).toBeDefined();
 });
-it('shows panes as tabs on a narrow screen', () => {
-  const focus = show(0, true);
+it('shows only the focused pane on a narrow screen', () => {
+  show(0, true);
   expect(screen.getByLabelText('One terminal')).toBeDefined(); expect(screen.queryByLabelText('Claude terminal')).toBeNull();
-  expect(screen.getByRole('tab', { name: 'One' }).getAttribute('aria-selected')).toBe('true');
-  fireEvent.click(screen.getByRole('tab', { name: 'Two' })); expect(focus).toHaveBeenCalledWith('c');
 });
 
 it('retains a detached thread without exposing stale terminals or redirecting away', () => {

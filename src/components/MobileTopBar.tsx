@@ -2,7 +2,7 @@ import { Command, PanelLeft } from 'lucide-react';
 import type { Pane } from '../lib/models';
 import { PaneIcon } from './PaneStrip';
 
-type Props = { panes: Pane[]; focusedPane: string; onFocusPane: (paneId: string) => void; onOpenSidebar: () => void; onOpenPalette: () => void; keepTerminalFocus: (event: React.SyntheticEvent) => void };
+type Props = { panes: Pane[]; focusedPane: string; onFocusPane: (paneId: string) => void; onOpenSidebar: () => void; onOpenPalette: () => void; keepTerminalFocus: (event: React.PointerEvent) => void };
 
 const selectedPaneId = (panes: Pane[], focusedPane: string) => (panes.find((pane) => pane.id === focusedPane) ?? panes[0])?.id;
 
