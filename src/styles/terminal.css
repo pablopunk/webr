@@ -63,3 +63,4 @@
 .terminal-url-actions { position: absolute; z-index: 17; display: flex; gap: 2px; padding: 3px; transform: translate(-50%, 10px); border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface-raised); box-shadow: var(--card-shadow); }
 .terminal-url-actions button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-soft); font-size: 13px; cursor: pointer; }
 .terminal-url-actions button:hover { background: var(--surface-hover, var(--line)); color: var(--ink); }
+.mobile-top-tabs .pane-tab:only-child { flex: 1 1 auto; max-width: none; }
