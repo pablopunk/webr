@@ -15,6 +15,7 @@ vi.mock('../../src/client/terminal-manager', () => ({
 }));
 vi.mock('../../src/components/PairingPrompt', () => ({ PairingPrompt: () => null }));
 vi.mock('../../src/components/UpdateButton', () => ({ UpdateButton: () => null }));
+vi.mock('../../src/components/SidebarMetrics', () => ({ SidebarMetrics: () => null }));
 vi.mock('../../src/components/PerfOverlay', () => ({ PerfOverlay: () => null }));
 vi.mock('../../src/client/perf', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/client/perf')>();
