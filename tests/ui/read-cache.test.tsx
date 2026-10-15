@@ -49,7 +49,7 @@ it('shows a cached worktree immediately while its stale query is still pending',
   vi.stubGlobal('fetch', fetch);
 
   await openWorktreeMenu(queryClient);
-  expect(await screen.findByText('feature')).toBeTruthy();
+  expect(await screen.findByRole('menuitem', { name: /feature/ })).toBeTruthy();
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 
