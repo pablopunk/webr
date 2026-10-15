@@ -9,11 +9,17 @@ import { useMachineCatalog } from '../client/catalog';
 import { navigate } from 'astro:transitions/client';
 import { CreateWorkspace } from './CreateWorkspace';
 import { initialWorktreeChoice, recordWorktreeChoice } from '../client/new-session-behavior';
-import { clearNewThreadDraft, readNewThreadDraft, writeNewThreadDraft } from '../client/new-thread-draft';
+import { clearLaunchDraft, clearNewThreadDraft, readLaunchDraft, readNewThreadDraft, writeLaunchDraft, writeNewThreadDraft, type NewThreadDraft } from '../client/new-thread-draft';
 import { Tooltip } from './Tooltip';
 import { uuid } from '../lib/uuid';
 
 const harnessPreference = (machineId: string, projectId: string) => `webr-last-harness:${machineId}:${projectId}`;
+const removeRecoveryQuery = (id: string) => {
+  const url = new URL(window.location.href);
+  if (url.searchParams.get('recover') !== id) return;
+  url.searchParams.delete('recover');
+  window.history.replaceState(window.history.state, '', url);
+};
 
 export function NewThreadView({ projects, machines, selectedProjectId, onOpenSidebar }: {
   projects: Project[]; machines: Machine[]; selectedProjectId?: string; onOpenSidebar: () => void;
@@ -26,8 +32,12 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [creatingWorkspace, setCreatingWorkspace] = useState(false);
+  const [draftHydrated, setDraftHydrated] = useState(false);
   const projectIdsBeforeCreate = useRef<Set<string> | null>(null);
   const operation = useRef<{ payload: string; key: string } | null>(null);
+  const pendingRecoveryId = useRef<string | undefined>(undefined);
+  const recoveredWorktree = useRef<{ key: string; value: boolean } | null>(null);
+  const recoveredHarness = useRef<{ key: string; value: string } | null>(null);
   const images = usePromptImages({ machineId });
   const baseMachine = machines.find((machine) => machine.id === machineId) ?? { id: '', name: 'No target', connected: false, session: '', projectPaths: {}, harnesses: [] };
   const catalog = useMachineCatalog(machineId, baseMachine.connected, baseMachine.configVersion, baseMachine.session, projectId);
@@ -39,21 +49,53 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   const selectedHarness = machine.harnesses.find((choice) => choice.id === harness);
   const canSubmit = !!(prompt.trim() && !images.uploading && machine.connected && machineProjects.some((project) => project.id === projectId) && selectedHarness?.launchEnabled) && !busy;
   const harnessIds = catalog.data?.harnesses.map((choice) => choice.id).join(',');
-  const draftRestored = useRef(false);
   useEffect(() => {
-    const draft = readNewThreadDraft();
+    const recoveryId = new URLSearchParams(window.location.search).get('recover') ?? '';
+    const recoveryDraft = recoveryId ? readLaunchDraft(recoveryId) : undefined;
+    const draft = recoveryDraft ?? readNewThreadDraft();
     setPrompt(draft.prompt); images.setAttachments(draft.images);
-    draftRestored.current = true;
+    if (recoveryId) {
+      const restoredProjectId = selectedProjectId ?? draft.projectId ?? projectId;
+      if (!selectedProjectId && draft.projectId && projects.some((project) => project.id === draft.projectId)) setProjectId(draft.projectId);
+      const restoredMachine = machines.find((machine) => machine.id === draft.machineId && Object.hasOwn(machine.projectPaths, restoredProjectId));
+      if (restoredMachine) setMachineId(restoredMachine.id);
+      const key = `${draft.machineId ?? ''}:${restoredProjectId}`;
+      if (draft.worktree !== undefined) recoveredWorktree.current = { key, value: draft.worktree };
+      if (draft.harness) recoveredHarness.current = { key, value: draft.harness };
+      pendingRecoveryId.current = recoveryId;
+      if (writeNewThreadDraft({ ...draft, launchId: undefined })) {
+        clearLaunchDraft(recoveryId);
+        pendingRecoveryId.current = undefined;
+        removeRecoveryQuery(recoveryId);
+      }
+    }
+    setDraftHydrated(true);
   }, []);
   useEffect(() => {
-    if (draftRestored.current) writeNewThreadDraft({ prompt, images: images.attachments });
-  }, [prompt, images.attachments]);
-  useEffect(() => { setWorktree(initialWorktreeChoice(machineId, projectId)); }, [machineId, projectId]);
+    if (!draftHydrated) return;
+    const saved = writeNewThreadDraft({ prompt, images: images.attachments, projectId, machineId, harness, worktree });
+    const recoveryId = pendingRecoveryId.current;
+    if (saved && recoveryId) {
+      clearLaunchDraft(recoveryId);
+      pendingRecoveryId.current = undefined;
+      removeRecoveryQuery(recoveryId);
+    }
+  }, [draftHydrated, prompt, images.attachments, projectId, machineId, harness, worktree]);
+  useEffect(() => {
+    const key = `${machineId}:${projectId}`;
+    if (recoveredWorktree.current?.key === key) {
+      setWorktree(recoveredWorktree.current.value);
+      recoveredWorktree.current = null;
+    } else setWorktree(initialWorktreeChoice(machineId, projectId));
+  }, [machineId, projectId]);
   useEffect(() => {
     if (!projectId || !catalog.data) return;
     const choices = catalog.data.harnesses;
+    const key = `${machineId}:${projectId}`;
+    const restored = recoveredHarness.current?.key === key ? recoveredHarness.current.value : undefined;
     const previous = localStorage.getItem(harnessPreference(machineId, projectId));
-    setHarness(choices.find((choice) => choice.id === previous)?.id ?? choices.find((choice) => choice.launchEnabled)?.id ?? choices[0]?.id ?? '');
+    setHarness(choices.find((choice) => choice.id === restored)?.id ?? choices.find((choice) => choice.id === previous)?.id ?? choices.find((choice) => choice.launchEnabled)?.id ?? choices[0]?.id ?? '');
+    if (restored) recoveredHarness.current = null;
   }, [machineId, projectId, harnessIds]);
   useEffect(() => {
     const known = projectIdsBeforeCreate.current;
@@ -83,7 +125,10 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     event.preventDefault();
     if (!canSubmit) return;
     setBusy(true); setError('');
-    const payload = JSON.stringify({ prompt: promptWithImages(prompt, images.attachments), projectId, machineId, agent: harness, model: 'Default', worktree: worktree && canUseWorktree });
+    const launchWorktree = worktree && canUseWorktree;
+    const draft: NewThreadDraft = { prompt, images: images.attachments, projectId, machineId, harness, worktree: launchWorktree };
+    writeNewThreadDraft(draft);
+    const payload = JSON.stringify({ prompt: promptWithImages(prompt, images.attachments), projectId, machineId, agent: harness, model: 'Default', worktree: launchWorktree });
     if (operation.current?.payload !== payload) operation.current = { payload, key: uuid() };
     try {
       const result = await fetch('/api/threads', {
@@ -93,7 +138,8 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
       const response = await result.json();
       if (!result.ok) throw new Error(response.error || 'Could not create thread');
       recordWorktreeChoice(machineId, projectId, worktree);
-      clearNewThreadDraft();
+      if (writeLaunchDraft(response.id, draft)) clearNewThreadDraft();
+      else writeNewThreadDraft({ ...draft, launchId: response.id });
       await navigate(`/threads/${encodeURIComponent(response.id)}`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not create thread');

@@ -17,7 +17,7 @@ export function LaunchProgress({ thread }: { thread: Thread }) {
     </ol>
     {failed && <div className="launch-failure" role="alert">
       <p>Launch stopped while {launchStepLabel(launchSteps[current].id, thread.worktree).toLowerCase()}. {launchFailureMessage(thread.operation?.step ?? 'validate', thread.worktree)}</p>
-      <a className="launch-retry" href={`/new?project=${encodeURIComponent(thread.projectId)}`}>Start a new thread</a>
+      <a className="launch-retry" href={`/new?project=${encodeURIComponent(thread.projectId)}&recover=${encodeURIComponent(thread.id)}`}>Return to your draft</a>
     </div>}
   </main>;
 }

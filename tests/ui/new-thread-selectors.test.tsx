@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NewThreadView } from '../../src/components/NewThreadView';
+import { writeLaunchDraft } from '../../src/client/new-thread-draft';
 
 vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
 vi.mock('../../src/client/catalog', () => ({ useMachineCatalog: (_id: string, _connected: boolean, _version: number, _session: string, projectId: string) => ({
@@ -21,7 +22,7 @@ const projects = [
 const machines = [{ id: 'local', name: 'Local', connected: true, writable: true, session: 'default', projectPaths: { 'local:first': '/first', 'local:second': '/second' }, harnesses: [] }];
 const show = () => render(<NewThreadView projects={projects} machines={machines} onOpenSidebar={() => {}} />);
 
-afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); window.history.replaceState({}, '', '/'); });
 
 it('keeps Add project inside the project menu and opens a cancelable form', async () => {
   show();
@@ -84,4 +85,21 @@ it('keeps harness options and composer free of integration and recovery status',
   await user.click(screen.getByRole('combobox', { name: 'Harness: Claude Code' }));
   expect((await screen.findByRole('option', { name: 'Claude Code' })).textContent).toBe('Claude Code');
   expect(screen.queryByText(/integration (current|missing|not installed|outdated|unavailable)|recovery/i)).toBeNull();
+});
+
+it('restores the submitted prompt, uploaded images, and launch choices after a failed launch', async () => {
+  const prompt = 'Investigate this carefully. '.repeat(100);
+  writeLaunchDraft('launch-1', {
+    prompt, projectId: 'local:first', machineId: 'local', harness: 'codex', worktree: false,
+    images: [{ id: 'image-1', name: 'failure.png', preview: 'data:image/jpeg;base64,AA==', path: '/uploads/failure.png' }],
+  });
+  window.history.replaceState({}, '', '/new?project=local%3Afirst&recover=launch-1');
+  show();
+
+  await waitFor(() => expect((screen.getByRole('textbox', { name: 'Thread prompt' }) as HTMLTextAreaElement).value).toBe(prompt));
+  expect(screen.getByAltText('failure.png')).toBeDefined();
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Harness: Codex' })).toBeDefined());
+  expect((screen.getByRole('checkbox', { name: 'Create a new worktree' }) as HTMLInputElement).checked).toBe(false);
+  expect(new URL(window.location.href).searchParams.has('recover')).toBe(false);
+  expect(localStorage.getItem('webr-launch-draft:launch-1')).toBeNull();
 });

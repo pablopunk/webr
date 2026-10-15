@@ -30,6 +30,7 @@ import { decideFlipNavigation, floatingTabsFromProjections, partitionSidebar, si
 import { carriesFiles } from '../client/image-attach';
 import { trackVisualViewport } from '../client/visual-viewport';
 import { terminalStartupStorageKey, type TerminalStartupPreset } from '../client/terminal-presets';
+import { clearLaunchDraft, clearNewThreadDraftForLaunch } from '../client/new-thread-draft';
 
 type Props = {
   page: 'thread' | 'terminal' | 'new' | 'settings' | 'missing';
@@ -109,6 +110,11 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
   const focusedPane = activePanes.some((pane) => pane.id === storedFocus) ? storedFocus! : activePanes[0]?.id ?? '';
   const setFocusedPane = useCallback((paneId: string) => ui.getState().focus(scope, paneId), [ui, scope]);
   useClearDoneOnVisit(page === 'thread' ? thread : undefined, focusedPane, gatewayConnected && !!machines.find((machine) => machine.id === thread?.machineId)?.writable);
+  useEffect(() => {
+    if (page !== 'thread' || thread?.operation?.state !== 'ready') return;
+    clearLaunchDraft(thread.id);
+    clearNewThreadDraftForLaunch(thread.id);
+  }, [page, thread?.id, thread?.operation?.state]);
 
   const shownThreadId = useRef<string | undefined>(undefined);
   useEffect(() => {
