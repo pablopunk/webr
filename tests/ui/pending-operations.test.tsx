@@ -379,7 +379,7 @@ it('recovers a persisted worktree ticket through status-only polling and opens i
     transport: 'accepted', reloadRecoveryUnavailable: false,
   };
   sessionStorage.setItem(`${recoveryStoragePrefix(bootstrap.recoveryScope)}resource-ticket:${key}`, JSON.stringify(stored));
-  const fetcher = vi.fn(async () => worktreeResponse('ready'));
+  const fetcher = vi.fn(async (_request: RequestInfo | URL, _init?: RequestInit) => worktreeResponse('ready'));
   vi.stubGlobal('fetch', fetcher);
   renderRoute(`/new?resourcePending=${key}`);
   const queryKey = ['worktrees', 'pending-ui-scope', 'local', 'local:first'] as const;
@@ -421,7 +421,7 @@ it.each([
 
 it('uses a new idempotency key only after an explicit retry of a failed worktree open', async () => {
   vi.useFakeTimers();
-  const fetcher = vi.fn(async () => worktreeResponse('failed'));
+  const fetcher = vi.fn(async (_request: RequestInfo | URL, _init?: RequestInit) => worktreeResponse('failed'));
   vi.stubGlobal('fetch', fetcher);
   renderRoute('/new');
   act(() => fireEvent.click(screen.getByRole('button', { name: 'Start worktree' })));

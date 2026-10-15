@@ -241,7 +241,7 @@ export class ThreadTickets {
   private replaceResource(key: string, patch: ResourceTicketPatch) {
     const ticket = this.getResource(key);
     if (!ticket) return undefined;
-    const next = { ...ticket, ...patch };
+    const next = resourceTicketSchema.parse({ ...ticket, ...patch });
     this.resourceRecords.set(key, next);
     if (!this.persistResource(next)) {
       next.reloadRecoveryUnavailable = true;
