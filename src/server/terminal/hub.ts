@@ -7,9 +7,14 @@ import { encodeUserInput } from './writer';
 import { perfLog } from '../perf-log';
 
 type TerminalRef = { threadId: string } | { tabId: string };
-type Lease = { id: number; generation: number; terminalId: string; machineId: string; ref: TerminalRef; mode: string; stream?: TerminalStream; outstanding: Map<number, number>; bytes: number; sequence: FrameSequence; baselineReady: boolean; outputSeq: number; started: boolean; baselineSeq?: number; expectedSize?: [number, number]; timer?: ReturnType<typeof setTimeout>; scrollAt?: number; scrollMode?: { value: 'scrollback' | 'app'; checkedAt: number } };
+type Lease = { id: number; generation: number; terminalId: string; machineId: string; ref: TerminalRef; mode: string; stream?: TerminalStream; outstanding: Map<number, number>; bytes: number; sequence: FrameSequence; baselineReady: boolean; outputSeq: number; started: boolean; baselineSeq?: number; expectedSize?: [number, number]; timer?: ReturnType<typeof setTimeout>; scrollAt?: number; scrollMode?: { value: 'scrollback' | 'app'; checkedAt: number }; pendingInput: string[]; pendingBytes: number };
 const MAX_WHEEL_TICKS = 30;
 const SCROLL_MODE_CHECK_MS = 1000;
+// First keystrokes (including monitor startup commands) can legitimately arrive
+// before the baseline is acknowledged, especially over slower links where a
+// layout resize interleaves with the initial baseline. Dropping them leaves an
+// empty terminal, so hold them until the baseline is ready instead.
+const MAX_PENDING_INPUT_BYTES = 16 * 1024;
 type SharedControl = { stream: TerminalStream; sequence: FrameSequence; members: Map<Lease, string>; closed: boolean };
 export class TerminalHub {
   private viewers = new Map<string, { socket: WebSocket; leases: Map<number, Lease>; bytes: number }>();
@@ -32,7 +37,7 @@ export class TerminalHub {
       const target = this.manager.terminalBinding(action.machineId, action.terminalId, ref);
       if (action.mode === 'control' && !target.writable) throw new Error('read_only_target');
       const controllerKey = action.machineId + '\0' + action.terminalId;
-      const lease: Lease = { id: action.streamId, generation: action.generation, machineId: action.machineId, ref, terminalId: action.terminalId, mode: action.mode, outstanding: new Map(), bytes: 0, sequence: new FrameSequence(), baselineReady: false, outputSeq: 0, started: false };
+      const lease: Lease = { id: action.streamId, generation: action.generation, machineId: action.machineId, ref, terminalId: action.terminalId, mode: action.mode, outstanding: new Map(), bytes: 0, sequence: new FrameSequence(), baselineReady: false, outputSeq: 0, started: false, pendingInput: [], pendingBytes: 0 };
       viewer.leases.set(lease.id, lease);
       try {
         lease.stream = action.mode === 'control'
@@ -50,15 +55,25 @@ export class TerminalHub {
       const bytes = lease.outstanding.get(action.seq);
       if (!bytes || lease.outstanding.keys().next().value !== action.seq) throw new Error('invalid_ack');
       lease.outstanding.delete(action.seq); lease.bytes -= bytes; viewer.bytes -= bytes;
-      if (action.seq === lease.baselineSeq) lease.baselineReady = true;
+      if (action.seq === lease.baselineSeq && !lease.baselineReady) {
+        lease.baselineReady = true;
+        for (const text of lease.pendingInput) lease.stream?.send({ type: 'terminal.input', text });
+        lease.pendingInput = []; lease.pendingBytes = 0;
+      }
       clearTimeout(lease.timer); lease.timer = lease.outstanding.size ? setTimeout(() => this.release(owner, lease.id, 'ack_timeout'), 5000) : undefined;
       return;
     }
     const target = this.binding(lease);
     if (lease.mode !== 'control') throw new Error('observer_read_only');
     if (!target.writable) { this.release(owner, lease.id, 'capability_revoked'); throw new Error('read_only_target'); }
-    if (action.type !== 'resize' && !lease.baselineReady) throw new Error('baseline_not_acknowledged');
-    if (action.type === 'input') lease.stream?.send({ type: 'terminal.input', text: encodeUserInput(action.text, action.paste) });
+    if (action.type !== 'resize' && action.type !== 'input' && !lease.baselineReady) throw new Error('baseline_not_acknowledged');
+    if (action.type === 'input') {
+      const text = encodeUserInput(action.text, action.paste);
+      if (!lease.baselineReady) {
+        if (lease.pendingBytes + Buffer.byteLength(text) > MAX_PENDING_INPUT_BYTES) throw new Error('baseline_not_acknowledged');
+        lease.pendingInput.push(text); lease.pendingBytes += Buffer.byteLength(text);
+      } else lease.stream?.send({ type: 'terminal.input', text });
+    }
     if (action.type === 'resize') { lease.baselineReady = false; lease.baselineSeq = undefined; lease.expectedSize = [action.cols, action.rows]; lease.stream?.send({ type: 'terminal.resize', cols: action.cols, rows: action.rows }); }
     if (action.type === 'scroll') lease.scrollAt ??= performance.now();
     if (action.type === 'scroll') this.scroll(lease, target, action);

@@ -45,6 +45,7 @@ it('starts a resource monitor once the terminal is writable', async () => {
   expect(fixture.input).not.toHaveBeenCalled();
   await act(async () => onState('Input control is active.', true));
   const command = `${terminalStartupCommands['resource-monitor']}\r`;
+  expect(command).toBe("sh -c 'if command -v btop >/dev/null 2>&1; then exec btop; elif command -v htop >/dev/null 2>&1; then exec htop; else exec top; fi'\r");
   expect(fixture.input).toHaveBeenCalledWith(command);
   expect(fixture.input.mock.calls.filter(([text]) => text === command)).toHaveLength(1);
   expect(onStartupComplete).toHaveBeenCalledOnce();

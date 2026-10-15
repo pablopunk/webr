@@ -103,10 +103,17 @@ it('writes commands in order without waiting for RPC responses and fails a block
   blocked.send({ type: 'terminal.input', text: 'a' }); await expect.poll(() => fail.mock.calls.length).toBe(1);
   expect(() => blocked.send({ type: 'terminal.input', text: 'b' })).toThrow('writer_closed');
 });
-it('rejects input until baseline ACK and revokes an expired capability lease without another input action', async () => {
+it('queues input until baseline ACK instead of dropping the first keystrokes', async () => {
   const { target, hub, open } = await setup(); hub.action('one', open);
-  expect(() => hub.action('one', { type: 'input', streamId: 1, generation: 1, text: 'early', paste: false })).toThrow('baseline_not_acknowledged');
-  target.streams[0].onFrame(frame()); hub.action('one', { type: 'ack', streamId: 1, generation: 1, seq: 1 }); hub.action('one', { type: 'input', streamId: 1, generation: 1, text: 'valid', paste: false }); expect(target.streams[0].commands).toHaveLength(1);
+  hub.action('one', { type: 'input', streamId: 1, generation: 1, text: 'early', paste: false });
+  expect(target.streams[0].commands).toHaveLength(0);
+  hub.action('one', { type: 'input', streamId: 1, generation: 1, text: 'x'.repeat(8000), paste: false });
+  hub.action('one', { type: 'input', streamId: 1, generation: 1, text: 'y'.repeat(8000), paste: false });
+  expect(() => hub.action('one', { type: 'input', streamId: 1, generation: 1, text: 'z'.repeat(8000), paste: false })).toThrow('baseline_not_acknowledged');
+  target.streams[0].onFrame(frame()); hub.action('one', { type: 'ack', streamId: 1, generation: 1, seq: 1 });
+  expect(target.streams[0].commands).toEqual([{ type: 'terminal.input', text: 'early' }, { type: 'terminal.input', text: 'x'.repeat(8000) }, { type: 'terminal.input', text: 'y'.repeat(8000) }]);
+  hub.action('one', { type: 'input', streamId: 1, generation: 1, text: 'valid', paste: false });
+  expect(target.streams[0].commands).toHaveLength(4);
   target.writable = false; await expect.poll(() => target.streams[0].closed).toBe(true); expect(hub.stats().controllers).toBe(0);
 });
 it('survives a child that already closed its stdin when the terminal is closed', async () => {
