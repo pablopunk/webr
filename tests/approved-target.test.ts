@@ -13,7 +13,7 @@ import { openCliStream } from '../src/server/terminal/cli';
 
 const cleanup: (() => void | Promise<unknown>)[] = [];
 afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn(); vi.unstubAllEnvs(); });
-async function setup(automatic = false, empty = false) {
+async function setup(automatic = false, empty = false, missingHarnesses: string[] = ['gemini']) {
   vi.stubEnv('HERDR_ENV', undefined); vi.stubEnv('WEBR_CONNECT', '1');
   const directory = await mkdtemp(join(tmpdir(), 'hc-')); cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const path = join(directory, 'api.sock'); const sockets = new Set<Socket>(); const calls: { method: string; params: Record<string, unknown> }[] = [];
@@ -44,7 +44,7 @@ async function setup(automatic = false, empty = false) {
   });
   await new Promise<void>((resolve) => server.listen(path, resolve)); cleanup.push(() => new Promise<void>((resolve) => { for (const socket of sockets) socket.destroy(); server.close(() => resolve()); }));
   const profile: TargetProfile = { id: '0123-fixture', name: 'Owned fake', enabled: true, transport: 'local', session: 'fixture', socket: path, executable: '/fixture/herdr', automatic, locations: automatic ? [] : [{ projectId: 'project', path: '/fixture', workspaceId: 'w1' }] };
-  const process = vi.fn(async (_command: string, args: string[]) => args[0] === '--version' ? 'herdr 0.9.3\n' : args[0] === 'api' ? JSON.stringify(schemaFixture()) : args[1] === 'command -v "$1"' ? (args[3] === 'gemini' ? '' : '/bin/' + args[3] + '\n') : '');
+  const process = vi.fn(async (_command: string, args: string[]) => args[0] === '--version' ? 'herdr 0.9.3\n' : args[0] === 'api' ? JSON.stringify(schemaFixture()) : args[1] === 'command -v "$1"' ? (missingHarnesses.includes(args[3]) ? '' : '/bin/' + args[3] + '\n') : '');
   const cli = vi.fn((..._args: Parameters<typeof openCliStream>) => ({ send: vi.fn(), close: vi.fn() }));
   const target = new HerdrTarget(profile, { process, cli }); cleanup.push(() => target.close());
   return { target, profile, process, cli, calls, state };
@@ -62,10 +62,14 @@ it('offers control and launch for every Herdr-supported harness once the target 
   expect(target.writable).toBe(true); target.openTerminal('term_fixture', 'control', 80, 24, true, () => {}, () => {}); expect(cli.mock.calls[0][0]).toBe('/fixture/herdr'); expect(cli.mock.calls[0][1]).toContain('control'); expect(cli.mock.calls[0][1]).toContain('--takeover');
   const input = { ...launch, machineId: target.id, projectId: '0123-fixture:project' }; const id = randomUUID(); const created = await target.create(input, id); await target.start(input, created.paneId, id); await target.prompt(created.paneId, input.prompt, created.terminalId, id, input);
   expect(calls.filter((call) => call.method === 'agent.prompt')).toHaveLength(1); expect(calls.filter((call) => call.method === 'tab.create')).toHaveLength(0);
-  expect(target.canLaunch({ ...input, agent: 'codex' })).toBe(true); expect(target.canLaunch({ ...input, model: 'custom' })).toBe(true); expect(target.canLaunch({ ...input, agent: 'pi' as 'claude' })).toBe(true); expect(target.canLaunch({ ...input, agent: 'nope' as 'claude' })).toBe(false);
-  const harnesses = (await target.catalog(input.projectId)).harnesses; expect(harnesses.find((choice) => choice.id === 'claude')).toMatchObject({ launchEnabled: true, customModels: true }); expect(harnesses.find((choice) => choice.id === 'pi')?.launchEnabled).toBe(true); expect(harnesses.find((choice) => choice.id === 'gemini')).toBeUndefined();
+  expect(target.canLaunch({ ...input, agent: 'codex' })).toBe(true); expect(target.canLaunch({ ...input, model: 'custom' })).toBe(true); expect(target.canLaunch({ ...input, agent: 'pi' as 'claude' })).toBe(true); expect(target.canLaunch({ ...input, agent: 'fx' as 'claude' })).toBe(true); expect(target.canLaunch({ ...input, agent: 'nope' as 'claude' })).toBe(false);
+  const harnesses = (await target.catalog(input.projectId)).harnesses; expect(harnesses.find((choice) => choice.id === 'claude')).toMatchObject({ launchEnabled: true, customModels: true }); expect(harnesses.find((choice) => choice.id === 'pi')?.launchEnabled).toBe(true); expect(harnesses.find((choice) => choice.id === 'gemini')).toBeUndefined(); expect(harnesses.find((choice) => choice.id === 'fx')).toMatchObject({ id: 'fx', name: 'fx', models: ['Default'], customModels: false, launchEnabled: true });
   await expect(target.start({ ...input, model: 'bad;model' }, created.paneId, id)).rejects.toThrow('unsupported_launch_adapter');
   target.close(); expect(target.writable).toBe(false); await expect(target.create(input, randomUUID())).rejects.toThrow('launch_unavailable');
+});
+it('omits fx from the harness catalog when its CLI is not installed', async () => {
+  const { target } = await setup(false, false, ['gemini', 'fx']);
+  expect((await target.catalog('0123-fixture:project')).harnesses.find((choice) => choice.id === 'fx')).toBeUndefined();
 });
 it('accepts native opaque profile IDs and rejects unsupported bundled fields before becoming compatible', async () => {
   const { profile } = await setup(); expect(profileSchema.parse(profile).id).toBe('0123-fixture');

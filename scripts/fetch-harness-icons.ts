@@ -6,8 +6,8 @@
  * mirrors). Every result is normalized onto a 256px rounded tile so heterogeneous sources
  * render as one set, and the mark is only baked — never redrawn.
  *
- * Run `mise exec -- pnpm harness-icons` when adding a harness or refreshing marks.
- * Generated PNGs are committed; this script is not part of the build.
+ * Run `mise exec -- pnpm harness-icons` to refresh all marks, or add harness IDs to refresh only
+ * those icons. Generated PNGs are committed; this script is not part of the build.
  */
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -47,6 +47,7 @@ const sources: Record<string, HarnessSource> = {
   letta: { domain: 'www.letta.com', assets: ['https://www.letta.com/assets/images/webclip.png'] },
   maki: { domain: 'maki.sh' },
   muse: { domain: 'musecodes.io', note: 'Meta Muse Code' },
+  fx: { domain: 'fx.sh', assets: ['https://fx.sh/icon.svg'], note: 'fx coding agent' },
 };
 
 /** Largest PNG payload in an ICO container. BMP payloads are left to the next candidate. */
@@ -125,16 +126,20 @@ async function resolveHarness(id: string, source: HarnessSource) {
 
 const missing = herdrAgentKinds.filter((id) => !sources[id]);
 const stale = Object.keys(sources).filter((id) => !herdrAgentKinds.includes(id));
-if (missing.length || stale.length) {
+const requested = process.argv.slice(2);
+const selected = requested.length ? requested : herdrAgentKinds;
+const unknown = selected.filter((id) => !herdrAgentKinds.includes(id));
+if (missing.length || stale.length || unknown.length) {
   if (missing.length) console.error(`Missing manifest entries: ${missing.join(', ')}`);
   if (stale.length) console.error(`Stale manifest entries: ${stale.join(', ')}`);
+  if (unknown.length) console.error(`Unknown harnesses: ${unknown.join(', ')}`);
   process.exit(1);
 }
 
-await rm(out, { recursive: true, force: true });
+if (!requested.length) await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 
-const results = await Promise.all(herdrAgentKinds.map(async (id) => ({ id, ...(await resolveHarness(id, sources[id]) ?? {}) })));
+const results = await Promise.all(selected.map(async (id) => ({ id, ...(await resolveHarness(id, sources[id]) ?? {}) })));
 for (const result of results) {
   if (!result.baked) {
     console.error(`${result.id.padEnd(11)} FAILED (${sources[result.id].domain})`);
