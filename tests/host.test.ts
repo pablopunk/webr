@@ -346,3 +346,19 @@ it('exposes the resolved Herdr keymap', async () => {
   expect(body.bindings.close_pane.length).toBeGreaterThan(0);
   expect(body.bindings.split_vertical.length).toBeGreaterThan(0);
 });
+it('returns versioned metadata acknowledgements while keeping legacy response aliases', async () => {
+  const { app, headers, manager, database } = await setup();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const threadId = manager.bootstrap().threads[0].id;
+  const rename = await app.inject({ method: 'POST', url: `/api/threads/${threadId}/rename`, headers, payload: { machineId: 'fixture', title: '  New title  ' } });
+  expect(rename.statusCode).toBe(200);
+  expect(rename.json()).toEqual({ entityId: threadId, metadataVersion: 1, metadata: { titleOverride: 'New title', archivedAt: null }, title: 'New title' });
+  const clear = await app.inject({ method: 'POST', url: `/api/threads/${threadId}/rename`, headers, payload: { machineId: 'fixture', title: null } });
+  expect(clear.json()).toMatchObject({ entityId: threadId, metadataVersion: 2, metadata: { titleOverride: null, archivedAt: null }, title: 'Fixture tab' });
+  expect(database.threadRows('fixture')[0].metadata.titleOverride).toBeUndefined();
+
+  const archived = await app.inject({ method: 'POST', url: `/api/threads/${threadId}/archive`, headers, payload: { machineId: 'fixture', archived: true } });
+  expect(archived.json()).toMatchObject({ entityId: threadId, metadataVersion: 3, metadata: { titleOverride: null }, archived: true });
+  const project = await app.inject({ method: 'POST', url: '/api/projects/rename', headers, payload: { machineId: 'fixture', logicalId: 'project', name: 'Friendly project' } });
+  expect(project.json()).toEqual({ machineId: 'fixture', entityId: 'project', metadataVersion: 1, metadata: { name: 'Friendly project' }, name: 'Friendly project' });
+});

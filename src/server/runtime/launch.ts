@@ -44,7 +44,7 @@ export class LaunchJournal {
     const isCurrent = targetIsCurrent ?? ((candidate, captured) => candidate === target && this.matchesIdentity(candidate, captured));
     this.assertTarget(target, identity, isCurrent);
     const thread: Thread = {
-      id: randomUUID(), avatarIndex: this.database.nextAvatarIndex(), projectId: normalized.projectId, machineId: target.id,
+      id: randomUUID(), avatarIndex: this.database.nextAvatarIndex(), metadataVersion: 0, titleSync: { version: 0, state: 'unknown' }, projectId: normalized.projectId, machineId: target.id,
       title: normalized.prompt.split('\n')[0].slice(0, 90), prompt: normalized.prompt, agent: normalized.agent, model: normalized.model,
       status: 'unknown', updatedAt: new Date().toISOString(), branch: '', worktree: normalized.worktree, ownsWorktree: normalized.worktree,
       session: target.session, tabId: '', panes: [], bindingState: 'pending', bindingFingerprint: identity.fingerprint,

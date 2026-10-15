@@ -152,3 +152,47 @@ it('acks the done latch on visit without reordering the sidebar', async () => {
     expect(manager.bootstrap().threads[0].doneAt).not.toBe(doneAt);
   } finally { await manager.close(); database.close(); }
 });
+it('versions thread metadata only on editable changes and preserves it across reconciliation saves', () => {
+  const database = new MetadataDatabase(':memory:'); const target = new FakeTarget();
+  try {
+    const initial = reconcile(database, target, target.state).threads[0];
+    expect(initial.metadataVersion).toBe(0); expect(initial.titleOverride).toBeUndefined();
+    const renamed = database.updateThreadMetadata(target.id, initial.id, { titleOverride: '  Webr title  ', titleSyncState: 'pending' })!;
+    expect(renamed.metadata).toMatchObject({ metadataVersion: 1, titleOverride: 'Webr title', titleSync: { version: 1, state: 'pending' } });
+    expect(database.updateThreadMetadata(target.id, initial.id, { titleOverride: 'Webr title', titleSyncState: 'pending' })!.metadata.metadataVersion).toBe(1);
+    const archived = database.updateThreadMetadata(target.id, initial.id, { archived: true })!;
+    const archivedAt = archived.metadata.archivedAt;
+    expect(archived.metadata).toMatchObject({ metadataVersion: 2, titleOverride: 'Webr title', titleSync: { version: 1, state: 'pending' } });
+    expect(database.updateThreadMetadata(target.id, initial.id, { archived: true })!.metadata).toMatchObject({ metadataVersion: 2, archivedAt });
+
+    const row = database.threadRows(target.id)[0];
+    database.saveThread({ ...row.metadata, status: 'working', metadataVersion: 99, titleOverride: 'stale', archivedAt: undefined, titleSync: { version: 99, state: 'failed' } }, row.anchors, row.alias);
+    expect(database.threadRows(target.id)[0].metadata).toMatchObject({ metadataVersion: 2, titleOverride: 'Webr title', archivedAt, titleSync: { version: 1, state: 'pending' }, status: 'working' });
+
+    const cleared = database.updateThreadMetadata(target.id, initial.id, { titleOverride: null, titleSyncState: 'unknown' })!;
+    expect(cleared.metadata).toMatchObject({ metadataVersion: 3, archivedAt, titleSync: { version: 3, state: 'unknown' } });
+    expect(cleared.metadata.titleOverride).toBeUndefined();
+    expect(database.updateThreadTitleSync(target.id, initial.id, 1, 'synced')).toBe(false);
+  } finally { database.close(); }
+});
+it('versions project customizations atomically and keeps legacy names at version zero', () => {
+  const database = new MetadataDatabase(':memory:'); const target = new FakeTarget();
+  try {
+    const project = reconcile(database, target, target.state).projects[0];
+    database.setSetting(`project-name:${target.id}:${project.logicalId!}`, 'Legacy name');
+    expect(database.projectMetadataVersion(target.id, project.logicalId!)).toBe(0);
+    expect(reconcile(database, target, target.state).projects[0]).toMatchObject({ name: 'Legacy name', metadataVersion: 0 });
+    expect(database.updateProjectName(target.id, project.logicalId!, 'Custom name', 'Legacy name')).toEqual({ name: 'Custom name', metadataVersion: 1, changed: true });
+    expect(database.updateProjectName(target.id, project.logicalId!, 'Custom name', project.name)).toEqual({ name: 'Custom name', metadataVersion: 1, changed: false });
+    expect(reconcile(database, target, target.state).projects[0]).toMatchObject({ name: 'Custom name', metadataVersion: 1 });
+  } finally { database.close(); }
+});
+it('converts interrupted pending title sync to unknown without advancing metadata version', () => {
+  const database = new MetadataDatabase(':memory:'); const target = new FakeTarget();
+  try {
+    const thread = reconcile(database, target, target.state).threads[0];
+    database.updateThreadMetadata(target.id, thread.id, { titleOverride: 'Saved override', titleSyncState: 'pending' });
+    database.markInterruptedTitleSyncs();
+    expect(database.threadRows(target.id)[0].metadata).toMatchObject({ metadataVersion: 1, titleOverride: 'Saved override', titleSync: { version: 1, state: 'unknown' } });
+  } finally { database.close(); }
+});

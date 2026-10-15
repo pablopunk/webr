@@ -162,3 +162,84 @@ it('adds a machine found after start and connects it at once', async () => {
   manager.addTarget(new FakeTarget());
   await expect.poll(() => manager.bootstrap().machines.map((machine) => [machine.id, machine.connected])).toEqual([['fixture', true]]);
 });
+it('acknowledges title metadata before native sync and cancels unsent values on clear', async () => {
+  const db = database(); const target = new FakeTarget();
+  let finishFirst!: () => void;
+  const firstEffect = new Promise<void>((resolve) => { finishFirst = resolve; });
+  const calls: string[] = [];
+  Object.assign(target, { renameTab: async (_tabId: string, title: string, _renameWorkspace: boolean) => {
+    calls.push(title);
+    if (title === 'First') await firstEffect;
+    target.state.tabs[0].label = title;
+    target.event?.();
+  } });
+  const manager = new RuntimeManager(db, [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const threadId = manager.bootstrap().threads[0].id;
+  const first = manager.renameThread(target.id, threadId, ' First ');
+  expect(first).toMatchObject({ metadataVersion: 1, title: 'First', metadata: { titleOverride: 'First', archivedAt: null } });
+  expect(manager.bootstrap().threads[0]).toMatchObject({ metadataVersion: 1, title: 'Fixture tab', titleOverride: 'First', titleSync: { version: 1, state: 'pending' } });
+  expect(db.threadRows(target.id)[0].metadata.title).toBe('Fixture tab');
+  await expect.poll(() => calls).toEqual(['First']);
+  expect(db.threadRows(target.id)[0].metadata.titleSync).toEqual({ version: 1, state: 'pending' });
+
+  const second = manager.renameThread(target.id, threadId, 'Second');
+  expect(second.metadataVersion).toBe(2);
+  const cleared = manager.renameThread(target.id, threadId, null);
+  expect(cleared).toMatchObject({ metadataVersion: 3, metadata: { titleOverride: null }, title: 'Fixture tab' });
+  expect(db.threadRows(target.id)[0].metadata.titleSync).toEqual({ version: 3, state: 'unknown' });
+
+  finishFirst();
+  await expect.poll(() => manager.bootstrap().threads[0].title).toBe('First');
+  expect(calls).toEqual(['First']);
+  expect(db.threadRows(target.id)[0].metadata.titleOverride).toBeUndefined();
+  expect(db.threadRows(target.id)[0].metadata.titleSync).toEqual({ version: 3, state: 'unknown' });
+});
+it('keeps native title separate from overrides in disconnected projections without a snapshot', () => {
+  const db = database(); const target = new FakeTarget();
+  const saved = reconcile(db, target, target.state).threads[0];
+  const manager = new RuntimeManager(db, [target]); cleanup.push(() => manager.close());
+  expect(manager.bootstrap().projections[0].connected).toBe(false);
+  expect(manager.bootstrap().threads[0]).toMatchObject({ id: saved.id, title: 'Fixture tab' });
+
+  manager.renameThread(target.id, saved.id, 'Disconnected override');
+  expect(manager.bootstrap().threads[0]).toMatchObject({ title: 'Fixture tab', titleOverride: 'Disconnected override' });
+});
+it('keeps metadata versions and canonical user fields in disconnected projections', async () => {
+  const db = database(); const target = new FakeTarget(); const manager = new RuntimeManager(db, [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const threadId = manager.bootstrap().threads[0].id;
+  const response = manager.renameThread(target.id, threadId, 'Disconnected title');
+  target.lost!('events_lost');
+  await expect.poll(() => manager.bootstrap().projections[0].connected).toBe(false);
+  expect(manager.bootstrap().threads[0]).toMatchObject({ title: 'Fixture tab', metadataVersion: response.metadataVersion, titleOverride: 'Disconnected title', titleSync: { version: response.metadataVersion, state: 'unknown' } });
+});
+it('acknowledges native rename failure, timeout, and interrupted restart state', async () => {
+  const db = database(); const target = new FakeTarget();
+  Object.assign(target, { renameTab: async () => { throw new Error('native_failure'); } });
+  const manager = new RuntimeManager(db, [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const threadId = manager.bootstrap().threads[0].id;
+  const response = manager.renameThread(target.id, threadId, 'Failure is best effort');
+  expect(response.metadataVersion).toBe(1);
+  await expect.poll(() => db.threadRows(target.id)[0].metadata.titleSync.state).toBe('failed');
+
+  const hanging = new FakeTarget(); let attempts = 0;
+  Object.assign(hanging, { renameTab: async () => { ++attempts; return new Promise<void>(() => {}); } });
+  const secondManager = new RuntimeManager(db, [hanging]);
+  let secondClosed = false;
+  const closeSecond = async () => { if (!secondClosed) { secondClosed = true; await secondManager.close(); } };
+  cleanup.push(closeSecond); secondManager.start();
+  await expect.poll(() => secondManager.bootstrap().threads.length).toBe(1);
+  const hangingThread = secondManager.bootstrap().threads[0].id;
+  secondManager.renameThread(hanging.id, hangingThread, 'Timeout');
+  await expect.poll(() => attempts).toBe(1);
+  await new Promise((resolve) => setTimeout(resolve, 5100));
+  expect(db.threadRows(hanging.id)[0].metadata.titleSync).toEqual({ version: 2, state: 'unknown' });
+  await closeSecond();
+
+  const restarted = new RuntimeManager(db, [new FakeTarget()]); cleanup.push(() => restarted.close()); restarted.start();
+  await expect.poll(() => restarted.bootstrap().threads.length).toBe(1);
+  expect(db.threadRows(hanging.id)[0].metadata.titleSync).toEqual({ version: 2, state: 'unknown' });
+  expect(attempts).toBe(1);
+});

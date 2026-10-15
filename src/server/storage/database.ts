@@ -8,10 +8,17 @@ import { randomUUID, createHash } from 'node:crypto';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 import * as schema from './schema';
-import type { Thread } from '../../lib/models';
+import type { Thread, TitleSync } from '../../lib/models';
 import { launchInput, type LaunchInput } from '../../shared/runtime';
 
 const AUDIT_RETENTION = 200;
+const projectNameSettingKey = (machineId: string, logicalId: string) => `project-name:${machineId}:${logicalId}`;
+const projectVersionSettingKey = (machineId: string, logicalId: string) => `project-name-version:${machineId}:${logicalId}`;
+const defaultTitleSync = (version = 0): TitleSync => ({ version, state: 'unknown' });
+const normalizeThreadMetadata = (metadata: Thread): Thread => {
+  const metadataVersion = Number.isSafeInteger(metadata.metadataVersion) && metadata.metadataVersion >= 0 ? metadata.metadataVersion : 0;
+  return { ...metadata, metadataVersion, titleSync: metadata.titleSync ?? defaultTitleSync(metadataVersion) };
+};
 
 export class MetadataDatabase {
   readonly sqlite: NodeSqliteClient;
@@ -29,12 +36,87 @@ export class MetadataDatabase {
   deleteSetting(key: string) { this.db.delete(schema.settings).where(eq(schema.settings.key, key)).run(); }
   setSetting(key: string, value: string) { this.db.insert(schema.settings).values({ key, value }).onConflictDoUpdate({ target: schema.settings.key, set: { value } }).run(); }
   threadRows(machineId?: string, session?: string) {
-    return this.db.select().from(schema.threads).where(machineId ? and(eq(schema.threads.machineId, machineId), session ? eq(schema.threads.session, session) : undefined) : undefined).all();
+    return this.db.select().from(schema.threads).where(machineId ? and(eq(schema.threads.machineId, machineId), session ? eq(schema.threads.session, session) : undefined) : undefined).all()
+      .map((row) => ({ ...row, metadata: normalizeThreadMetadata(row.metadata) }));
   }
   nextAvatarIndex() { return (this.db.select({ last: max(schema.threads.avatar) }).from(schema.threads).get()?.last ?? -1) + 1; }
   saveThread(thread: Thread, anchors: string[], alias: string | null = null) {
-    const row = { id: thread.id, machineId: thread.machineId, session: thread.session, alias, metadata: thread, anchors, avatar: thread.avatarIndex };
+    return this.sqlite.transaction(() => this.writeThread(thread, anchors, alias)).immediate();
+  }
+  private writeThread(thread: Thread, anchors: string[], alias: string | null) {
+    const existing = this.db.select().from(schema.threads).where(eq(schema.threads.id, thread.id)).get();
+    const supplied = normalizeThreadMetadata(thread);
+    const metadata: Thread = existing ? {
+      ...supplied,
+      metadataVersion: existing.metadata.metadataVersion ?? 0,
+      titleOverride: existing.metadata.titleOverride,
+      archivedAt: existing.metadata.archivedAt,
+      titleSync: existing.metadata.titleSync ?? defaultTitleSync(existing.metadata.metadataVersion ?? 0),
+    } : supplied;
+    const row = { id: thread.id, machineId: thread.machineId, session: thread.session, alias, metadata, anchors, avatar: thread.avatarIndex };
     this.db.insert(schema.threads).values(row).onConflictDoUpdate({ target: schema.threads.id, set: row }).run();
+  }
+  updateThreadMetadata(machineId: string, threadId: string, patch: { titleOverride?: string | null; archived?: boolean; titleSyncState?: TitleSync['state'] }, now = new Date().toISOString()) {
+    return this.sqlite.transaction(() => {
+      const row = this.db.select().from(schema.threads).where(and(eq(schema.threads.machineId, machineId), eq(schema.threads.id, threadId))).get();
+      if (!row) return undefined;
+      const current = normalizeThreadMetadata(row.metadata);
+      const next = { ...current };
+      let titleChanged = false;
+      let archivedChanged = false;
+      if (patch.titleOverride !== undefined) {
+        const normalized = patch.titleOverride === null ? undefined : patch.titleOverride.trim();
+        titleChanged = (current.titleOverride ?? undefined) !== normalized;
+        if (titleChanged) next.titleOverride = normalized;
+      }
+      if (patch.archived !== undefined) {
+        const archivedAt = patch.archived ? current.archivedAt ?? now : undefined;
+        archivedChanged = (current.archivedAt ?? undefined) !== archivedAt;
+        if (archivedChanged) next.archivedAt = archivedAt;
+      }
+      const changed = titleChanged || archivedChanged;
+      next.metadataVersion = current.metadataVersion + Number(changed);
+      if (titleChanged) next.titleSync = { version: next.metadataVersion, state: patch.titleSyncState ?? 'unknown' };
+      if (changed) this.db.update(schema.threads).set({ metadata: next }).where(eq(schema.threads.id, threadId)).run();
+      return { metadata: next, changed, titleChanged };
+    }).immediate();
+  }
+  updateThreadTitleSync(machineId: string, threadId: string, version: number, state: TitleSync['state']) {
+    return this.sqlite.transaction(() => {
+      const row = this.db.select().from(schema.threads).where(and(eq(schema.threads.machineId, machineId), eq(schema.threads.id, threadId))).get();
+      if (!row) return false;
+      const metadata = normalizeThreadMetadata(row.metadata);
+      if (metadata.titleSync.version !== version) return false;
+      if (metadata.titleSync.state !== state) this.db.update(schema.threads).set({ metadata: { ...metadata, titleSync: { version, state } } }).where(eq(schema.threads.id, threadId)).run();
+      return true;
+    }).immediate();
+  }
+  markInterruptedTitleSyncs() {
+    this.sqlite.transaction(() => {
+      for (const row of this.db.select().from(schema.threads).all()) {
+        const metadata = normalizeThreadMetadata(row.metadata);
+        if (metadata.titleSync.state === 'pending') this.db.update(schema.threads).set({ metadata: { ...metadata, titleSync: { ...metadata.titleSync, state: 'unknown' } } }).where(eq(schema.threads.id, row.id)).run();
+      }
+    }).immediate();
+  }
+  projectName(machineId: string, logicalId: string) { return this.getSetting(projectNameSettingKey(machineId, logicalId)); }
+  projectMetadataVersion(machineId: string, logicalId: string) {
+    const version = Number(this.getSetting(projectVersionSettingKey(machineId, logicalId)) ?? 0);
+    return Number.isSafeInteger(version) && version >= 0 ? version : 0;
+  }
+  updateProjectName(machineId: string, logicalId: string, name: string, fallbackName?: string) {
+    return this.sqlite.transaction(() => {
+      const nameKey = projectNameSettingKey(machineId, logicalId);
+      const versionKey = projectVersionSettingKey(machineId, logicalId);
+      const savedName = this.getSetting(nameKey);
+      const currentName = savedName ?? fallbackName;
+      const currentVersion = this.projectMetadataVersion(machineId, logicalId);
+      if (currentName === name) return { name: currentName, metadataVersion: currentVersion, changed: false };
+      const metadataVersion = currentVersion + 1;
+      this.setSetting(nameKey, name);
+      this.setSetting(versionKey, String(metadataVersion));
+      return { name, metadataVersion, changed: true };
+    }).immediate();
   }
   deleteThread(id: string) {
     this.db.transaction(() => {
@@ -77,18 +159,17 @@ export class MetadataDatabase {
         state: 'pending', step: 'validate', result: {}, error: null,
       };
       this.db.insert(schema.operations).values(operation).run();
-      this.saveThread(thread, []);
+      this.writeThread(thread, [], null);
       return { operation, created: true };
     }).immediate();
   }
   updateOperation(id: string, state: string, step: string, result: Record<string, unknown>, error?: string) {
     const operation = this.db.select().from(schema.operations).where(eq(schema.operations.id, id)).get();
     this.db.update(schema.operations).set({ state, step, result, error: error ?? null }).where(eq(schema.operations.id, id)).run();
-    const row = operation && this.db.select().from(schema.threads).where(eq(schema.threads.id, operation.threadId)).get();
     // Launch lifecycle transitions are updates too: they anchor the failed-launch listing window
-    // to the moment of failure instead of the thread's creation. Callers may already hold a
-    // transaction open, so these statements must not open their own.
-    if (row) this.db.update(schema.threads).set({ metadata: { ...row.metadata, updatedAt: new Date().toISOString() } }).where(eq(schema.threads.id, row.id)).run();
+    // to the moment of failure instead of the thread's creation. Patch only this field in SQL so
+    // concurrent metadata acknowledgements cannot be overwritten by a stale row read.
+    if (operation) this.db.update(schema.threads).set({ metadata: sql`json_set(${schema.threads.metadata}, '$.updatedAt', ${new Date().toISOString()})` }).where(eq(schema.threads.id, operation.threadId)).run();
   }
   operation(id: string) {
     return this.db.select().from(schema.operations).where(eq(schema.operations.id, id)).get()

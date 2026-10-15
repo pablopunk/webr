@@ -20,6 +20,7 @@ export type Project = {
   machineId?: string;
   localId?: string;
   logicalId?: string;
+  metadataVersion: number;
 };
 
 export type Pane = {
@@ -32,6 +33,7 @@ export type Pane = {
 
 export type ProviderSession = { source: string; agent: string; kind: 'id' | 'path'; value: string };
 export type ThreadRecovery = { state: 'unbound' | 'known' | 'restoring' | 'active' | 'needs_attention'; reason?: string };
+export type TitleSync = { version: number; state: 'pending' | 'synced' | 'failed' | 'unknown' };
 
 export type Thread = {
   id: string;
@@ -50,6 +52,9 @@ export type Thread = {
   session: string;
   tabId: string;
   panes: Pane[];
+  metadataVersion: number;
+  titleOverride?: string;
+  titleSync: TitleSync;
   bindingState?: 'attached' | 'detached' | 'pending';
   operation?: { id: string; state: string; step: string };
   bindingFingerprint?: string;
@@ -69,9 +74,9 @@ export type Thread = {
 };
 
 export const projects: Project[] = [
-  { id: 'herdr', name: 'herdr', path: '~/src/herdr', color: '#9b83df', initial: 'H' },
-  { id: 'maze', name: 'maze-monorepo', path: '~/src/maze/monorepo', color: '#e6a76d', initial: 'M' },
-  { id: 'spotifin', name: 'spotifin', path: '~/src/spotifin', color: '#70b6a1', initial: 'S' },
+  { id: 'herdr', name: 'herdr', path: '~/src/herdr', color: '#9b83df', initial: 'H', metadataVersion: 0 },
+  { id: 'maze', name: 'maze-monorepo', path: '~/src/maze/monorepo', color: '#e6a76d', initial: 'M', metadataVersion: 0 },
+  { id: 'spotifin', name: 'spotifin', path: '~/src/spotifin', color: '#70b6a1', initial: 'S', metadataVersion: 0 },
 ];
 
 const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
@@ -79,7 +84,7 @@ const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).to
 export function exampleThreads(): Thread[] {
   return [
     {
-      id: 'terminal-web-bridge', avatarIndex: 0, projectId: 'herdr', machineId: 'local', title: 'Build the web terminal bridge',
+      id: 'terminal-web-bridge', avatarIndex: 0, metadataVersion: 0, titleSync: { version: 0, state: 'unknown' }, projectId: 'herdr', machineId: 'local', title: 'Build the web terminal bridge',
       prompt: 'Build the web terminal bridge', agent: 'claude', model: 'Default', status: 'working', updatedAt: at(2), branch: 'web-terminal-bridge',
       worktree: true, session: 'default', tabId: 'w1:t2',
       panes: [
@@ -100,7 +105,7 @@ export function exampleThreads(): Thread[] {
       ],
     },
     {
-      id: 'review-socket-api', avatarIndex: 1, projectId: 'herdr', machineId: 'local', title: 'Review socket API changes',
+      id: 'review-socket-api', avatarIndex: 1, metadataVersion: 0, titleSync: { version: 0, state: 'unknown' }, projectId: 'herdr', machineId: 'local', title: 'Review socket API changes',
       prompt: 'Review socket API changes', agent: 'codex', model: 'Default', status: 'blocked', updatedAt: at(14), branch: 'socket-api-review',
       worktree: true, session: 'default', tabId: 'w1:t3',
       panes: [{ id: 'w1:p5', title: 'Codex', kind: 'agent', lines: [
@@ -110,7 +115,7 @@ export function exampleThreads(): Thread[] {
       ] }],
     },
     {
-      id: 'sidebar-interactions', avatarIndex: 2, projectId: 'herdr', machineId: 'local', title: 'Polish sidebar interactions',
+      id: 'sidebar-interactions', avatarIndex: 2, metadataVersion: 0, titleSync: { version: 0, state: 'unknown' }, projectId: 'herdr', machineId: 'local', title: 'Polish sidebar interactions',
       prompt: 'Polish sidebar interactions', agent: 'opencode', model: 'Default', status: 'done', updatedAt: at(82), branch: 'sidebar-polish',
       worktree: true, session: 'default', tabId: 'w1:t4',
       panes: [{ id: 'w1:p6', title: 'OpenCode', kind: 'agent', lines: [
@@ -119,7 +124,7 @@ export function exampleThreads(): Thread[] {
       ] }],
     },
     {
-      id: 'fix-editor-loading', avatarIndex: 3, projectId: 'maze', machineId: 'local', title: 'Fix editor loading state',
+      id: 'fix-editor-loading', avatarIndex: 3, metadataVersion: 0, titleSync: { version: 0, state: 'unknown' }, projectId: 'maze', machineId: 'local', title: 'Fix editor loading state',
       prompt: 'Fix editor loading state', agent: 'claude', model: 'Default', status: 'working', updatedAt: at(7), branch: 'fix-editor-loading',
       worktree: true, session: 'default', tabId: 'w2:t1',
       panes: [{ id: 'w2:p1', title: 'Claude Code', kind: 'agent', lines: [
@@ -129,7 +134,7 @@ export function exampleThreads(): Thread[] {
       ] }],
     },
     {
-      id: 'coverflow-motion', avatarIndex: 4, projectId: 'spotifin', machineId: 'local', title: 'Tune coverflow motion',
+      id: 'coverflow-motion', avatarIndex: 4, metadataVersion: 0, titleSync: { version: 0, state: 'unknown' }, projectId: 'spotifin', machineId: 'local', title: 'Tune coverflow motion',
       prompt: 'Tune coverflow motion', agent: 'pi', model: 'Default', status: 'idle', updatedAt: at(1440), branch: 'coverflow-motion',
       worktree: false, session: 'default', tabId: 'w3:t1',
       panes: [{ id: 'w3:p1', title: 'Pi', kind: 'agent', lines: [

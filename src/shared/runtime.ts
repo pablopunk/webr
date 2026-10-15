@@ -20,6 +20,21 @@ export const launchOperationEnvelope = z.object({
 export type LaunchOperationEnvelope = z.infer<typeof launchOperationEnvelope>;
 export type LaunchAcceptance = LaunchOperationEnvelope & { id: string };
 export type LaunchOperationStatus = LaunchOperationEnvelope & { id: string; threadId: string };
+/** Task 012 boundary: retire an acknowledged overlay only when the base version is at least its acknowledged version. At the exact version, editable fields match this response; later versions may supersede them. Unrelated version advancement without an acknowledgement proves nothing. */
+export type ThreadMetadataAcknowledgement = {
+  entityId: string;
+  metadataVersion: number;
+  metadata: { titleOverride: string | null; archivedAt: string | null };
+};
+export type ThreadRenameResponse = ThreadMetadataAcknowledgement & { title: string };
+export type ThreadArchiveResponse = ThreadMetadataAcknowledgement & { archived: boolean };
+export type ProjectMetadataAcknowledgement = {
+  machineId: string;
+  entityId: string;
+  metadataVersion: number;
+  metadata: { name: string };
+};
+export type ProjectRenameResponse = ProjectMetadataAcknowledgement & { name: string };
 export type Rect = { x: number; y: number; width: number; height: number };
 export type Layout = { workspaceId: string; tabId: string; area: Rect; panes: { paneId: string; rect: Rect }[] };
 export type Projection = {

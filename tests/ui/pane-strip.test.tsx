@@ -7,7 +7,7 @@ import { navigate } from 'astro:transitions/client';
 vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
 vi.mock('../../src/components/TerminalPane', () => ({ TerminalPane: ({ pane }: { pane: { title: string } }) => <section aria-label={`${pane.title} terminal`} /> }));
 afterEach(cleanup);
-const thread: Thread = { id: 't', avatarIndex: 0, projectId: 'p', machineId: 'local', title: 'Thread', prompt: '', agent: 'claude', model: 'Default', status: 'idle', updatedAt: new Date().toISOString(), branch: '', worktree: true, session: 's', tabId: 'w1:t1', bindingState: 'attached',
+const thread: Thread = { id: 't', avatarIndex: 0, metadataVersion: 0, titleSync: { version: 0, state: 'unknown' }, projectId: 'p', machineId: 'local', title: 'Thread', prompt: '', agent: 'claude', model: 'Default', status: 'idle', updatedAt: new Date().toISOString(), branch: '', worktree: true, session: 's', tabId: 'w1:t1', bindingState: 'attached',
   panes: [{ id: 'a', title: 'Claude', kind: 'agent', terminalId: 'ta' }, { id: 'b', title: 'One', kind: 'shell', terminalId: 'tb' }, { id: 'c', title: 'Two', kind: 'shell', terminalId: 'tc' }] };
 const show = (windowStart: number, narrow = false, onFocusPane = vi.fn()) => { render(<ThreadView thread={thread} connected canControl focusedPane="b" onFocusPane={onFocusPane} windowStart={windowStart} narrow={narrow} />); return onFocusPane; };
 

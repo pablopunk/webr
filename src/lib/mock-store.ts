@@ -59,7 +59,7 @@ export function createThread(input: {
       : 'main';
     const threads = await savedThreads();
     const thread: Thread = {
-      id, avatarIndex: exampleThreads().length + threads.length,
+      id, avatarIndex: exampleThreads().length + threads.length, metadataVersion: 0, titleSync: { version: 0, state: 'unknown' },
       projectId: input.projectId, machineId: machine.id, title: name, prompt, agent: input.agent.trim(), model: input.model.trim(),
       status: 'idle', updatedAt: new Date().toISOString(), branch,
       worktree: input.worktree, session: machine.session, tabId: `mock:t${id}`,
