@@ -20,6 +20,7 @@ import { bindTerminalClipboard, type CopyOutcome } from '../client/terminal-clip
 import { useTerminalNotice } from './useTerminalNotice';
 import { useVoiceInput } from './useVoiceInput';
 import { terminalStartupCommands, type TerminalStartupPreset } from '../client/terminal-presets';
+import { isNarrowScreen } from '../client/pane-window';
 
 function themeColors() {
   const styles = getComputedStyle(document.documentElement);
@@ -38,6 +39,8 @@ function themeColors() {
 
 const TERMINAL_FONT_FAMILY = '"JetBrains Mono", "Webr Symbols", ui-monospace, Menlo, monospace';
 const TERMINAL_FONT_SIZE = 15;
+const NARROW_TERMINAL_FONT_SIZE = 12;
+const terminalFontSize = () => isNarrowScreen() ? NARROW_TERMINAL_FONT_SIZE : TERMINAL_FONT_SIZE;
 const loadTerminalFonts = () => typeof document === 'undefined' || !document.fonts ? Promise.resolve() : Promise.all([
   document.fonts.load(`400 ${TERMINAL_FONT_SIZE}px "JetBrains Mono"`), document.fonts.load(`700 ${TERMINAL_FONT_SIZE}px "JetBrains Mono"`), document.fonts.load(`${TERMINAL_FONT_SIZE}px "Webr Symbols"`, '\ue0b0'),
 ]).then(() => undefined, () => undefined);
@@ -83,7 +86,7 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     void Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit'), import('@xterm/addon-web-links'), import('@xterm/addon-webgl'), loadTerminalFonts()]).then(([xterm, { FitAddon }, { WebLinksAddon }, { WebglAddon }]) => {
     if (disposed || !host.current) return;
     const terminal = new xterm.Terminal({
-      fontFamily: TERMINAL_FONT_FAMILY, fontSize: TERMINAL_FONT_SIZE,
+      fontFamily: TERMINAL_FONT_FAMILY, fontSize: terminalFontSize(),
       lineHeight: 1.2, letterSpacing: 0, cursorBlink: true, cursorInactiveStyle: 'block',
       allowTransparency: false, scrollback: 0, theme: themeColors(), disableStdin: true,
       linkHandler: { activate: () => {} },
