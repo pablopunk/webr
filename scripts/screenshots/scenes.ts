@@ -13,7 +13,7 @@ const APP_HEIGHT_WITH_KEYBOARD = cssHeight(PHONE_HEIGHT - STATUS_BAR_HEIGHT - KE
 const DRAFT = 'add a tooltip explaining each theme option';
 const OPEN_SIDEBAR = "button[aria-label='Open sidebar']";
 const GROUP_BY_PROJECT = "button[aria-label='Group by project']";
-const COMMAND_PALETTE = '.mobile-controls button:nth-child(2)';
+const COMMAND_PALETTE = "button[aria-label='Open command palette']";
 const TERMINAL_INPUT = '.terminal-input-capture';
 const SHOW_CODE = 'Show code';
 const DEMO_THREAD = 'cursor-pagination-for-invoices';
@@ -26,6 +26,7 @@ async function phoneShot(context: SceneContext, name: string, cssHeightOfApp: nu
   try {
     browser.openPhone(context.url, cssHeightOfApp);
     steps(browser);
+    if (browser.pageShows('Disconnected')) throw new Error(`the ${name} scene lost its connection`);
     const shot = join(context.scratch, `${name}.png`);
     browser.screenshot(shot);
     return shot;
