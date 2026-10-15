@@ -13,12 +13,13 @@ export type ComposerOption = {
   disabled?: boolean;
 };
 
-export function ComposerCombobox({ label, value, options, onChange, icon, allowCustom = false, action }: {
+export function ComposerCombobox({ label, value, options, onChange, icon, allowCustom = false, action, loading = false, refreshError = false, emptyMessage }: {
   label: string; value: string; options: ComposerOption[]; onChange: (value: string) => void;
   icon?: ReactNode; allowCustom?: boolean; action?: { label: string; icon: ReactNode; onClick: () => void };
+  loading?: boolean; refreshError?: boolean; emptyMessage?: string;
 }) {
   const [query, setQuery] = useState('');
-  const selected = options.find((option) => option.value === value) ?? { value, label: value };
+  const selected = options.find((option) => option.value === value) ?? { value, label: loading ? 'Loading…' : value || label };
   const search = query.trim();
   const items = options.filter((option) => `${option.label} ${option.searchText ?? ''}`.toLowerCase().includes(search.toLowerCase()));
   const custom = allowCustom && search && !options.some((option) => option.value === search)
@@ -39,7 +40,10 @@ export function ComposerCombobox({ label, value, options, onChange, icon, allowC
       <Combobox.Positioner className="composer-select-positioner" sideOffset={6} align="start" collisionPadding={12}>
         <Combobox.Popup className="composer-select-popup" aria-label={`${label} options`}>
           <div className="composer-select-search"><Search size={14} aria-hidden="true" /><Combobox.Input aria-label={`Search ${label.toLowerCase()}`} placeholder={`Search ${label.toLowerCase()}…`} maxLength={allowCustom ? 120 : undefined} /></div>
-          <Combobox.Empty className="composer-select-empty">No matches</Combobox.Empty>
+          {!loading && <Combobox.Empty className="composer-select-empty">{options.length ? 'No matches' : emptyMessage ?? 'No matches'}</Combobox.Empty>}
+          {loading && <div className="composer-read-skeleton" role="status" aria-label={`Loading ${label.toLowerCase()}`}>
+            <span className="read-skeleton-row" /><span className="read-skeleton-row" /><span className="read-skeleton-row" />
+          </div>}
           <Combobox.List className="composer-select-list">
             {(option: ComposerOption) => <Combobox.Item key={option.value} value={option} disabled={option.disabled} className="composer-select-option">
               {option.icon && <span className="composer-select-option-icon" aria-hidden="true">{option.icon}</span>}<span className="composer-select-option-label">{option.label}</span>
@@ -47,6 +51,7 @@ export function ComposerCombobox({ label, value, options, onChange, icon, allowC
               <Combobox.ItemIndicator className="composer-select-check"><Check size={14} /></Combobox.ItemIndicator>
             </Combobox.Item>}
           </Combobox.List>
+          {refreshError && <p className="read-refresh-warning" role="status">Could not refresh {label.toLowerCase()} options. Showing cached results.</p>}
           {action && <button type="button" className="composer-select-action" onClick={action.onClick}>
             {action.icon}<span>{action.label}</span>
           </button>}

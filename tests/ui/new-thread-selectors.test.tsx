@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import { NewThreadView } from '../../src/components/NewThreadView';
 import { writeLaunchDraft } from '../../src/client/new-thread-draft';
@@ -20,7 +21,7 @@ const projects = [
   { id: 'local:second', name: 'Second', path: '/second', color: '#555', initial: 'S', metadataVersion: 0 },
 ];
 const machines = [{ id: 'local', name: 'Local', connected: true, writable: true, session: 'default', projectPaths: { 'local:first': '/first', 'local:second': '/second' }, harnesses: [] }];
-const show = () => render(<NewThreadView projects={projects} machines={machines} onOpenSidebar={() => {}} />);
+const show = () => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><NewThreadView projects={projects} machines={machines} onOpenSidebar={() => {}} /></QueryClientProvider>);
 
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); window.history.replaceState({}, '', '/'); });
 

@@ -82,7 +82,7 @@ export class RuntimeManager extends EventEmitter {
     const supervisor = this.supervisors.get(machineId);
     if (!supervisor?.connected) throw new Error('machine_disconnected');
     if (projectId && !supervisor.target.locations.some((location) => location.projectId === projectId)) throw new Error('unknown_project_location');
-    const key = JSON.stringify([machineId, supervisor.target.fingerprint, supervisor.target.session, supervisor.target.configVersion]);
+    const key = JSON.stringify([machineId, projectId ?? '', supervisor.target.fingerprint, supervisor.target.session, supervisor.target.configVersion]);
     const existing = this.catalogs.get(key);
     if (existing && existing.expires > Date.now()) return existing.value;
     const value = supervisor.target.catalog(projectId);

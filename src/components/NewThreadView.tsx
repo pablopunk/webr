@@ -153,7 +153,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     <h1>What do you want to build today?</h1>
     {machine.connected && machine.writable && (!machineProjects.length || creatingWorkspace) ? <>
       <p>{!machineProjects.length ? 'This Herdr session has no projects yet.' : 'Add a project to this Herdr session.'}</p>
-      <CreateWorkspace machineId={machine.id} onCreated={() => { projectIdsBeforeCreate.current = new Set(machineProjects.map((project) => project.id)); setCreatingWorkspace(false); }} />
+      <CreateWorkspace machineId={machine.id} session={machine.session} configVersion={machine.configVersion} onCreated={() => { projectIdsBeforeCreate.current = new Set(machineProjects.map((project) => project.id)); setCreatingWorkspace(false); }} />
       {!!machineProjects.length && <button className="workspace-cancel" onClick={() => setCreatingWorkspace(false)}>Cancel</button>}
     </> : <>
     <form className={`thread-composer ${images.dragging ? 'is-dropping' : ''}`} onSubmit={submit} aria-busy={busy} {...images.handlers}>
@@ -165,7 +165,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
         onKeyDown={(event) => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
         aria-label="Thread prompt" placeholder="Write a prompt, or drop an image…" />
       <div className="composer-toolbar">
-        <LaunchSelectors machine={machine} machines={machines} projects={machineProjects} projectId={projectId} harness={harness}
+        <LaunchSelectors machine={machine} machines={machines} projects={machineProjects} projectId={projectId} harness={harness} catalog={catalog}
           onMachineChange={changeMachine} onProjectChange={changeProject} onHarnessChange={changeHarness}
           onAddProject={machine.connected && machine.writable ? () => setCreatingWorkspace(true) : undefined} />
         {canUseWorktree && <Tooltip label={worktree ? 'new worktree' : 'current checkout'}><label className="worktree-option"><input type="checkbox" checked={worktree} onChange={(event) => setWorktree(event.target.checked)} aria-label="Create a new worktree" /><GitBranch size={15} aria-hidden="true" /></label></Tooltip>}
@@ -174,7 +174,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
         </div>
       </div>
     </form>
-    {(selectedHarness?.reason || !machines.length || machine.error || catalog.isError) && <p className="composer-preview-note">{selectedHarness?.reason ?? (!machines.length ? 'No target is configured.' : machine.error ? `Machine is not connected: ${machine.error.replaceAll('_', ' ')}.` : 'The machine catalog is not available.')}</p>}
+    {(selectedHarness?.reason || !machines.length || machine.error || catalog.isError && !catalog.data) && <p className="composer-preview-note">{selectedHarness?.reason ?? (!machines.length ? 'No target is configured.' : machine.error ? `Machine is not connected: ${machine.error.replaceAll('_', ' ')}.` : 'The machine catalog is not available.')}</p>}
     {images.error && <p className="form-error" role="alert">{images.error}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     </>}

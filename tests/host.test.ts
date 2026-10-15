@@ -93,6 +93,20 @@ it('runs anonymous start → shared snapshot → binary baseline → ACK → inp
   first.terminal.send(JSON.stringify({ type: 'release', streamId: 1, generation: 1 }));
   await expect.poll(() => target.streams[0].closed).toBe(true);
 });
+it('caches catalog results independently for each project', async () => {
+  const { app, target, headers } = await setup();
+  const requested: (string | undefined)[] = [];
+  const original = target.catalog.bind(target);
+  target.catalog = async (projectId?: string) => {
+    requested.push(projectId);
+    return { ...await original(), isGitRepo: projectId === target.id + ':project' };
+  };
+  const projectCatalog = await app.inject({ url: '/api/catalog/fixture?projectId=fixture%3Aproject', headers });
+  const machineCatalog = await app.inject({ url: '/api/catalog/fixture', headers });
+  expect(projectCatalog.json().isGitRepo).toBe(true);
+  expect(machineCatalog.json().isGitRepo).toBe(false);
+  expect(requested).toEqual(['fixture:project', undefined]);
+});
 it('closes the companion socket when terminal is lost without requiring a login', async () => {
   const { app, headers } = await setup(); const sockets = await pair(app, headers);
   sockets.terminal.close();
