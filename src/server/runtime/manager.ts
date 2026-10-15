@@ -457,7 +457,7 @@ export class RuntimeManager extends EventEmitter {
       const snapshot = await supervisor.readFresh();
       this.requireCurrentProjection(identity);
       if (!snapshot.tabs.some((item) => item.tab_id === tabId)) throw new Error('tab_not_found');
-      if (this.threadOwnsTab(machineId, tabId)) throw new Error('binding_conflict');
+      if (this.listedThreadOwnsTab(machineId, tabId)) throw new Error('binding_conflict');
       if (this.launchInProgress(machineId)) throw new Error('launch_in_progress');
       const currentPanes = snapshot.panes.filter((pane) => pane.tab_id === tabId);
       if (!force && (currentPanes.length !== probedPanes.length || currentPanes.some((pane) => !probedPanes.some((probed) => probed.pane_id === pane.pane_id && probed.terminal_id === pane.terminal_id)))) return { closed: false, busy: true };
@@ -467,7 +467,7 @@ export class RuntimeManager extends EventEmitter {
       const freshSnapshot = await supervisor.readFresh();
       this.requireCurrentProjection(identity);
       if (!freshSnapshot.tabs.some((item) => item.tab_id === tabId)) throw new Error('tab_not_found');
-      if (this.threadOwnsTab(machineId, tabId)) throw new Error('binding_conflict');
+      if (this.listedThreadOwnsTab(machineId, tabId)) throw new Error('binding_conflict');
       if (this.launchInProgress(machineId)) throw new Error('launch_in_progress');
       const latestPanes = freshSnapshot.panes.filter((pane) => pane.tab_id === tabId);
       if (!force && (latestPanes.length !== currentPanes.length || latestPanes.some((pane) => !currentPanes.some((current) => current.pane_id === pane.pane_id && current.terminal_id === pane.terminal_id)))) return { closed: false, busy: true };
@@ -578,6 +578,10 @@ export class RuntimeManager extends EventEmitter {
       }
     }
     return { deleted, orphanTabsDeleted, failed, skippedMachines: [...new Set(skippedMachines)] };
+  }
+  private listedThreadOwnsTab(machineId: string, tabId: string) {
+    return this.database.threadRows(machineId).some((row) => row.alias === tabId && isListedThread(row.metadata))
+      || this.projections.get(machineId)?.threads.some((thread) => thread.tabId === tabId && isListedThread(thread)) === true;
   }
   private threadOwnsTab(machineId: string, tabId: string) {
     return this.database.threadRows(machineId).some((row) => row.alias === tabId)

@@ -6,7 +6,11 @@ import { exampleThreads } from '../../src/lib/models';
 vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-const renderSidebar = (threads = exampleThreads().slice(0, 1), archived = exampleThreads().slice(1, 2).map((thread) => ({ ...thread, archivedAt: thread.updatedAt }))) => render(<Sidebar projects={[]} threads={threads} archived={archived} machines={[]} mode="threads" onModeChange={() => {}} collapsed={false} mobileOpen={false} onCollapse={() => {}} onCloseMobile={() => {}} />);
+const renderSidebar = (threads = exampleThreads().slice(0, 1), archived = exampleThreads().slice(1, 2).map((thread) => ({ ...thread, archivedAt: thread.updatedAt }))) => {
+  const machineIds = [...new Set([...threads, ...archived].map((thread) => thread.machineId))];
+  const machines = machineIds.map((id) => ({ id, name: 'Local', connected: true, session: 'default', projectPaths: {}, harnesses: [], writable: true }));
+  return render(<Sidebar projects={[]} threads={threads} archived={archived} machines={machines} mode="threads" onModeChange={() => {}} collapsed={false} mobileOpen={false} onCollapse={() => {}} onCloseMobile={() => {}} />);
+};
 const answering = () => vi.fn(async (_path: string, _init: RequestInit) => ({ ok: true, json: async () => ({ deleted: 1, orphanTabsDeleted: 0, failed: [], skippedMachines: [] }) }));
 const requestsFor = (fetch: ReturnType<typeof answering>, endpoint: string) => fetch.mock.calls.filter(([path]) => path === endpoint);
 

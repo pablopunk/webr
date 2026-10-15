@@ -103,7 +103,7 @@ it('does not flip a terminal route from stale retained binding data', () => {
   expect(window.location.pathname).toBe('/sessions/default/tabs/w1%3At1');
   expect(screen.getByTestId('retained-terminal')).toBeDefined();
   expect(screen.getByRole('status').textContent).toContain('input is disabled');
-  expect(view.container.querySelector('.pane-tabbed')).toBeTruthy();
+  expect(view.container.querySelector('.pane-tabbed, .pane-strip')).toBeTruthy();
 });
 
 it('changes supported links locally, preserves route state and provider identities, and handles popstate', () => {

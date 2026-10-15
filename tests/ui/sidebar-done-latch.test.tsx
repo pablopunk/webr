@@ -6,7 +6,7 @@ import { exampleThreads } from '../../src/lib/models';
 vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
 
 afterEach(() => { cleanup(); });
-const renderSidebar = (threads = exampleThreads().slice(0, 1)) => render(<Sidebar projects={[]} threads={threads} archived={[]} machines={[]} mode="threads" onModeChange={() => {}} collapsed={false} mobileOpen={false} onCollapse={() => {}} onCloseMobile={() => {}} />);
+const renderSidebar = (threads = exampleThreads().slice(0, 1)) => render(<Sidebar projects={[]} threads={threads} archived={[]} machines={[...new Set(threads.map((thread) => thread.machineId))].map((id) => ({ id, name: 'Local', connected: true, session: 'default', projectPaths: {}, harnesses: [], writable: true }))} mode="threads" onModeChange={() => {}} collapsed={false} mobileOpen={false} onCollapse={() => {}} onCloseMobile={() => {}} />);
 
 it('keeps the done badge from the latch even after the live status moves on', () => {
   const base = exampleThreads()[0];

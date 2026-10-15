@@ -57,9 +57,11 @@ it('does not queue a startup command while disconnected or replay it after recon
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
   const onStartupComplete = vi.fn();
-  render(<TerminalPane pane={{ id: 'w2:p1', terminalId: 'term_shell', title: 'Shell', kind: 'shell' }} machineId="fixture" tabId="w2:t1" active canControl connected={false} onFocus={() => {}} startupPreset="resource-monitor" onStartupComplete={onStartupComplete} />);
+  const props = { pane: { id: 'w2:p1', terminalId: 'term_shell', title: 'Shell', kind: 'shell' as const }, machineId: 'fixture', tabId: 'w2:t1', active: false, canControl: true, onFocus: () => {}, startupPreset: 'resource-monitor' as const, onStartupComplete };
+  const view = render(<TerminalPane {...props} connected={false} />);
   await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
   expect(onStartupComplete).toHaveBeenCalledOnce(); expect(fixture.input).not.toHaveBeenCalled();
+  view.rerender(<TerminalPane {...props} connected />);
   await act(async () => fixture.mount.mock.calls[0][0].onState('Input control is active.', true));
   expect(fixture.input).not.toHaveBeenCalled();
 });
