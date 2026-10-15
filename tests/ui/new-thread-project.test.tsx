@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { NewThreadView } from '../../src/components/NewThreadView';
+import { buildPendingThreadUrl } from '../../src/client/navigation';
 
 vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
 vi.mock('../../src/client/catalog', () => ({ useMachineCatalog: () => ({ data: { harnesses: [{ id: 'claude', name: 'Claude Code', models: ['Default'], launchEnabled: true }] }, isError: false }) }));
@@ -17,4 +18,9 @@ afterEach(() => { cleanup(); localStorage.clear(); });
 it('starts on the project it was opened for', () => {
   render(view('local:second'));
   expect(screen.getByRole('combobox', { name: /Project: Second/ })).toBeDefined();
+});
+
+it('preserves composer route state while moving immediately to a pending ticket', () => {
+  expect(buildPendingThreadUrl('ticket-key', 'http://webr.local/new?project=local%3Asecond&sidebar=collapsed&recover=old'))
+    .toBe('/new?project=local%3Asecond&sidebar=collapsed&pending=ticket-key');
 });

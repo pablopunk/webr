@@ -6,6 +6,7 @@ import { PerfOverlay } from './PerfOverlay';
 import { PairingPrompt } from './PairingPrompt';
 import { CrashReport } from './CrashReport';
 import { NewThreadView } from './NewThreadView';
+import { PendingOperation } from './PendingOperation';
 import { SettingsView } from './SettingsView';
 import { Sidebar, type SidebarMode } from './Sidebar';
 import { UpdateButton } from './UpdateButton';
@@ -46,7 +47,7 @@ export default function App(props: Props) {
 
 function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
   const { route, navigate } = useRouteNavigation();
-  const { ui, terminals } = useRuntime();
+  const { ui, terminals, tickets } = useRuntime();
   const projects = useRuntimeSelector(useShallow((state) => state.projectIds.map((id) => state.projects[id])));
   const activeThreads = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id]).filter((item) => !item.archivedAt)));
   const archived = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id]).filter((item) => !!item.archivedAt)));
@@ -102,12 +103,12 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
   }, [page, terminalStartup, machineId, tabId]);
   useEffect(() => {
     const title = page === 'settings' ? 'Settings'
-      : page === 'new' ? 'New thread'
+      : page === 'new' ? route.type === 'composer' && route.pendingKey ? 'Starting thread…' : 'New thread'
         : page === 'thread' ? thread?.title ?? 'Opening thread…'
           : page === 'terminal' ? standaloneTab?.label ?? (terminalPending ? 'Opening terminal…' : terminalMissing ? 'Terminal tab not found' : 'Terminal')
             : 'Webr';
     document.title = page === 'missing' ? 'Webr' : `${title} · Webr`;
-  }, [page, thread?.title, standaloneTab?.label, terminalPending, terminalMissing]);
+  }, [page, route, thread?.title, standaloneTab?.label, terminalPending, terminalMissing]);
   const completeTerminalStartup = useCallback(() => {
     if (machineId && tabId) {
       try { sessionStorage.removeItem(terminalStartupStorageKey(machineId, tabId)); } catch { /* The startup command has already been sent. */ }
@@ -128,9 +129,9 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
   useClearDoneOnVisit(page === 'thread' ? thread : undefined, focusedPane, !!machines.find((machine) => machine.id === thread?.machineId)?.connected && !!machines.find((machine) => machine.id === thread?.machineId)?.writable);
   useEffect(() => {
     if (page !== 'thread' || thread?.operation?.state !== 'ready') return;
-    clearLaunchDraft(thread.id);
-    clearNewThreadDraftForLaunch(thread.id);
-  }, [page, thread?.id, thread?.operation?.state]);
+    clearLaunchDraft(tickets.recoveryScope, thread.id);
+    clearNewThreadDraftForLaunch(tickets.recoveryScope, thread.id);
+  }, [page, thread?.id, thread?.operation?.state, tickets.recoveryScope]);
 
   const knownThreadMachines = useRef(new Map<string, string>());
   useEffect(() => {
@@ -332,7 +333,9 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
       {page === 'thread' && !thread && !threadIsAuthoritativelyMissing && <main className="native-thread-layout" aria-label="Thread"><p className="runtime-notice" role="status">Waiting for this thread to appear…</p></main>}
       {page === 'terminal' && route.type === 'terminal' && routeMachineSession !== route.session && <main className="native-thread-layout" aria-label="Terminal tab"><p className="runtime-notice" role="status">Waiting for this terminal tab to appear…</p></main>}
       {page === 'terminal' && route.type === 'terminal' && routeMachineSession === route.session && machineId && tabId && <TerminalTabView machineId={machineId} tabId={tabId} panes={terminalPanes} connected={!!machines.find((machine) => machine.id === machineId)?.connected} canControl={!!machines.find((machine) => machine.id === machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} pending={terminalPending} missing={terminalMissing} startupPreset={pendingTerminalStartup} onStartupComplete={completeTerminalStartup} />}
-      {page === 'new' && <NewThreadView key={projectId} projects={projects} machines={machines} selectedProjectId={projectId} onOpenSidebar={toggleSidebar} onNavigate={navigate} />}
+      {page === 'new' && route.type === 'composer' && (route.pendingKey
+        ? <PendingOperation key={`${tickets.recoveryScope}:${route.pendingKey}`} ticketKey={route.pendingKey} />
+        : <NewThreadView key={`${tickets.recoveryScope}:${projectId}`} projects={projects} machines={machines} selectedProjectId={projectId} onOpenSidebar={toggleSidebar} onNavigate={navigate} />)}
       {page === 'settings' && <SettingsView onOpenSidebar={toggleSidebar} />}
       {page === 'missing' && <main className="not-found"><h1>Page not available</h1><a href="/">Open Webr</a></main>}
     </div>

@@ -89,7 +89,7 @@ export function parseRoute(input: string | URL, baseUrl = DEFAULT_BASE_URL): Rou
       type: 'composer',
       ...routeUrlState(url),
       projectId: projectId ?? undefined,
-      pendingKey: pendingKey ?? undefined,
+      pendingKey: pendingKey || undefined,
     };
   }
   if (pathname === '/settings') return { type: 'settings', ...routeUrlState(url) };
@@ -165,6 +165,15 @@ export function buildRouteUrl(route: SupportedRoute): string {
 
   const query = paramsFromRoute(route).toString();
   return `${pathname}${query ? `?${query}` : ''}${route.hash}`;
+}
+
+/** Move the current composer URL to its local pending view without dropping unrelated route state. */
+export function buildPendingThreadUrl(key: string, currentHref: string): string {
+  const url = new URL(currentHref, DEFAULT_BASE_URL);
+  url.pathname = '/new';
+  url.searchParams.delete('recover');
+  url.searchParams.set('pending', key);
+  return `${url.pathname}${url.search}${url.hash}`;
 }
 
 export interface RouteHistoryDependencies {

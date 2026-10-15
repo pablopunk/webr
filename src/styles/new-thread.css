@@ -28,6 +28,17 @@
 .composer-send:hover:not(:disabled) { filter: brightness(1.12); }
 .composer-send:disabled { background: var(--surface-active); color: var(--ink-muted); cursor: not-allowed; }
 .new-thread-page .form-error { margin: 12px 4px; }
+.pending-operation { display: grid; align-content: center; justify-items: start; gap: 16px; width: min(560px, 100%); min-height: 100dvh; margin: 0 auto; padding: 60px 20px; }
+.pending-operation h1 { margin: 0; color: var(--ink); font-size: 23px; font-weight: 600; letter-spacing: -.03em; }
+.pending-operation .launch-prompt { width: 100%; }
+.pending-attachments { display: flex; flex-wrap: wrap; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.pending-attachments li { padding: 4px 8px; border-radius: 6px; background: var(--surface-muted); color: var(--ink-soft); font-size: 13px; }
+.pending-warning { margin: 0; color: var(--ink-soft); font-size: 14px; line-height: 1.5; }
+.pending-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pending-actions button { cursor: pointer; }
+.pending-dismiss, .pending-leave { justify-self: start; color: var(--ink-soft); font-size: 14px; }
+.pending-dismiss { padding: 0; border: 0; background: transparent; text-decoration: underline; }
+@media (max-width: 760px) { .pending-operation { padding: 60px 16px; } }
 @media (max-width: 760px) { .new-thread-page { padding: 60px 16px; } .new-thread-page .mobile-menu { position: absolute; top: 16px; left: 16px; margin: 0; } }
 @media (max-width: 480px) { .composer-toolbar { gap: 6px; padding: 8px; } }
 .thread-composer.is-dropping { border-style: dashed; border-color: var(--focus-ring); box-shadow: var(--card-shadow-hover); }

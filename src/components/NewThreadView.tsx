@@ -9,9 +9,10 @@ import { useMachineCatalog } from '../client/catalog';
 import type { AppNavigate } from '../client/app-navigation';
 import { CreateWorkspace } from './CreateWorkspace';
 import { initialWorktreeChoice, recordWorktreeChoice } from '../client/new-session-behavior';
-import { clearLaunchDraft, clearNewThreadDraft, readLaunchDraft, readNewThreadDraft, writeLaunchDraft, writeNewThreadDraft, type NewThreadDraft } from '../client/new-thread-draft';
+import { clearLaunchDraft, readLaunchDraft, readNewThreadDraft, writeNewThreadDraft, type NewThreadDraft } from '../client/new-thread-draft';
 import { Tooltip } from './Tooltip';
-import { uuid } from '../lib/uuid';
+import { useThreadTickets } from '../client/provider';
+import { buildPendingThreadUrl } from '../client/navigation';
 
 const harnessPreference = (machineId: string, projectId: string) => `webr-last-harness:${machineId}:${projectId}`;
 const removeRecoveryQuery = (id: string, onNavigate?: AppNavigate) => {
@@ -35,7 +36,8 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   const [creatingWorkspace, setCreatingWorkspace] = useState(false);
   const [draftHydrated, setDraftHydrated] = useState(false);
   const projectIdsBeforeCreate = useRef<Set<string> | null>(null);
-  const operation = useRef<{ payload: string; key: string } | null>(null);
+  const submitting = useRef(false);
+  const tickets = useThreadTickets();
   const pendingRecoveryId = useRef<string | undefined>(undefined);
   const recoveredWorktree = useRef<{ key: string; value: boolean } | null>(null);
   const recoveredHarness = useRef<{ key: string; value: string } | null>(null);
@@ -52,8 +54,8 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   const harnessIds = catalog.data?.harnesses.map((choice) => choice.id).join(',');
   useEffect(() => {
     const recoveryId = new URLSearchParams(window.location.search).get('recover') ?? '';
-    const recoveryDraft = recoveryId ? readLaunchDraft(recoveryId) : undefined;
-    const draft = recoveryDraft ?? readNewThreadDraft();
+    const recoveryDraft = recoveryId ? readLaunchDraft(tickets.recoveryScope, recoveryId) ?? tickets.getDraft(recoveryId) : undefined;
+    const draft = recoveryDraft ?? (recoveryId ? { prompt: '', images: [] } : readNewThreadDraft(tickets.recoveryScope));
     setPrompt(draft.prompt); images.setAttachments(draft.images);
     if (recoveryId) {
       const restoredProjectId = selectedProjectId ?? draft.projectId ?? projectId;
@@ -64,8 +66,8 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
       if (draft.worktree !== undefined) recoveredWorktree.current = { key, value: draft.worktree };
       if (draft.harness) recoveredHarness.current = { key, value: draft.harness };
       pendingRecoveryId.current = recoveryId;
-      if (writeNewThreadDraft({ ...draft, launchId: undefined })) {
-        clearLaunchDraft(recoveryId);
+      if (writeNewThreadDraft(tickets.recoveryScope, { ...draft, launchId: undefined })) {
+        clearLaunchDraft(tickets.recoveryScope, recoveryId);
         pendingRecoveryId.current = undefined;
         removeRecoveryQuery(recoveryId, onNavigate);
       }
@@ -74,14 +76,14 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
   }, []);
   useEffect(() => {
     if (!draftHydrated) return;
-    const saved = writeNewThreadDraft({ prompt, images: images.attachments, projectId, machineId, harness, worktree });
+    const saved = writeNewThreadDraft(tickets.recoveryScope, { prompt, images: images.attachments, projectId, machineId, harness, worktree });
     const recoveryId = pendingRecoveryId.current;
     if (saved && recoveryId) {
-      clearLaunchDraft(recoveryId);
+      clearLaunchDraft(tickets.recoveryScope, recoveryId);
       pendingRecoveryId.current = undefined;
       removeRecoveryQuery(recoveryId, onNavigate);
     }
-  }, [draftHydrated, prompt, images.attachments, projectId, machineId, harness, worktree]);
+  }, [draftHydrated, prompt, images.attachments, projectId, machineId, harness, worktree, tickets.recoveryScope]);
   useEffect(() => {
     const key = `${machineId}:${projectId}`;
     if (recoveredWorktree.current?.key === key) {
@@ -122,30 +124,26 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     if (projectId) localStorage.setItem(harnessPreference(machineId, projectId), id);
   };
 
-  const submit = async (event: React.SubmitEvent<HTMLFormElement>) => {
+  const submit = (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canSubmit) return;
+    if (!canSubmit || submitting.current) return;
+    submitting.current = true;
     setBusy(true); setError('');
     const launchWorktree = worktree && canUseWorktree;
     const draft: NewThreadDraft = { prompt, images: images.attachments, projectId, machineId, harness, worktree: launchWorktree };
-    writeNewThreadDraft(draft);
-    const payload = JSON.stringify({ prompt: promptWithImages(prompt, images.attachments), projectId, machineId, agent: harness, model: 'Default', worktree: launchWorktree });
-    if (operation.current?.payload !== payload) operation.current = { payload, key: uuid() };
+    let ticket: ReturnType<typeof tickets.create>;
     try {
-      const result = await fetch('/api/threads', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operation.current.key },
-        body: payload,
-      });
-      const response = await result.json();
-      if (!result.ok) throw new Error(response.error || 'Could not create thread');
-      recordWorktreeChoice(machineId, projectId, worktree);
-      if (writeLaunchDraft(response.id, draft)) clearNewThreadDraft();
-      else writeNewThreadDraft({ ...draft, launchId: response.id });
-      onNavigate?.(`/threads/${encodeURIComponent(response.id)}`);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not create thread');
-      setBusy(false);
+      ticket = tickets.create({
+        prompt: promptWithImages(prompt, images.attachments), projectId, machineId, agent: harness, model: 'Default', worktree: launchWorktree,
+      }, draft);
+    } catch {
+      submitting.current = false; setBusy(false); setError('The prompt could not be prepared for launch.'); return;
     }
+    try { recordWorktreeChoice(machineId, projectId, worktree); } catch { /* This preference is not required to submit the ticket. */ }
+    const destination = buildPendingThreadUrl(ticket.key, window.location.href);
+    if (onNavigate) onNavigate(destination);
+    else window.history.pushState(window.history.state, '', destination);
+    void tickets.start(ticket.key);
   };
 
   return <main className="new-thread-page" aria-label="New thread">

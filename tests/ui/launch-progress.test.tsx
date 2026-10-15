@@ -27,8 +27,15 @@ it('describes the actual launch resource and whether prompt delivery is uncertai
   expect(launchFailureMessage('prompt', true)).toContain('Prompt delivery is uncertain');
 });
 
-it('links a failed launch back to its original draft', () => {
-  render(<LaunchProgress thread={thread({ operation: { id: 'o1', state: 'unknown', step: 'checkout' } })} />);
+it('links a definitively failed launch back to its original draft', () => {
+  render(<LaunchProgress thread={thread({ operation: { id: 'o1', state: 'failed', step: 'checkout' } })} />);
   expect(screen.getByRole('link', { name: 'Return to your draft' }).getAttribute('href'))
     .toBe('/new?project=local%3Ap&recover=t1');
+});
+
+it('does not offer a replay shortcut when the launch outcome is unknown', () => {
+  render(<LaunchProgress thread={thread({ operation: { id: 'o1', state: 'unknown', step: 'prompt' } })} />);
+  expect(screen.getByRole('heading', { name: 'Launch outcome uncertain' })).toBeDefined();
+  expect(screen.queryByRole('link', { name: 'Return to your draft' })).toBeNull();
+  expect(screen.getByRole('alert').textContent).toContain('outcome is uncertain');
 });

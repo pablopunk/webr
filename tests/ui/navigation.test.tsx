@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import App from '../../src/components/App';
 import { handleRouteClick, RouteNavigationProvider, useRouteNavigation } from '../../src/client/app-navigation';
 import { RuntimeProvider, useRuntime } from '../../src/client/provider';
+import { readLaunchDraft, readNewThreadDraft, writeLaunchDraft } from '../../src/client/new-thread-draft';
 import type { Bootstrap } from '../../src/shared/runtime';
 import { ThreadView } from '../../src/components/ThreadView';
 import { TerminalTabView } from '../../src/components/TerminalTabView';
@@ -147,14 +148,16 @@ it('removes the recovery query during the initial composer mount', () => {
   vi.stubGlobal('fetch', deferredFetch());
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
   window.history.replaceState(null, '', '/new?recover=initial-recovery');
-  localStorage.setItem('webr-launch-draft:initial-recovery', JSON.stringify({ prompt: 'Restored prompt', images: [], projectId: 'p', machineId: 'local', harness: 'claude', worktree: true }));
+  writeLaunchDraft('local', 'initial-recovery', { prompt: 'Restored prompt', images: [], projectId: 'p', machineId: 'local', harness: 'claude', worktree: true });
+  localStorage.setItem('webr-launch-draft:initial-recovery', JSON.stringify({ prompt: 'Legacy secret', images: [] }));
 
   render(<App initialUrl={window.location.href} bootstrap={bootstrap} />);
 
   expect(window.location.pathname).toBe('/new');
   expect(new URLSearchParams(window.location.search).has('recover')).toBe(false);
+  expect(readLaunchDraft('local', 'initial-recovery')).toBeUndefined();
   expect(localStorage.getItem('webr-launch-draft:initial-recovery')).toBeNull();
-  expect(JSON.parse(localStorage.getItem('webr-new-thread-draft') ?? '{}').prompt).toBe('Restored prompt');
+  expect(readNewThreadDraft('local').prompt).toBe('Restored prompt');
 });
 
 it('keeps a thread with stale missing data pending instead of redirecting or waiting on a document fetch', () => {

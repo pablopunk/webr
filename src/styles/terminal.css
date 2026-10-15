@@ -37,7 +37,7 @@
 .launch-step.is-done { color: var(--ink-soft); }
 .launch-step.is-active { color: var(--ink); }
 .launch-step.is-active svg { animation: launch-spin 1s linear infinite; }
-.launch-step.is-failed { color: #d16a64; }
+.launch-step.is-failed, .launch-step.is-unknown { color: #d16a64; }
 .launch-failure { display: grid; gap: 10px; font-size: 15px; color: var(--ink-soft); }
 .launch-failure p { margin: 0; }
 .launch-retry { justify-self: start; padding: 7px 11px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-raised); color: var(--ink); font-size: 14px; text-decoration: none; }
