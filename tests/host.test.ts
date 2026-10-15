@@ -126,7 +126,8 @@ it('returns 202 while catalog is pending and replays before disconnected-target 
   const post = (payload: Record<string, unknown>) => app.inject({ method: 'POST', url: '/api/threads', headers: { ...headers, 'idempotency-key': key }, payload });
   const first = await post(launch); expect(first.statusCode).toBe(202); await enteredCatalog;
   const accepted = first.json(); expect(manager.database.operation(accepted.operationId)?.state).toBe('pending');
-  manager.supervisors.get(target.id)!.connected = false;
+  target.lost!('machine_disconnected');
+  manager.supervisors.get(target.id)!.stop();
   const repeated = await post(launch);
   expect(repeated.statusCode).toBe(202); expect(repeated.json().operationId).toBe(accepted.operationId);
   expect((await post({ ...launch, prompt: 'Different' })).statusCode).toBe(409);
