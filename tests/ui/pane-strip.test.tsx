@@ -2,9 +2,6 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { ThreadView } from '../../src/components/ThreadView';
 import type { Thread } from '../../src/lib/models';
-import { navigate } from 'astro:transitions/client';
-
-vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
 vi.mock('../../src/components/TerminalPane', () => ({ TerminalPane: ({ pane }: { pane: { title: string } }) => <section aria-label={`${pane.title} terminal`} /> }));
 afterEach(cleanup);
 const thread: Thread = { id: 't', avatarIndex: 0, metadataVersion: 0, titleSync: { version: 0, state: 'unknown' }, projectId: 'p', machineId: 'local', title: 'Thread', prompt: '', agent: 'claude', model: 'Default', status: 'idle', updatedAt: new Date().toISOString(), branch: '', worktree: true, session: 's', tabId: 'w1:t1', bindingState: 'attached',
@@ -26,18 +23,15 @@ it('shows only the focused pane on a narrow screen', () => {
   expect(screen.getByLabelText('One terminal')).toBeDefined(); expect(screen.queryByLabelText('Claude terminal')).toBeNull();
 });
 
-it('retains a detached thread without exposing stale terminals or redirecting away', () => {
-  vi.mocked(navigate).mockClear();
+it('retains a detached thread without exposing stale terminals', () => {
   render(<ThreadView thread={{ ...thread, bindingState: 'detached' }} connected canControl focusedPane="b" onFocusPane={vi.fn()} windowStart={0} narrow={false} />);
-  expect(navigate).not.toHaveBeenCalled();
   expect(screen.getByRole('main', { name: 'Thread tab' })).toBeDefined();
   expect(screen.queryByLabelText('One terminal')).toBeNull();
 });
 
 it('keeps a detached thread whose launch failed so the failure is shown', () => {
-  vi.mocked(navigate).mockClear();
   render(<ThreadView thread={{ ...thread, panes: [], bindingState: 'detached', operation: { id: 'o', state: 'failed', step: 'prompt' } }} connected canControl focusedPane="" onFocusPane={vi.fn()} windowStart={0} narrow={false} />);
-  expect(navigate).not.toHaveBeenCalled();
+  expect(screen.getByRole('heading', { name: 'The launch stopped' })).toBeDefined();
 });
 it('keeps provider recovery status out of the thread view', () => {
   const detached = { ...thread, bindingState: 'detached' as const, providerSession: { source: 'herdr', agent: 'claude', kind: 'id' as const, value: 'session-1' }, recovery: { state: 'needs_attention' as const, reason: 'conversation_missing' } };

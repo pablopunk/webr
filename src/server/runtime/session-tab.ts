@@ -7,7 +7,7 @@ export function decodeSessionTabId(value: string | undefined) {
   catch { return ''; }
 }
 
-export async function resolveSessionTab(manager: Pick<RuntimeManager, 'bootstrap' | 'supervisors'>, session: string, machineId: string | null, tabId: string, owner: string) {
+export function resolveSessionTab(manager: Pick<RuntimeManager, 'bootstrap'>, session: string, machineId: string | null, tabId: string, owner: string) {
   const resolve = () => {
     const bootstrap = manager.bootstrap(owner);
     const thread = machineId ? bootstrap.threads.find((item) => item.machineId === machineId && item.session === session && item.tabId === tabId && item.bindingState === 'attached' && isListedThread(item)) : undefined;
@@ -17,10 +17,5 @@ export async function resolveSessionTab(manager: Pick<RuntimeManager, 'bootstrap
     return { bootstrap, thread, machine, terminalTab, page, terminalPending: page === 'terminal' && !thread && !terminalTab };
   };
 
-  let route = resolve();
-  if (route.terminalPending && route.machine?.connected) {
-    try { await manager.supervisors.get(route.machine.id)?.readFresh(); } catch { /* Keep the pending terminal view; the live projection can still catch up. */ }
-    route = resolve();
-  }
-  return route;
+  return resolve();
 }

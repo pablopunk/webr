@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Menu } from '@base-ui/react/menu';
 import { useQuery } from '@tanstack/react-query';
-import { navigate } from 'astro:transitions/client';
+import type { AppNavigate } from '../client/app-navigation';
 import { ChevronRight, FolderGit2, GitBranch, Search } from 'lucide-react';
 import type { Project } from '../lib/models';
 import { ProjectIcon } from './ProjectIcon';
@@ -24,13 +24,13 @@ const openWorktree = async (project: Project, worktree: Worktree) => {
   if (!response.ok) throw new Error('Could not open this worktree.');
   return (await response.json() as { id: string }).id;
 };
-const openAndShow = async (project: Project, worktree: Worktree) => {
-  try { await navigate(`/threads/${encodeURIComponent(await openWorktree(project, worktree))}`); }
+const openAndShow = async (project: Project, worktree: Worktree, onNavigate?: AppNavigate) => {
+  try { onNavigate?.(`/threads/${encodeURIComponent(await openWorktree(project, worktree))}`); }
   catch (error) { void alertDialog(error instanceof Error ? error.message : 'Could not open this worktree.'); }
 };
 const keepTypingInsideInput = (event: React.KeyboardEvent) => { if (event.key.length === 1 || event.key === 'Backspace') event.stopPropagation(); };
 
-function WorktreeSearch({ project }: { project: Project }) {
+function WorktreeSearch({ project, onNavigate }: { project: Project; onNavigate?: AppNavigate }) {
   const [query, setQuery] = useState('');
   const worktrees = useQuery({ queryKey: ['worktrees', project.machineId, project.id], queryFn: ({ signal }) => fetchWorktrees(project, signal), staleTime: 0, gcTime: 0 });
   const matches = (worktrees.data ?? []).filter((worktree) => matchesSearch(worktree, query));
@@ -39,7 +39,7 @@ function WorktreeSearch({ project }: { project: Project }) {
       <input autoFocus aria-label="Search worktrees" placeholder="Search worktrees…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={keepTypingInsideInput} />
     </div>
     <div className="worktree-menu-list">
-      {matches.map((worktree) => <Tooltip key={worktree.path} label={worktree.path} side="right"><Menu.Item className="thread-menu-item" onClick={() => void openAndShow(project, worktree)}>
+      {matches.map((worktree) => <Tooltip key={worktree.path} label={worktree.path} side="right"><Menu.Item className="thread-menu-item" onClick={() => void openAndShow(project, worktree, onNavigate)}>
         <GitBranch size={14} aria-hidden="true" /><span className="worktree-menu-name">{worktreeName(worktree)}<small>{folderName(worktree)}</small></span>
       </Menu.Item></Tooltip>)}
       {worktrees.isError && <p className="worktree-menu-note" role="alert">Could not list worktrees.</p>}
@@ -48,7 +48,7 @@ function WorktreeSearch({ project }: { project: Project }) {
   </>;
 }
 
-export function OpenWorktree({ projects }: { projects: Project[] }) {
+export function OpenWorktree({ projects, onNavigate }: { projects: Project[]; onNavigate?: AppNavigate }) {
   return <Menu.Root>
     <Tooltip label="Open existing worktree"><Menu.Trigger className="sidebar-action-icon" aria-label="Open existing worktree" disabled={!projects.length}>
       <FolderGit2 size={16} aria-hidden="true" />
@@ -56,7 +56,7 @@ export function OpenWorktree({ projects }: { projects: Project[] }) {
     <Menu.Portal><Menu.Positioner className="thread-menu-positioner" sideOffset={6} align="start"><Menu.Popup className="thread-menu">
       {projects.map((project) => <Menu.SubmenuRoot key={`${project.machineId}:${project.id}`}>
         <Menu.SubmenuTrigger className="thread-menu-item"><ProjectIcon project={project} /><span>{project.name}</span><ChevronRight size={14} aria-hidden="true" className="worktree-menu-chevron" /></Menu.SubmenuTrigger>
-        <Menu.Portal><Menu.Positioner className="thread-menu-positioner" sideOffset={4} alignOffset={-4}><Menu.Popup className="thread-menu worktree-menu"><WorktreeSearch project={project} /></Menu.Popup></Menu.Positioner></Menu.Portal>
+        <Menu.Portal><Menu.Positioner className="thread-menu-positioner" sideOffset={4} alignOffset={-4}><Menu.Popup className="thread-menu worktree-menu"><WorktreeSearch project={project} onNavigate={onNavigate} /></Menu.Popup></Menu.Positioner></Menu.Portal>
       </Menu.SubmenuRoot>)}
     </Menu.Popup></Menu.Positioner></Menu.Portal>
   </Menu.Root>;

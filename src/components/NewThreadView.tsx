@@ -6,7 +6,7 @@ import { X } from 'lucide-react';
 import type { Machine } from '../lib/machines';
 import { LaunchSelectors } from './LaunchSelectors';
 import { useMachineCatalog } from '../client/catalog';
-import { navigate } from 'astro:transitions/client';
+import type { AppNavigate } from '../client/app-navigation';
 import { CreateWorkspace } from './CreateWorkspace';
 import { initialWorktreeChoice, recordWorktreeChoice } from '../client/new-session-behavior';
 import { clearLaunchDraft, clearNewThreadDraft, readLaunchDraft, readNewThreadDraft, writeLaunchDraft, writeNewThreadDraft, type NewThreadDraft } from '../client/new-thread-draft';
@@ -14,15 +14,16 @@ import { Tooltip } from './Tooltip';
 import { uuid } from '../lib/uuid';
 
 const harnessPreference = (machineId: string, projectId: string) => `webr-last-harness:${machineId}:${projectId}`;
-const removeRecoveryQuery = (id: string) => {
+const removeRecoveryQuery = (id: string, onNavigate?: AppNavigate) => {
   const url = new URL(window.location.href);
   if (url.searchParams.get('recover') !== id) return;
   url.searchParams.delete('recover');
-  window.history.replaceState(window.history.state, '', url);
+  if (onNavigate) onNavigate(url.href, { replace: true });
+  else window.history.replaceState(window.history.state, '', url);
 };
 
-export function NewThreadView({ projects, machines, selectedProjectId, onOpenSidebar }: {
-  projects: Project[]; machines: Machine[]; selectedProjectId?: string; onOpenSidebar: () => void;
+export function NewThreadView({ projects, machines, selectedProjectId, onOpenSidebar, onNavigate }: {
+  projects: Project[]; machines: Machine[]; selectedProjectId?: string; onOpenSidebar: () => void; onNavigate?: AppNavigate;
 }) {
   const [projectId, setProjectId] = useState(projects.find((project) => project.id === selectedProjectId)?.id ?? projects[0]?.id ?? '');
   const [machineId, setMachineId] = useState(machines.find((machine) => selectedProjectId && Object.hasOwn(machine.projectPaths, selectedProjectId))?.id ?? machines[0]?.id ?? '');
@@ -66,7 +67,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
       if (writeNewThreadDraft({ ...draft, launchId: undefined })) {
         clearLaunchDraft(recoveryId);
         pendingRecoveryId.current = undefined;
-        removeRecoveryQuery(recoveryId);
+        removeRecoveryQuery(recoveryId, onNavigate);
       }
     }
     setDraftHydrated(true);
@@ -78,7 +79,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
     if (saved && recoveryId) {
       clearLaunchDraft(recoveryId);
       pendingRecoveryId.current = undefined;
-      removeRecoveryQuery(recoveryId);
+      removeRecoveryQuery(recoveryId, onNavigate);
     }
   }, [draftHydrated, prompt, images.attachments, projectId, machineId, harness, worktree]);
   useEffect(() => {
@@ -140,7 +141,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, onOpenSid
       recordWorktreeChoice(machineId, projectId, worktree);
       if (writeLaunchDraft(response.id, draft)) clearNewThreadDraft();
       else writeNewThreadDraft({ ...draft, launchId: response.id });
-      await navigate(`/threads/${encodeURIComponent(response.id)}`);
+      onNavigate?.(`/threads/${encodeURIComponent(response.id)}`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not create thread');
       setBusy(false);
