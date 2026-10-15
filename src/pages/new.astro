@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import App from '../components/App';
-const bootstrap = Astro.locals.runtime.bootstrap();
+const bootstrap = Astro.locals.runtime.bootstrap(Astro.locals.accountId);
 const projectId = Astro.url.searchParams.get('project') ?? undefined;
 ---
 <Base title="New thread">

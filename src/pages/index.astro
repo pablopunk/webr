@@ -1,5 +1,5 @@
 ---
-const { threads } = Astro.locals.runtime.bootstrap();
+const { threads } = Astro.locals.runtime.bootstrap(Astro.locals.accountId);
 const agent = threads.find((thread) => thread.panes.some((pane) => pane.kind === 'agent'));
 return Astro.redirect(agent ? `/threads/${encodeURIComponent(agent.id)}` : '/new');
 ---

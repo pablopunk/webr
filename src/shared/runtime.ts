@@ -11,6 +11,15 @@ export const launchInput = z.object({
   worktree: z.boolean(),
 }).strict();
 export type LaunchInput = z.infer<typeof launchInput>;
+export const launchOperationState = z.enum(['pending', 'running', 'ready', 'failed', 'unknown']);
+export const launchOperationEnvelope = z.object({
+  operationId: z.uuid(), kind: z.literal('thread'), state: launchOperationState, step: z.string().min(1).max(64),
+  result: z.object({ threadId: z.string().min(1).max(160) }).strict().optional(), error: z.string().min(1).max(240).optional(),
+  statusUrl: z.string().min(1).max(200),
+}).strict();
+export type LaunchOperationEnvelope = z.infer<typeof launchOperationEnvelope>;
+export type LaunchAcceptance = LaunchOperationEnvelope & { id: string };
+export type LaunchOperationStatus = LaunchOperationEnvelope & { id: string; threadId: string };
 export type Rect = { x: number; y: number; width: number; height: number };
 export type Layout = { workspaceId: string; tabId: string; area: Rect; panes: { paneId: string; rect: Rect }[] };
 export type Projection = {
@@ -19,7 +28,7 @@ export type Projection = {
   availableTabs?: { tabId: string; workspaceId: string; label: string; bound: boolean; panes: { id: string; terminalId: string; title: string }[] }[];
   machine?: Machine;
 };
-export type Bootstrap = { projections: Projection[]; machines: Machine[]; projects: Project[]; threads: Thread[] };
+export type Bootstrap = { projections: Projection[]; machines: Machine[]; projects: Project[]; threads: Thread[]; recoveryScope: string };
 const streamRef = { streamId: z.number().int().min(1).max(0xffffffff), generation: z.number().int().min(1).max(0xffffffff) };
 export const terminalAction = z.union([
   z.object({ type: z.literal('open'), ...streamRef, machineId: opaqueId, threadId: z.uuid(), terminalId: opaqueId, cols: z.number().int().min(2).max(500), rows: z.number().int().min(1).max(300), mode: z.enum(['observe', 'control']), takeover: z.boolean() }).strict(),

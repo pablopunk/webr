@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import App from '../components/App';
-const bootstrap = Astro.locals.runtime.bootstrap();
+const bootstrap = Astro.locals.runtime.bootstrap(Astro.locals.accountId);
 ---
 <Base title="Settings">
   <App page="settings" bootstrap={bootstrap} client:load transition:persist="webr-app" />

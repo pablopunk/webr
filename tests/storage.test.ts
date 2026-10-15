@@ -20,6 +20,20 @@ it('migrates a private WAL database repeatedly and retains UUID aliases and avat
     expect(second.registerProfile('fixture', 'fixture', 'two', target.locations)).toBe(2); second.close();
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+it('persists recovery scopes across restart while isolating servers and owners', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'hr-')); const path = join(directory, 'gateway.sqlite');
+  try {
+    const first = new MetadataDatabase(path);
+    const local = first.recoveryScope('local'); const account = first.recoveryScope('account-b'); first.close();
+    expect(account).not.toBe(local);
+    const restarted = new MetadataDatabase(path);
+    try { expect(restarted.recoveryScope('local')).toBe(local); expect(restarted.recoveryScope('account-b')).toBe(account); }
+    finally { restarted.close(); }
+    const otherServer = new MetadataDatabase(':memory:');
+    try { expect(otherServer.recoveryScope('local')).not.toBe(local); }
+    finally { otherServer.close(); }
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
 it('reattaches a thread to its tab after cold restore and never reruns a prompt', async () => {
   const database = new MetadataDatabase(':memory:'); const target = new FakeTarget(); const manager = new RuntimeManager(database, [target]);
   try {

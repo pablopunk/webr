@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { MetadataDatabase } from '../src/server/storage/database';
 import { createHost } from '../src/server/host';
 import { RuntimeManager } from '../src/server/runtime/manager';
@@ -11,6 +11,7 @@ import { mkdtemp, readFile, rm, stat, utimes, writeFile, readdir } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { UploadStore } from '../src/server/uploads';
+import { SESSION_COOKIE } from '../src/server/auth/sessions';
 
 const cleanups: (() => Promise<unknown> | void)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
@@ -103,13 +104,82 @@ it('closes the companion socket when metadata is lost', async () => {
   const { app, headers } = await setup(); const sockets = await pair(app, headers);
   sockets.metadata.close(); await expect.poll(() => sockets.terminal.readyState).toBe(3);
 });
-it('validates strict actions and rejects an idempotency key reused for another payload', async () => {
+it('validates strict actions and returns the durable operation envelope with compatibility aliases', async () => {
   const { app, headers } = await setup(); const key = randomUUID();
   const post = (payload: Record<string, unknown>) => app.inject({ method: 'POST', url: '/api/threads', headers: { ...headers, 'idempotency-key': key }, payload });
   const first = await post(launch); expect(first.statusCode).toBe(202);
-  const repeated = await post(launch); expect(repeated.json().id).toBe(first.json().id);
+  const accepted = first.json();
+  expect(accepted).toMatchObject({ operationId: expect.any(String), kind: 'thread', state: 'pending', step: 'validate', result: { threadId: accepted.id }, statusUrl: `/api/operations/${accepted.operationId}` });
+  const repeated = await post({ ...launch, prompt: '  Test launch  ', model: ' Default ' }); expect(repeated.json().id).toBe(accepted.id); expect(repeated.json().operationId).toBe(accepted.operationId);
+  const status = await app.inject({ url: accepted.statusUrl, headers });
+  expect(status.json()).toMatchObject({ operationId: accepted.operationId, id: accepted.operationId, threadId: accepted.id, result: { threadId: accepted.id }, statusUrl: accepted.statusUrl });
   expect((await post({ ...launch, prompt: 'Different' })).statusCode).toBe(409);
   expect((await post({ ...launch, shell: 'unsafe' })).statusCode).toBe(400);
+});
+it('returns 202 while catalog is pending and replays before disconnected-target checks', async () => {
+  const { app, target, manager, headers } = await setup(); const key = randomUUID();
+  let release!: () => void; let entered!: () => void;
+  const enteredCatalog = new Promise<void>((resolve) => { entered = resolve; });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const catalog = target.catalog.bind(target);
+  target.catalog = async () => { entered(); await gate; return catalog(); };
+  const post = (payload: Record<string, unknown>) => app.inject({ method: 'POST', url: '/api/threads', headers: { ...headers, 'idempotency-key': key }, payload });
+  const first = await post(launch); expect(first.statusCode).toBe(202); await enteredCatalog;
+  const accepted = first.json(); expect(manager.database.operation(accepted.operationId)?.state).toBe('pending');
+  manager.supervisors.get(target.id)!.connected = false;
+  const repeated = await post(launch);
+  expect(repeated.statusCode).toBe(202); expect(repeated.json().operationId).toBe(accepted.operationId);
+  expect((await post({ ...launch, prompt: 'Different' })).statusCode).toBe(409);
+  release();
+  await expect.poll(() => manager.database.operation(accepted.operationId)?.state).toBe('failed');
+  expect(target.effects).toEqual([]);
+});
+it('resolves concurrent duplicate and conflicting submissions to one durable intent', async () => {
+  const { app, headers, manager } = await setup(); const key = randomUUID();
+  const post = (payload: Record<string, unknown>) => app.inject({ method: 'POST', url: '/api/threads', headers: { ...headers, 'idempotency-key': key }, payload });
+  const [first, repeated] = await Promise.all([post(launch), post(launch)]);
+  expect(first.statusCode).toBe(202); expect(repeated.statusCode).toBe(202);
+  expect(first.json().operationId).toBe(repeated.json().operationId);
+  const conflictingKey = randomUUID();
+  const simultaneous = (payload: Record<string, unknown>) => app.inject({ method: 'POST', url: '/api/threads', headers: { ...headers, 'idempotency-key': conflictingKey }, payload });
+  const [accepted, conflict] = await Promise.all([simultaneous(launch), simultaneous({ ...launch, prompt: 'Different' })]);
+  expect([accepted.statusCode, conflict.statusCode].sort()).toEqual([202, 409]);
+  expect(manager.database.operations()).toHaveLength(2);
+});
+it('keeps operation status within existing owner visibility and includes a persisted recovery scope in runtime bootstrap', async () => {
+  const { app, headers, manager, target } = await setup();
+  const privateOperation = manager.journal.submit('another-account', randomUUID(), launch, target);
+  expect((await app.inject({ url: privateOperation.statusUrl, headers })).statusCode).toBe(404);
+  const runtime = await app.inject({ url: '/api/runtime', headers });
+  expect(runtime.json().recoveryScope).toBe(manager.database.recoveryScope('local'));
+  const remote = await setup('https://herdr.example:4321');
+  const unauthenticated = await remote.app.inject({ url: privateOperation.statusUrl, headers: remote.headers });
+  expect(unauthenticated.statusCode).toBe(401);
+});
+it('passes the authenticated owner into SSR bootstrap instead of using the local recovery scope', async () => {
+  const ssr: NonNullable<Parameters<typeof createHost>[2]> = (_request, response, _next, locals) => {
+    const owner = locals.accountId as string;
+    const bootstrap = (locals.runtime as RuntimeManager).bootstrap(owner);
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify({ owner, recoveryScope: bootstrap.recoveryScope }));
+  };
+  const { app, headers, database, manager } = await setup(origin, ssr);
+  const owner = 'remote-account';
+  database.setSetting('allowed_account', owner);
+  const token = 'authenticated-ssr-test-session';
+  const now = Date.now();
+  database.addDeviceSession({ id: randomUUID(), name: 'Remote device', createdAt: now, lastSeenAt: now, tokenHash: createHash('sha256').update(token).digest('hex') });
+
+  const local = await app.inject({ url: '/new', headers });
+  const authenticatedHeaders = { host: 'device.example.ts.net', cookie: `${SESSION_COOKIE}=${token}` };
+  const authenticated = await app.inject({ url: '/new', headers: authenticatedHeaders });
+  const runtime = await app.inject({ url: '/api/runtime', headers: authenticatedHeaders });
+  expect(local.statusCode).toBe(200);
+  expect(local.json()).toEqual({ owner: 'local', recoveryScope: manager.database.recoveryScope('local') });
+  expect(authenticated.statusCode).toBe(200);
+  expect(authenticated.json()).toEqual({ owner, recoveryScope: manager.database.recoveryScope(owner) });
+  expect(authenticated.json().recoveryScope).not.toBe(local.json().recoveryScope);
+  expect(runtime.json().recoveryScope).toBe(authenticated.json().recoveryScope);
 });
 it('creates and exposes a terminal-only tab before returning its direct URL data', async () => {
   const { app, headers, manager, target } = await setup();
@@ -129,7 +199,9 @@ it('creates and exposes a terminal-only tab before returning its direct URL data
   expect(manager.bootstrap().threads.some((item) => item.tabId === tabId)).toBe(false);
   const tab = manager.bootstrap().projections.find((projection) => projection.machineId === target.id)?.availableTabs?.find((item) => item.tabId === tabId);
   expect(tab).toMatchObject({ bound: false, panes: [{ id: paneId, terminalId, title: 'Shell' }] });
-  const route = await resolveSessionTab(manager, target.session, target.id, tabId);
+  const owner = 'remote-account';
+  const route = await resolveSessionTab(manager, target.session, target.id, tabId, owner);
+  expect(route.bootstrap.recoveryScope).toBe(manager.database.recoveryScope(owner));
   expect(route.page).toBe('terminal');
   expect(route.terminalPending).toBe(false);
   expect(route.terminalTab).toMatchObject({ tabId, bound: false, panes: [{ id: paneId, terminalId }] });
@@ -149,7 +221,7 @@ it('decodes encoded standalone tab route IDs before resolving them', () => {
 });
 it('keeps a known machine terminal route pending instead of rendering a 404 for a missing snapshot tab', async () => {
   const { manager, target } = await setup();
-  const route = await resolveSessionTab(manager, target.session, target.id, 'w1:still-starting');
+  const route = await resolveSessionTab(manager, target.session, target.id, 'w1:still-starting', 'local');
   expect(route.page).toBe('terminal');
   expect(route.terminalPending).toBe(true);
   expect(route.terminalTab).toBeUndefined();

@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest';
 import { createRuntimeStore } from '../src/client/store';
 import type { Projection } from '../src/shared/runtime';
 
-const empty = { projections: [], machines: [], projects: [], threads: [] };
+const empty = { projections: [], machines: [], projects: [], threads: [], recoveryScope: 'fixture' };
 
 it('drops identity-less projections instead of throwing', () => {
   const store = createRuntimeStore(empty);

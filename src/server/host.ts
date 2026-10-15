@@ -20,6 +20,10 @@ import type { Updates } from '../shared/update';
 import { MAX_IMAGE_BYTES, UploadStore, uploadContentTypes, uploadFileName } from './uploads';
 
 const localOwner = 'local';
+function launchOwner(auth: Auth, request: FastifyRequest, database: RuntimeManager['database']) {
+  const access = auth.access(request);
+  return access.local || !access.session ? localOwner : database.getSetting('allowed_account') ?? localOwner;
+}
 type SsrHandler = (request: FastifyRequest['raw'], response: import('node:http').ServerResponse, next: (error?: unknown) => void, locals: Record<string, unknown>) => void;
 
 const MAX_PROJECT_ICON_BYTES = 512 * 1024;
@@ -51,6 +55,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     if (message === 'thread_not_found' || message === 'tab_not_found') return reply.code(404).send({ error: message });
     if (message === 'read_only') return reply.code(403).send({ error: message });
     if (message === 'launch_in_progress') return reply.code(409).send({ error: message });
+    if (message === 'launch_capacity_exceeded') return reply.code(429).send({ error: message });
     return reply.code(['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected', 'workspace_creation_unavailable'].includes(message) ? 409 : 503).send({ error: ['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected', 'workspace_creation_unavailable'].includes(message) ? message : 'request_failed' });
   });
   await app.register(websocket, { options: { maxPayload: 32 * 1024, perMessageDeflate: false } });
@@ -70,7 +75,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     const { projectId } = z.object({ projectId: opaqueId.optional() }).strict().parse(request.query);
     return manager.catalog(machineId, projectId);
   });
-  app.get('/api/runtime', async () => manager.bootstrap());
+  app.get('/api/runtime', async (request) => manager.bootstrap(launchOwner(auth, request, manager.database)));
   app.get('/api/herdr-keys', async () => loadHerdrKeymap());
   app.get('/api/metrics', async () => {
     const cores = cpus();
@@ -157,11 +162,17 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
   app.post('/api/threads', async (request, reply) => {
     const input = launchInput.parse(request.body);
     const key = z.uuid().parse(request.headers['idempotency-key']);
+    const owner = launchOwner(auth, request, manager.database);
+    const previous = manager.journal.lookup(owner, key, input);
+    if (previous) return reply.code(202).send(previous);
     const supervisor = manager.supervisors.get(input.machineId);
     if (!supervisor?.connected) return reply.code(409).send({ error: 'machine_disconnected' });
-    const catalog = await manager.catalog(input.machineId, input.projectId);
-    if (!catalog.harnesses.find((harness) => harness.id === input.agent)?.launchEnabled || supervisor.target.canLaunch && !supervisor.target.canLaunch(input)) return reply.code(409).send({ error: 'launch_unavailable' });
-    const result = manager.journal.submit(localOwner, key, input, supervisor.target);
+    const target = supervisor.target;
+    if (!target.locations.some((location) => location.projectId === input.projectId)) return reply.code(404).send({ error: 'launch_unavailable' });
+    const identity = { fingerprint: target.fingerprint, session: target.session, configVersion: target.configVersion };
+    if (!manager.isLaunchTargetCurrent(target, identity)) return reply.code(409).send({ error: 'machine_disconnected' });
+    if (target.enabled === false || target.canLaunch && !target.canLaunch(input)) return reply.code(409).send({ error: 'launch_unavailable' });
+    const result = manager.journal.submit(owner, key, input, target, (candidate, captured) => manager.isLaunchTargetCurrent(candidate, captured));
     return reply.code(202).send(result);
   });
   app.post('/api/threads/:id/adopt', async (request) => {
@@ -212,7 +223,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
     const operation = manager.database.operation(id);
     if (!operation || ![localOwner, manager.database.getSetting('allowed_account')].includes(operation.accountId)) return reply.code(404).send({ error: 'operation_not_found' });
-    return { id: operation.id, state: operation.state, step: operation.step, threadId: operation.threadId };
+    return manager.journal.envelope(operation);
   });
   app.get('/api/stats', async () => hub.stats());
   if (perfLogEnabled) app.post('/api/dev/perf', { bodyLimit: 256 * 1024 }, async (request) => { for (const record of z.object({ records: z.array(z.record(z.string(), z.unknown())).max(100) }).parse(request.body).records) perfLog('client', record); return { ok: true }; });
@@ -233,7 +244,8 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     app.get('/*', async (request, reply) => {
       reply.hijack();
       if (perfLogEnabled) reply.raw.setHeader('Document-Policy', 'js-profiling');
-      ssr(request.raw, reply.raw, () => { if (!reply.raw.headersSent) { reply.raw.statusCode = 404; reply.raw.end('Not found'); } }, { runtime: manager, accountId: localOwner });
+      const owner = launchOwner(auth, request, manager.database);
+      ssr(request.raw, reply.raw, () => { if (!reply.raw.headersSent) { reply.raw.statusCode = 404; reply.raw.end('Not found'); } }, { runtime: manager, accountId: owner });
     });
   }
   app.addHook('onClose', async () => { transcriber?.close(); return manager.close(); });

@@ -69,7 +69,7 @@ it('keeps machine-scoped identical native IDs separate and handles deletion and 
   const a = reconcile(db, first, first.state); const b = reconcile(db, second, second.state);
   expect(a.threads[0].id).not.toBe(b.threads[0].id);
   const projection = (machineId: string, generation: string, revision: number, records = a): Projection => ({ machineId, generation, revision, freshAt: null, connected: true, ...records, layouts: [] });
-  const store = createRuntimeStore({ projections: [projection(first.id, 'a', 1), projection(second.id, 'b', 1, b)], threads: [], projects: [], machines: [] });
+  const store = createRuntimeStore({ projections: [projection(first.id, 'a', 1), projection(second.id, 'b', 1, b)], threads: [], projects: [], machines: [], recoveryScope: 'fixture' });
   const row = store.getState().threads[a.threads[0].id];
   store.getState().install(projection(first.id, 'a', 2)); expect(store.getState().threads[row.id]).toBe(row);
   store.getState().install(projection(first.id, 'new', 1, { threads: [], projects: [] }));
@@ -87,7 +87,7 @@ it('does not use a late snapshot from a previous subscription after disconnect',
 it('marks runtime stale on gateway loss but keeps the last known threads listed', () => {
   const db = database(); const target = new FakeTarget(); const records = reconcile(db, target, target.state);
   const projection: Projection = { machineId: target.id, generation: 'one', revision: 1, freshAt: new Date().toISOString(), connected: true, ...records, layouts: [] };
-  const store = createRuntimeStore({ projections: [projection], machines: [], threads: [], projects: [] });
+  const store = createRuntimeStore({ projections: [projection], machines: [], threads: [], projects: [], recoveryScope: 'fixture' });
   store.getState().connection(true); store.getState().connection(false); store.getState().connection(true);
   expect(store.getState().projections[target.id].connected).toBe(false); expect(store.getState().threads[records.threads[0].id]).toMatchObject({ bindingState: 'detached', status: 'unknown', panes: records.threads[0].panes });
   store.getState().install(projection); expect(store.getState().projections[target.id].connected).toBe(true); expect(store.getState().threads[records.threads[0].id].bindingState).toBe('attached');
