@@ -60,7 +60,7 @@ it('retains cached worktrees and reports a subtle warning after refresh failure'
 
   await openWorktreeMenu(queryClient);
   expect((await screen.findByRole('status')).textContent).toContain('Could not refresh worktrees. Showing cached results.');
-  expect(screen.getByText('feature')).toBeTruthy();
+  expect(screen.getByRole('menuitem', { name: /feature/ })).toBeTruthy();
 });
 
 it('shows loading rather than an empty worktree state on a cold query', async () => {
@@ -106,7 +106,7 @@ it('keeps a cached empty harness state distinct from a cold load failure', async
   renderLaunchSelectors(queryClient);
   await user.click(screen.getByRole('combobox', { name: /Harness/ }));
   expect(await screen.findByText('Could not refresh harness options. Showing cached results.')).toBeTruthy();
-  expect(screen.getByText('No harnesses available.')).toBeTruthy();
+  expect(screen.getByText(/No harnesses available\./)).toBeTruthy();
   expect(screen.queryByText('Could not load harnesses.')).toBeNull();
 });
 
