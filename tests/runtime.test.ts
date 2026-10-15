@@ -230,7 +230,8 @@ it('acknowledges native rename failure, timeout, and interrupted restart state',
   let secondClosed = false;
   const closeSecond = async () => { if (!secondClosed) { secondClosed = true; await secondManager.close(); } };
   cleanup.push(closeSecond); secondManager.start();
-  await expect.poll(() => secondManager.bootstrap().threads.length).toBe(1);
+  await expect.poll(() => secondManager.bootstrap().projections[0]?.connected).toBe(true);
+  await expect.poll(() => secondManager.bootstrap().threads[0]?.bindingState).toBe('attached');
   const hangingThread = secondManager.bootstrap().threads[0].id;
   secondManager.renameThread(hanging.id, hangingThread, 'Timeout');
   await expect.poll(() => attempts).toBe(1);

@@ -43,6 +43,10 @@ export class MetadataDatabase {
   saveThread(thread: Thread, anchors: string[], alias: string | null = null) {
     return this.sqlite.transaction(() => this.writeThread(thread, anchors, alias)).immediate();
   }
+  /** Persist a thread inside an existing compound transaction without opening a nested SQLite transaction. */
+  saveThreadInTransaction(thread: Thread, anchors: string[], alias: string | null = null) {
+    this.writeThread(thread, anchors, alias);
+  }
   private writeThread(thread: Thread, anchors: string[], alias: string | null) {
     const existing = this.db.select().from(schema.threads).where(eq(schema.threads.id, thread.id)).get();
     const supplied = normalizeThreadMetadata(thread);

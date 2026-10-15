@@ -87,7 +87,7 @@ export class LaunchJournal {
         const latest = this.database.threadRows(target.id, target.session).find((row) => row.id === thread.id);
         const { tabId, paneId: _paneId, terminalId: _terminalId, workspaceId: _workspaceId, ...capture } = created;
         thread = { ...thread, ...latest?.metadata, ...capture, tabId };
-        this.database.saveThread(thread, [created.terminalId], created.tabId);
+        this.database.saveThreadInTransaction(thread, [created.terminalId], created.tabId);
         this.database.updateOperation(id, 'running', 'checkout_complete', result);
       });
       if (this.stopping) throw new Error('gateway_stopping');
@@ -106,7 +106,7 @@ export class LaunchJournal {
         thread = { ...thread, ...capture, expectedCwd: thread.expectedCwd ?? capture.expectedCwd,
           observedCwd: capture.observedCwd ?? thread.observedCwd, expectedRepository: thread.expectedRepository ?? capture.expectedRepository, expectedCheckout: thread.expectedCheckout ?? capture.expectedCheckout };
         if (thread.providerSession && thread.recovery?.state !== 'needs_attention') thread.recovery = { state: 'active' };
-        this.database.saveThread(thread, latest?.anchors.length ? latest.anchors : [created.terminalId], latest?.alias ?? created.tabId);
+        this.database.saveThreadInTransaction(thread, latest?.anchors.length ? latest.anchors : [created.terminalId], latest?.alias ?? created.tabId);
         result = { ...result, ...capture };
         this.database.updateOperation(id, 'running', 'start_complete', result);
       });
