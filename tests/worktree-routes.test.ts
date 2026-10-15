@@ -36,6 +36,11 @@ it('routes workspace creation through the connected runtime manager', async () =
     method: 'POST', url: '/api/workspaces', headers: { ...headers, 'idempotency-key': '00000000-0000-4000-8000-000000000001' },
     payload: { machineId: target.id, path: '/project', label: 'Project' },
   });
-  expect(response.statusCode).toBe(201); expect(response.json()).toEqual(result);
+  expect(response.statusCode).toBe(202);
+  const accepted = response.json();
+  expect(accepted).toMatchObject({ operationId: expect.any(String), kind: 'workspace', state: 'pending', step: 'validate' });
+  await expect.poll(() => manager.database.createOperation(accepted.operationId)?.state).toBe('ready');
+  const status = await app.inject({ url: accepted.statusUrl, headers });
+  expect(status.json()).toMatchObject({ operationId: accepted.operationId, kind: 'workspace', state: 'ready', result });
   expect(createWorkspace).toHaveBeenCalledOnce();
 });

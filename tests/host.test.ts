@@ -204,10 +204,12 @@ it('accepts terminal creation before native work and serves status without repla
   let release!: () => void; let entered!: () => void;
   const enteredNative = new Promise<void>((resolve) => { entered = resolve; });
   const gate = new Promise<void>((resolve) => { release = resolve; });
-  target.createWorkspace = async (path, label, requestId) => {
+  cleanups.push(() => release());
+  const createWorkspace = vi.fn(async (path: string, label: string, requestId: string) => {
     requested = { path, label, requestId }; entered(); await gate;
     return { workspaceId, tabId, paneId, terminalId };
-  };
+  });
+  target.createWorkspace = createWorkspace;
   const key = randomUUID();
   const post = () => app.inject({ method: 'POST', url: '/api/terminals', headers: { ...headers, 'Idempotency-Key': key }, payload: { machineId: target.id, path: '~/' } });
   const response = await post();
@@ -218,10 +220,10 @@ it('accepts terminal creation before native work and serves status without repla
   expect(requested).toMatchObject({ path: '~/', label: 'Terminal', requestId: expect.any(String) });
   const repeated = await post();
   expect(repeated.statusCode).toBe(202); expect(repeated.json().operationId).toBe(accepted.operationId);
-  expect(target.createWorkspace).toHaveBeenCalledOnce();
+  expect(createWorkspace).toHaveBeenCalledOnce();
   const statusWhileRunning = await app.inject({ url: accepted.statusUrl, headers });
   expect(statusWhileRunning.json()).toMatchObject({ operationId: accepted.operationId, kind: 'terminal', state: 'running' });
-  expect(target.createWorkspace).toHaveBeenCalledOnce();
+  expect(createWorkspace).toHaveBeenCalledOnce();
 
   release();
   await expect.poll(() => manager.database.createOperation(accepted.operationId)?.state).toBe('ready');
