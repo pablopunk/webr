@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Command, PanelLeft } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
+import { MobileTopBar } from './MobileTopBar';
 import { PrefixOverlay } from './PrefixOverlay';
 import { PerfOverlay } from './PerfOverlay';
 import { PairingPrompt } from './PairingPrompt';
@@ -283,13 +283,13 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
     <Sidebar projects={projects} threads={threads} archived={archived} floating={floating} detached={detached} ownedTabs={ownedTabs} machines={machines} currentId={thread?.id} currentMachineId={page === 'terminal' ? machineId : thread?.machineId} currentTab={page === 'terminal' && machineId && tabId ? { machineId, tabId } : undefined} mode={mode} onModeChange={changeMode} collapsed={collapsed}
       mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} paletteShortcut={shortcuts.commandPalette} updateAction={<UpdateButton />} />
     <div className="main-panel">
+      {narrow && (page === 'thread' || page === 'terminal') && <MobileTopBar panes={page === 'thread' ? thread?.panes ?? [] : terminalPanes} focusedPane={focusedPane} onFocusPane={setFocusedPane} onOpenSidebar={toggleSidebar} onOpenPalette={() => setPaletteOpen(true)} keepTerminalFocus={keepTerminalFocus} />}
       {page === 'thread' && thread && <ThreadView thread={thread} connected={gatewayConnected && !!projections[thread.machineId]?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} />}
       {page === 'terminal' && machineId && tabId && <TerminalTabView machineId={machineId} tabId={tabId} panes={terminalPanes} connected={gatewayConnected && !!projections[machineId]?.connected} canControl={!!machines.find((machine) => machine.id === machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} pending={terminalPending && !standaloneTab && !terminalLookupTimedOut} startupPreset={pendingTerminalStartup} onStartupComplete={completeTerminalStartup} />}
       {page === 'new' && <NewThreadView key={projectId} projects={projects} machines={machines} selectedProjectId={projectId} onOpenSidebar={toggleSidebar} />}
       {page === 'settings' && <SettingsView onOpenSidebar={toggleSidebar} />}
       {page === 'missing' && <main className="not-found"><h1>Thread not found</h1><a href="/">Open a thread</a></main>}
     </div>
-    {(page === 'thread' || page === 'terminal') && <div className="mobile-controls"><button aria-label="Open sidebar" onPointerDown={keepTerminalFocus} onClick={toggleSidebar}><PanelLeft size={22} /></button><button aria-label="Open command palette" onPointerDown={keepTerminalFocus} onClick={() => setPaletteOpen(true)}><Command size={22} /></button></div>}
     {perfAvailable && <PerfOverlay />}
     <PairingPrompt />
     <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projects={projects} threads={threads} floating={floating} machines={machines} thread={thread} focusedPane={focusedPane}
