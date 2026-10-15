@@ -10,7 +10,7 @@ import type { Icon } from '../transport/icons';
 import type { MetadataDatabase } from '../storage/database';
 import type { Bootstrap, Projection } from '../../shared/runtime';
 import type { Machine } from '../../lib/machines';
-import { LaunchJournal } from './launch';
+import { LaunchJournal, type LaunchTargetIdentity } from './launch';
 import { isListedThread } from '../../lib/launch';
 import { isSameOrSiblingWorktree, sameSession } from './recovery';
 import { createWorkspace, type CreatedWorkspace } from './workspace';
@@ -56,9 +56,14 @@ export class RuntimeManager extends EventEmitter {
     for (const supervisor of this.supervisors.values()) supervisor.stop();
     await this.journal.stop(); this.removeAllListeners();
   }
-  bootstrap(): Bootstrap {
+  bootstrap(owner = 'local'): Bootstrap {
     const projections = [...this.projections.values()];
-    return { projections, projects: projections.flatMap((projection) => projection.projects), threads: projections.flatMap((projection) => projection.threads), machines: [...this.supervisors.values()].map((supervisor) => ({ id: supervisor.target.id, name: supervisor.target.name, session: supervisor.target.session, connected: supervisor.connected, projectPaths: Object.fromEntries(supervisor.target.locations.map((location) => [location.projectId, location.path])), harnesses: [], error: supervisor.error, writable: supervisor.target.writable, os: supervisor.target.os, configVersion: this.configVersions.get(supervisor.target.id) })) };
+    return { projections, projects: projections.flatMap((projection) => projection.projects), threads: projections.flatMap((projection) => projection.threads), machines: [...this.supervisors.values()].map((supervisor) => ({ id: supervisor.target.id, name: supervisor.target.name, session: supervisor.target.session, connected: supervisor.connected, projectPaths: Object.fromEntries(supervisor.target.locations.map((location) => [location.projectId, location.path])), harnesses: [], error: supervisor.error, writable: supervisor.target.writable, os: supervisor.target.os, configVersion: this.configVersions.get(supervisor.target.id) })), recoveryScope: this.database.recoveryScope(owner) };
+  }
+  isLaunchTargetCurrent(target: TargetAdapter, identity: LaunchTargetIdentity) {
+    const supervisor = this.supervisors.get(target.id);
+    if (!supervisor || !supervisor.connected) return false;
+    return supervisor.target === target && target.fingerprint === identity.fingerprint && target.session === identity.session && target.configVersion === identity.configVersion;
   }
   private machine(supervisor: TargetSupervisor): Machine { return { id: supervisor.target.id, name: supervisor.target.name, session: supervisor.target.session, connected: supervisor.connected, configVersion: supervisor.target.configVersion, writable: supervisor.target.writable, os: supervisor.target.os, error: supervisor.error, projectPaths: Object.fromEntries(supervisor.target.locations.map((location) => [location.projectId, location.path])), harnesses: [] }; }
   async catalog(machineId: string, projectId?: string) {

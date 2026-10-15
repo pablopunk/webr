@@ -1,6 +1,6 @@
 import { NodeSqliteClient } from './node-sqlite-client';
 import { openMigratedDrizzle } from './drizzle-node-sqlite';
-import { and, desc, eq, lte, max, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, lte, max, sql } from 'drizzle-orm';
 import type { DeviceSession } from '../auth/sessions';
 import type { AuditEvent } from '../auth/audit';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +9,7 @@ import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 import * as schema from './schema';
 import type { Thread } from '../../lib/models';
-import type { LaunchInput } from '../../shared/runtime';
+import { launchInput, type LaunchInput } from '../../shared/runtime';
 
 const AUDIT_RETENTION = 200;
 
@@ -38,37 +38,73 @@ export class MetadataDatabase {
   }
   deleteThread(id: string) {
     this.db.transaction(() => {
+      const operations = this.db.select().from(schema.operations).where(eq(schema.operations.threadId, id)).all();
+      for (const operation of operations) this.db.insert(schema.launchTombstones).values({
+        id: operation.id, accountId: operation.accountId, kind: operation.kind, key: operation.key, hash: operation.hash,
+        threadId: operation.threadId, state: operation.state, step: operation.step, result: { threadId: operation.threadId }, error: operation.error,
+      }).run();
       this.db.delete(schema.operations).where(eq(schema.operations.threadId, id)).run();
       this.db.delete(schema.threads).where(eq(schema.threads.id, id)).run();
     });
   }
-  beginLaunch(accountId: string, key: string, input: LaunchInput, thread: Thread) {
-    const hash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
-    return this.db.transaction(() => {
-      const existing = this.db.select().from(schema.operations).where(and(eq(schema.operations.accountId, accountId), eq(schema.operations.key, key))).get();
+  private launchHash(input: LaunchInput) { return createHash('sha256').update(JSON.stringify(launchInput.parse(input))).digest('hex'); }
+  findLaunch(accountId: string, kind: string, key: string, input: LaunchInput) {
+    const hash = this.launchHash(input);
+    const operation = this.db.select().from(schema.operations).where(and(eq(schema.operations.accountId, accountId), eq(schema.operations.kind, kind), eq(schema.operations.key, key))).get();
+    const tombstone = operation ? undefined : this.db.select().from(schema.launchTombstones).where(and(eq(schema.launchTombstones.accountId, accountId), eq(schema.launchTombstones.kind, kind), eq(schema.launchTombstones.key, key))).get();
+    const existing = operation ?? tombstone;
+    if (existing && existing.hash !== hash) throw new Error('idempotency_conflict');
+    return existing;
+  }
+  beginLaunch(accountId: string, key: string, input: LaunchInput, thread: Thread, target: { fingerprint: string; session: string; configVersion: number }, kind = 'thread') {
+    const normalizedInput = launchInput.parse(input);
+    const hash = this.launchHash(normalizedInput);
+    return this.sqlite.transaction(() => {
+      const existing = this.db.select().from(schema.operations).where(and(eq(schema.operations.accountId, accountId), eq(schema.operations.kind, kind), eq(schema.operations.key, key))).get()
+        ?? this.db.select().from(schema.launchTombstones).where(and(eq(schema.launchTombstones.accountId, accountId), eq(schema.launchTombstones.kind, kind), eq(schema.launchTombstones.key, key))).get();
       if (existing) {
         if (existing.hash !== hash) throw new Error('idempotency_conflict');
         return { operation: existing, created: false };
       }
-      const operation = { id: randomUUID(), accountId, key, hash, threadId: thread.id, input, state: 'pending', step: 'validate', result: {} };
+      const active = this.db.select({ count: sql<number>`count(*)` }).from(schema.operations).where(and(
+        eq(schema.operations.accountId, accountId), sql`json_extract(${schema.operations.input}, '$.machineId') = ${normalizedInput.machineId}`,
+        inArray(schema.operations.state, ['pending', 'running']),
+      )).get()?.count ?? 0;
+      if (active >= 32) throw new Error('launch_capacity_exceeded');
+      const operation = {
+        id: randomUUID(), accountId, kind, key, hash, threadId: thread.id, input: normalizedInput,
+        targetFingerprint: target.fingerprint, targetSession: target.session, targetConfigVersion: target.configVersion,
+        state: 'pending', step: 'validate', result: {}, error: null,
+      };
       this.db.insert(schema.operations).values(operation).run();
       this.saveThread(thread, []);
       return { operation, created: true };
-    });
+    }).immediate();
   }
-  updateOperation(id: string, state: string, step: string, result: Record<string, unknown>) {
+  updateOperation(id: string, state: string, step: string, result: Record<string, unknown>, error?: string) {
     const operation = this.db.select().from(schema.operations).where(eq(schema.operations.id, id)).get();
-    this.db.update(schema.operations).set({ state, step, result }).where(eq(schema.operations.id, id)).run();
+    this.db.update(schema.operations).set({ state, step, result, error: error ?? null }).where(eq(schema.operations.id, id)).run();
     const row = operation && this.db.select().from(schema.threads).where(eq(schema.threads.id, operation.threadId)).get();
     // Launch lifecycle transitions are updates too: they anchor the failed-launch listing window
     // to the moment of failure instead of the thread's creation. Callers may already hold a
     // transaction open, so these statements must not open their own.
     if (row) this.db.update(schema.threads).set({ metadata: { ...row.metadata, updatedAt: new Date().toISOString() } }).where(eq(schema.threads.id, row.id)).run();
   }
-  operation(id: string) { return this.db.select().from(schema.operations).where(eq(schema.operations.id, id)).get(); }
+  operation(id: string) {
+    return this.db.select().from(schema.operations).where(eq(schema.operations.id, id)).get()
+      ?? this.db.select().from(schema.launchTombstones).where(eq(schema.launchTombstones.id, id)).get();
+  }
   operations() { return this.db.select().from(schema.operations).all(); }
   markInterruptedLaunches() {
-    for (const operation of this.operations()) if (operation.state === 'pending' || operation.state === 'running') this.updateOperation(operation.id, 'unknown', operation.step, operation.result);
+    for (const operation of this.operations()) if (operation.state === 'pending' || operation.state === 'running') this.updateOperation(operation.id, 'unknown', operation.step, operation.result, 'launch_interrupted');
+  }
+  recoveryScope(owner: string) {
+    let namespace = this.getSetting('server_namespace');
+    if (!namespace) {
+      this.db.insert(schema.settings).values({ key: 'server_namespace', value: randomUUID() }).onConflictDoNothing().run();
+      namespace = this.getSetting('server_namespace');
+    }
+    return createHash('sha256').update(JSON.stringify(['webr:recovery-scope:v1', namespace, owner])).digest('base64url');
   }
   registerProfile(id: string, session: string, metadata: string, locations: { projectId: string; path: string }[]) {
     const previous = this.db.select().from(schema.profiles).where(eq(schema.profiles.id, id)).get();

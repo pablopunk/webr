@@ -6,7 +6,7 @@ const manager = Astro.locals.runtime;
 const machineId = Astro.url.searchParams.get('machine');
 const session = Astro.params.session ?? '';
 const tabId = decodeSessionTabId(Astro.params.tab);
-const route = await resolveSessionTab(manager, session, machineId, tabId);
+const route = await resolveSessionTab(manager, session, machineId, tabId, Astro.locals.accountId);
 const { bootstrap, thread, machine, terminalTab, page, terminalPending } = route;
 const terminalStartup = page === 'terminal' && Astro.url.searchParams.get('startup') === 'resource-monitor' ? 'resource-monitor' as const : undefined;
 if (page === 'missing') Astro.response.status = 404;

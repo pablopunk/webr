@@ -13,10 +13,14 @@ export const threads = sqliteTable('app_threads', {
   uniqueIndex('thread_owner_token').on(table.machineId, table.session, sql`json_extract(${table.metadata}, '$.bindingFingerprint')`, sql`json_extract(${table.metadata}, '$.ownerToken')`),
 ]);
 export const operations = sqliteTable('launch_operations', {
-  id: text('id').primaryKey(), accountId: text('account_id').notNull(), key: text('key').notNull(), hash: text('hash').notNull(), threadId: text('thread_id').notNull(),
-  input: text('input', { mode: 'json' }).$type<LaunchInput>().notNull(), state: text('state').notNull(), step: text('step').notNull(),
-  result: text('result', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
-}, (table) => [uniqueIndex('account_operation_key').on(table.accountId, table.key)]);
+  id: text('id').primaryKey(), accountId: text('account_id').notNull(), kind: text('kind').notNull().default('thread'), key: text('key').notNull(), hash: text('hash').notNull(), threadId: text('thread_id').notNull(),
+  input: text('input', { mode: 'json' }).$type<LaunchInput>().notNull(), targetFingerprint: text('target_fingerprint').notNull().default(''), targetSession: text('target_session').notNull().default(''), targetConfigVersion: integer('target_config_version').notNull().default(0),
+  state: text('state').notNull(), step: text('step').notNull(), result: text('result', { mode: 'json' }).$type<Record<string, unknown>>().notNull(), error: text('error'),
+}, (table) => [uniqueIndex('account_operation_kind_key').on(table.accountId, table.kind, table.key)]);
+export const launchTombstones = sqliteTable('launch_tombstones', {
+  id: text('id').primaryKey(), accountId: text('account_id').notNull(), kind: text('kind').notNull(), key: text('key').notNull(), hash: text('hash').notNull(), threadId: text('thread_id').notNull(),
+  state: text('state').notNull(), step: text('step').notNull(), result: text('result', { mode: 'json' }).$type<Record<string, unknown>>().notNull(), error: text('error'),
+}, (table) => [uniqueIndex('account_launch_tombstone_kind_key').on(table.accountId, table.kind, table.key)]);
 export const settings = sqliteTable('app_settings', { key: text('key').primaryKey(), value: text('value').notNull() });
 export const profiles = sqliteTable('machine_profiles', { id: text('id').primaryKey(), session: text('session').notNull(), configVersion: integer('config_version').notNull(), metadata: text('metadata').notNull() });
 export const projectLocations = sqliteTable('project_locations', { id: text('id').primaryKey(), machineId: text('machine_id').notNull(), projectId: text('project_id').notNull(), path: text('path').notNull() });

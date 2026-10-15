@@ -17,6 +17,17 @@ it('returns stable full UUID operation and thread IDs for repeated account-scope
   await expect.poll(() => db.operation(first.operationId)?.state).toBe('ready');
   expect(target.effects).toEqual(['checkout', 'start', 'prompt']);
 });
+it('preserves a deleted launch outcome as a prompt-free idempotency tombstone', async () => {
+  const { db, target, journal } = setup(); const key = randomUUID();
+  const accepted = journal.submit('owner', key, launch, target);
+  await expect.poll(() => db.operation(accepted.operationId)?.state).toBe('ready');
+  const effects = [...target.effects]; db.deleteThread(accepted.id);
+  expect(db.operation(accepted.operationId)).toMatchObject({ state: 'ready', threadId: accepted.id });
+  expect(db.findLaunch('owner', 'thread', key, launch)).toMatchObject({ id: accepted.operationId, threadId: accepted.id });
+  const replay = journal.submit('owner', key, launch, target);
+  expect(replay.operationId).toBe(accepted.operationId); expect(replay.id).toBe(accepted.id); expect(target.effects).toEqual(effects);
+  expect(() => journal.submit('owner', key, { ...launch, prompt: 'changed' }, target)).toThrow('idempotency_conflict');
+});
 it.each(['checkout:before', 'checkout:after', 'start:before', 'start:after', 'prompt:before', 'prompt:after'])('journals uncertain %s failures and never retries effects, prompts, or cleanup', async (failure) => {
   const { db, target, journal } = setup(); target.failure = failure; const key = randomUUID();
   const result = journal.submit('owner', key, launch, target);
@@ -27,12 +38,12 @@ it.each(['checkout:before', 'checkout:after', 'start:before', 'start:after', 'pr
 });
 it('marks an interrupted durable intent as unknown instead of replaying it', () => {
   const { db, target } = setup(); const thread = reconcile(db, target, target.state).threads[0];
-  const { operation } = db.beginLaunch('owner', randomUUID(), launch, thread);
+  const { operation } = db.beginLaunch('owner', randomUUID(), launch, thread, target);
   new LaunchJournal(db, () => {}); expect(db.operation(operation.id)?.state).toBe('unknown'); expect(target.effects).toEqual([]);
 });
 it('keeps a failed launch listed for ten minutes after the failure, not after its creation', () => {
   const { db, target } = setup(); const thread = reconcile(db, target, target.state).threads[0];
-  const { operation } = db.beginLaunch('owner', randomUUID(), launch, thread);
+  const { operation } = db.beginLaunch('owner', randomUUID(), launch, thread, target);
   const row = db.threadRows()[0];
   db.saveThread({ ...thread, updatedAt: new Date(Date.now() - 15 * 60_000).toISOString() }, row.anchors, row.alias);
   db.updateOperation(operation.id, 'failed', 'checkout', {});
@@ -47,6 +58,31 @@ it('keeps catalogs and custom model choices isolated to the selected host', asyn
   const result = journal.submit('owner', randomUUID(), { ...launch, machineId: 'remote', projectId: 'remote:project', model: 'remote/custom-model' }, other);
   await expect.poll(() => db.operation(result.operationId)?.state).toBe('ready');
   expect(target.effects).toEqual([]); expect(db.operation(result.operationId)?.input.model).toBe('remote/custom-model');
+});
+it('caps accepted pending launches at 32 per owner and machine before recording more work', async () => {
+  const { db, target, journal } = setup();
+  let enter!: () => void; let release!: () => void; let first = true;
+  const entered = new Promise<void>((resolve) => { enter = resolve; });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  target.catalog = async () => { if (first) { first = false; enter(); await gate; } throw new Error('launch_unavailable'); };
+  for (let index = 0; index < 32; index++) journal.submit('owner', randomUUID(), { ...launch, prompt: `Prompt ${index}` }, target);
+  await entered;
+  expect(db.operations()).toHaveLength(32);
+  expect(() => journal.submit('owner', randomUUID(), launch, target)).toThrow('launch_capacity_exceeded');
+  expect(db.operations()).toHaveLength(32);
+  release(); await journal.stop(); expect(target.effects).toEqual([]);
+});
+it('does not execute a captured launch after its target configuration changes during catalog lookup', async () => {
+  const { db, target, journal } = setup();
+  let enter!: () => void; let release!: () => void;
+  const entered = new Promise<void>((resolve) => { enter = resolve; });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const catalog = target.catalog.bind(target);
+  target.catalog = async () => { enter(); await gate; return catalog(); };
+  const accepted = journal.submit('owner', randomUUID(), launch, target);
+  await entered; target.configVersion += 1; release();
+  await expect.poll(() => db.operation(accepted.operationId)?.state).toBe('failed');
+  expect(target.effects).toEqual([]);
 });
 it.each(['startup', 'reconciliation'])('persists provider identity from %s before the first prompt without clobbering concurrent capture', async (source) => {
   const { db, target, journal } = setup();
