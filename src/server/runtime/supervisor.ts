@@ -27,7 +27,7 @@ export class TargetSupervisor {
     if (this.stopped) return;
     const epoch = ++this.epoch;
     try {
-      const unsubscribe = await this.target.subscribe(() => this.invalidate(), (reason) => this.disconnect(reason));
+      const unsubscribe = await this.target.subscribe(() => this.invalidate(), this.closedIn(epoch));
       if (this.stopped || epoch !== this.epoch) { unsubscribe(); return; }
       this.subscription = unsubscribe;
       this.invalidate();
@@ -67,7 +67,7 @@ export class TargetSupervisor {
       const paneIds = snapshot.panes.map((pane) => pane.pane_id).sort();
       const key = JSON.stringify(paneIds);
       if (key !== this.subscribedPanes) {
-        const subscription = await this.target.subscribe(() => this.invalidate(), (reason) => this.disconnect(reason), paneIds);
+        const subscription = await this.target.subscribe(() => this.invalidate(), this.closedIn(epoch), paneIds);
         if (epoch !== this.epoch || this.stopped) { subscription(); return; }
         this.subscription?.(); this.subscription = subscription; this.subscribedPanes = key; this.dirty = true;
       }
@@ -77,6 +77,7 @@ export class TargetSupervisor {
       if (this.dirty && this.hasSubscription()) this.invalidate();
     }
   }
+  private closedIn(epoch: number) { return (reason: string) => { if (epoch === this.epoch) this.disconnect(reason); }; }
   private hasSubscription() { return !!this.subscription; }
   private disconnect(reason: string) {
     if (this.stopped) return;
