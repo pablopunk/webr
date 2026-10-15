@@ -85,7 +85,8 @@ async function verifyInstaller(installer: Installer, tarball: string, root: stri
   step(`${installer}: install ${tarball}`);
   const sandbox: Sandbox = { root, env: {}, binDir: '' };
   const install = installCommands[installer](tarball, sandbox);
-  const env = { ...process.env, ...install.env, WEBR_HOME: join(root, 'webr-home'), HERDR_SOCKET_PATH: NO_HERDR_SOCKET, PATH: [install.binDir, process.env.PATH].join(delimiter) };
+  const env: NodeJS.ProcessEnv = { ...process.env, ...install.env, WEBR_HOME: join(root, 'webr-home'), HERDR_SOCKET_PATH: NO_HERDR_SOCKET, PATH: [install.binDir, process.env.PATH].join(delimiter) };
+  delete env.WEBR_LOG_FILE;
   await run(install.command, install.args, { env, maxBuffer: 16 * 1024 * 1024 });
   const version = (await run('webr', ['--version'], { env })).stdout.trim();
   expect(/^\d+\.\d+\.\d+/.test(version), `webr --version to print a version, got "${version}"`);
