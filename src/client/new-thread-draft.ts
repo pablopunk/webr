@@ -68,6 +68,23 @@ export function clearLaunchDraft(scope: string, id: string) {
   try { localStorage.removeItem(`webr-launch-draft:${id}`); } catch { /* Remove legacy unscoped data when possible. */ }
 }
 
+export function clearLaunchDrafts(scope: string) {
+  const scopedPrefix = `${storagePrefix(scope)}launch:`;
+  try {
+    for (let index = sessionStorage.length - 1; index >= 0; index--) {
+      const key = sessionStorage.key(index);
+      if (key?.startsWith(scopedPrefix)) sessionStorage.removeItem(key);
+    }
+  } catch { /* Storage may be unavailable. */ }
+  const legacyPrefix = 'webr-launch-draft:';
+  try {
+    for (let index = localStorage.length - 1; index >= 0; index--) {
+      const key = localStorage.key(index);
+      if (key?.startsWith(legacyPrefix)) localStorage.removeItem(key);
+    }
+  } catch { /* Remove legacy unscoped data when possible. */ }
+}
+
 export function clearNewThreadDraftForLaunch(scope: string, id: string) {
   if (readNewThreadDraft(scope).launchId === id) writeNewThreadDraft(scope, { prompt: '', images: [] });
 }

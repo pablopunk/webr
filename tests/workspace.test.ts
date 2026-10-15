@@ -1,59 +1,111 @@
 import { expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { MetadataDatabase } from '../src/server/storage/database';
-import { createWorkspace } from '../src/server/runtime/workspace';
+import { RuntimeManager } from '../src/server/runtime/manager';
 import { FakeTarget, snapshot } from './fixtures/target';
 import { nativeLocations } from '../src/server/transport/native-locations';
 
-it('stores workspace intent before effect, returns repeated results and rejects changed payloads', async () => {
+const input = { machineId: 'fixture', path: '/project', label: 'Project' };
+const result = { workspaceId: 'w2', tabId: 'w2:t1', paneId: 'w2:p1', terminalId: 'term_workspace' };
+
+it('stores normalized owner-scoped create tombstones permanently and conflicts on changed payloads', () => {
   const database = new MetadataDatabase(':memory:'); const key = randomUUID();
-  const expiredKey = randomUUID();
-  database.setSetting('workspace_operation:' + expiredKey, JSON.stringify({ id: randomUUID(), state: 'ready', createdAt: Date.now() - 31 * 24 * 60 * 60_000 }));
-  const create = vi.fn(async (_path: string, _label: string, _requestId: string) => {
-    expect(JSON.parse(database.getSetting('workspace_operation:' + key)!)).toMatchObject({ state: 'unknown' });
-    return { workspaceId: 'w1', tabId: 'w1:t1', paneId: 'w1:p1', terminalId: 'term_fixture' };
-  });
-  const target = Object.assign(new FakeTarget(), { createWorkspace: create });
+  const target = { fingerprint: 'fixture:source-v1', session: 'fixture', configVersion: 1 };
   try {
-    const result = await createWorkspace(database, target, key, '/project', 'Project');
-    expect(database.getSetting('workspace_operation:' + expiredKey)).toBeUndefined();
-    expect(await createWorkspace(database, target, key, '/project', 'Project')).toEqual(result);
-    await expect(createWorkspace(database, target, key, '/other', 'Project')).rejects.toThrow('idempotency_conflict');
-    expect(create).toHaveBeenCalledTimes(1);
+    const accepted = database.beginCreateOperation('local', 'workspace', key, input, target);
+    expect(accepted).toMatchObject({ created: true, operation: { state: 'pending', input } });
+    database.updateCreateOperation(accepted.operation.id, 'ready', 'ready', result);
+    expect(database.createOperation(accepted.operation.id)).toMatchObject({ state: 'ready', input: null, result });
+    expect(database.beginCreateOperation('local', 'workspace', key, input, target)).toMatchObject({ created: false, operation: { id: accepted.operation.id, state: 'ready', nativeRequestId: accepted.operation.nativeRequestId } });
+    expect(() => database.beginCreateOperation('local', 'workspace', key, { ...input, label: 'Changed' }, target)).toThrow('idempotency_conflict');
+    expect(database.beginCreateOperation('local', 'terminal', key, { machineId: input.machineId, path: input.path }, target).created).toBe(true);
   } finally { database.close(); }
 });
-it('retries an uncertain workspace creation with the original Herdr request ID', async () => {
-  const database = new MetadataDatabase(':memory:'); const key = randomUUID();
-  const result = { workspaceId: 'w2', tabId: 'w2:t1', paneId: 'w2:p1', terminalId: 'term_terminal' };
-  const requestIds: string[] = [];
-  const create = vi.fn(async (_path: string, _label: string, requestId: string) => {
-    requestIds.push(requestId);
-    if (requestIds.length === 1) throw new Error('rpc_timeout');
-    return result;
-  }); const target = Object.assign(new FakeTarget(), { createWorkspace: create });
+
+it('accepts before native work and never replays an uncertain native create', async () => {
+  const database = new MetadataDatabase(':memory:'); const target = new FakeTarget();
+  const manager = new RuntimeManager(database, [target]); const key = randomUUID();
+  const create = vi.fn(async (_path: string, _label: string, _requestId: string) => { throw new Error('rpc_timeout'); });
+  target.createWorkspace = create;
   try {
-    await expect(createWorkspace(database, target, key, '/project', 'Project')).rejects.toThrow('rpc_timeout');
-    expect(await createWorkspace(database, target, key, '/project', 'Project')).toEqual(result);
-    expect(create).toHaveBeenCalledTimes(2);
-    expect(requestIds[0]).toBe(requestIds[1]);
-    expect(JSON.parse(database.getSetting('workspace_operation:' + key)!)).toMatchObject({ state: 'ready', result });
-  } finally { database.close(); }
-});
-it('upgrades a saved workspace result that predates root-pane IDs', async () => {
-  const database = new MetadataDatabase(':memory:'); const key = randomUUID(); const requestId = randomUUID();
-  const target = new FakeTarget();
-  const input = JSON.stringify({ fingerprint: target.fingerprint, path: '/project', label: 'Terminal' });
-  const result = { workspaceId: 'w2', tabId: 'w2:t1', paneId: 'w2:p1', terminalId: 'term_terminal' };
-  database.setSetting('workspace_operation:' + key, JSON.stringify({ id: requestId, input, state: 'ready', result: { workspaceId: 'w2', tabId: 'w2:t1', terminalId: 'term_terminal' } }));
-  const create = vi.fn(async (_path: string, _label: string, actualRequestId: string) => { expect(actualRequestId).toBe(requestId); return result; });
-  Object.assign(target, { createWorkspace: create });
-  try {
-    expect(await createWorkspace(database, target, key, '/project', 'Terminal')).toEqual(result);
+    manager.start(); await expect.poll(() => manager.bootstrap().machines[0]?.connected).toBe(true);
+    const accepted = manager.acceptCreateOperation('local', 'workspace', key, input);
+    expect(accepted.envelope).toMatchObject({ kind: 'workspace', state: 'pending', step: 'validate' });
+    expect(create).not.toHaveBeenCalled();
+    manager.startCreateOperation(accepted.envelope.operationId);
+    await expect.poll(() => database.createOperation(accepted.envelope.operationId)?.state).toBe('unknown');
     expect(create).toHaveBeenCalledOnce();
-    expect(JSON.parse(database.getSetting('workspace_operation:' + key)!)).toMatchObject({ state: 'ready', result });
+    const nativeRequestId = database.createOperation(accepted.envelope.operationId)?.nativeRequestId;
+    expect(create.mock.calls[0]?.[2]).toBe(nativeRequestId);
+    const repeated = manager.acceptCreateOperation('local', 'workspace', key, input);
+    expect(repeated.envelope).toMatchObject({ operationId: accepted.envelope.operationId, state: 'unknown' });
+    expect(create).toHaveBeenCalledOnce();
+  } finally { await manager.close(); database.close(); }
+});
+
+it('marks a running create unknown on manager restart and preserves its native request ID', () => {
+  const database = new MetadataDatabase(':memory:'); const target = new FakeTarget(); const key = randomUUID(); const nativeRequestId = randomUUID();
+  const accepted = database.beginCreateOperation('local', 'workspace', key, input, { fingerprint: target.fingerprint, session: target.session, configVersion: target.configVersion }, { nativeRequestId });
+  database.updateCreateOperation(accepted.operation.id, 'running', 'create', {});
+  const create = vi.fn(async () => result); target.createWorkspace = create;
+  const manager = new RuntimeManager(database, [target]);
+  try {
+    const recovered = manager.acceptCreateOperation('local', 'workspace', key, input);
+    expect(recovered.envelope).toMatchObject({ operationId: accepted.operation.id, state: 'unknown' });
+    expect(database.createOperation(accepted.operation.id)?.nativeRequestId).toBe(nativeRequestId);
+    manager.startCreateOperation(accepted.operation.id);
+    expect(create).not.toHaveBeenCalled();
   } finally { database.close(); }
 });
-it('allows empty native project lists and keeps stable project identities across fresh snapshots', () => {
+
+it('compacts legacy create inputs and rejects results with unknown ownership', () => {
+  const database = new MetadataDatabase(':memory:'); const target = new FakeTarget(); const key = randomUUID(); const requestId = randomUUID();
+  database.setSetting('workspace_operation:' + key, JSON.stringify({ id: requestId, input: JSON.stringify({ fingerprint: target.fingerprint, path: input.path, label: input.label }), state: 'ready', result, error: 'native error at /private/project/path' }));
+  const manager = new RuntimeManager(database, [target]);
+  const create = vi.fn(async () => result); target.createWorkspace = create;
+  try {
+    const compact = JSON.parse(database.getSetting('workspace_operation:' + key)!);
+    expect(compact).toMatchObject({ legacy: true, id: requestId, state: 'ready', result });
+    expect(compact.input).toBeUndefined();
+    expect(compact.error).toBeUndefined();
+    expect(compact.inputHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(() => manager.acceptCreateOperation('local', 'workspace', key, input)).toThrow('legacy_operation_ownership_ambiguous');
+    expect(database.createOperations()).toHaveLength(0);
+    expect(create).not.toHaveBeenCalled();
+  } finally { database.close(); }
+});
+
+it('does not expose incomplete legacy results whose ownership cannot be proven', () => {
+  const database = new MetadataDatabase(':memory:'); const target = new FakeTarget(); const key = randomUUID(); const requestId = randomUUID();
+  database.setSetting('workspace_operation:' + key, JSON.stringify({ id: requestId, createdAt: Date.now() - 31 * 24 * 60 * 60_000, input: JSON.stringify({ fingerprint: target.fingerprint, path: input.path, label: input.label }), state: 'ready', result: { workspaceId: result.workspaceId, tabId: result.tabId, terminalId: result.terminalId } }));
+  const manager = new RuntimeManager(database, [target]);
+  try {
+    expect(() => manager.acceptCreateOperation('local', 'workspace', key, input)).toThrow('legacy_operation_ownership_ambiguous');
+    const compact = JSON.parse(database.getSetting('workspace_operation:' + key)!);
+    expect(compact.input).toBeUndefined();
+    expect(compact.inputHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(database.createOperations()).toHaveLength(0);
+  } finally { database.close(); }
+});
+
+it('fails closed for legacy creates regardless of account or endpoint kind', () => {
+  const database = new MetadataDatabase(':memory:'); const target = new FakeTarget(); const key = randomUUID();
+  const manager = new RuntimeManager(database, [target]);
+  database.setSetting('allowed_account', 'remote-account');
+  database.setSetting('workspace_operation:' + key, JSON.stringify({ id: randomUUID(), input: JSON.stringify({ fingerprint: target.fingerprint, path: input.path, label: input.label }), state: 'ready', result }));
+  expect(() => manager.acceptCreateOperation('local', 'workspace', key, input)).toThrow('legacy_operation_ownership_ambiguous');
+  database.deleteSetting('workspace_operation:' + key);
+  database.deleteSetting('allowed_account');
+  const terminalKey = randomUUID(); const terminalRequestId = randomUUID();
+  database.setSetting('workspace_operation:' + terminalKey, JSON.stringify({ id: terminalRequestId, input: JSON.stringify({ fingerprint: target.fingerprint, path: input.path, label: 'Terminal' }), state: 'running', result }));
+  expect(() => manager.acceptCreateOperation('local', 'terminal', terminalKey, { machineId: 'fixture', path: input.path })).toThrow('legacy_operation_ownership_ambiguous');
+  expect(JSON.parse(database.getSetting('workspace_operation:' + terminalKey)!)).toMatchObject({ id: terminalRequestId, state: 'unknown', error: 'legacy_create_outcome_uncertain' });
+  expect(JSON.parse(database.getSetting('workspace_operation:' + terminalKey)!).input).toBeUndefined();
+  expect(database.createOperations()).toHaveLength(0);
+  database.close();
+});
+
+it('keeps empty native project lists and stable project identities across fresh snapshots', () => {
   const state = snapshot(); const first = nativeLocations('local', state);
   expect(first).toHaveLength(1); expect(nativeLocations('local', structuredClone(state))).toEqual(first);
   expect(nativeLocations('local', { ...state, workspaces: [] })).toEqual([]);

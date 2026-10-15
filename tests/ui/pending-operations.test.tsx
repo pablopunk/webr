@@ -1,14 +1,15 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RuntimeProvider, useRuntime } from '../../src/client/provider';
 import { handleRouteClick, RouteNavigationProvider, useRouteNavigation } from '../../src/client/app-navigation';
 import { buildPendingThreadUrl } from '../../src/client/navigation';
 import { ThreadTickets, waitForTicketDelay } from '../../src/client/create-tickets';
 import { NewThreadView } from '../../src/components/NewThreadView';
-import { PendingOperation } from '../../src/components/PendingOperation';
+import { PendingOperation, PendingResourceOperation } from '../../src/components/PendingOperation';
+import { terminalStartupStorageKey } from '../../src/client/terminal-presets';
 import type { Bootstrap, LaunchInput } from '../../src/shared/runtime';
-import type { NewThreadDraft } from '../../src/client/new-thread-draft';
+import { recoveryStoragePrefix, type NewThreadDraft } from '../../src/client/new-thread-draft';
 
 vi.mock('../../src/client/terminal-manager', () => ({ BrowserTerminalManager: class { start() {} stop() {} } }));
 vi.mock('../../src/client/catalog', () => ({ useMachineCatalog: () => ({
@@ -29,6 +30,12 @@ const response = (state: 'pending' | 'ready' | 'failed' | 'unknown') => new Resp
   operationId, kind: 'thread', state, step: state === 'ready' ? 'ready' : state === 'failed' ? 'checkout' : 'validate',
   result: { threadId: 'thread-real-id' }, statusUrl: `/api/operations/${operationId}`,
 }), { status: 202, headers: { 'Content-Type': 'application/json' } });
+const resourceOperationId = '33333333-3333-4333-8333-333333333333';
+const resourceResult = { workspaceId: 'workspace-resource', tabId: 'workspace-resource:tab', paneId: 'workspace-resource:pane', terminalId: 'term_resource' };
+const resourceResponse = (state: 'pending' | 'ready' | 'unknown') => new Response(JSON.stringify({
+  operationId: resourceOperationId, kind: 'terminal', state, step: state === 'ready' ? 'ready' : 'workspace',
+  ...(state === 'ready' ? { result: resourceResult } : {}), statusUrl: `/api/operations/${resourceOperationId}`,
+}), { status: 202, headers: { 'Content-Type': 'application/json' } });
 let currentTickets: ThreadTickets | undefined;
 
 function RouteHarness() {
@@ -36,8 +43,14 @@ function RouteHarness() {
   currentTickets = useRuntime().tickets;
   return <div onClickCapture={(event) => handleRouteClick(event, navigate)}>
     <button type="button" onClick={() => navigate('/new?project=local%3Afirst')}>Navigate to composer</button>
-    {route.type === 'composer' && route.pendingKey
-      ? <PendingOperation key={route.pendingKey} ticketKey={route.pendingKey} />
+    <button type="button" onClick={() => {
+      const ticket = currentTickets!.createResource('terminal', { machineId: 'local', path: '~/' }, { session: 'default', startupPreset: 'resource-monitor' });
+      navigate(buildPendingThreadUrl(ticket.key, window.location.href, 'resource'));
+    }}>Start standalone terminal</button>
+    {route.type === 'composer' && route.resourcePendingKey
+      ? <PendingResourceOperation key={`${currentTickets?.resourceRecoveryScope}:${route.resourcePendingKey}`} ticketKey={route.resourcePendingKey} />
+      : route.type === 'composer' && route.pendingKey
+        ? <PendingOperation key={`${currentTickets?.recoveryScope}:${route.pendingKey}`} ticketKey={route.pendingKey} />
       : route.type === 'composer'
         ? <NewThreadView projects={projects} machines={machines} selectedProjectId={route.projectId} onOpenSidebar={() => {}} onNavigate={navigate} />
         : <main><h1>{route.type}</h1></main>}
@@ -120,6 +133,24 @@ it('does not restore a stale recovery URL from another recovery scope', async ()
   await waitFor(() => expect(prompt.value).toBe(''));
   expect(screen.queryByText(draft.prompt)).toBeNull();
   expect(sessionStorage.length).toBe(1);
+});
+
+it('preserves memory-only thread recovery when only the resource scope changes', () => {
+  denySessionStorageWrites();
+  const initialBootstrap = { ...bootstrap, resourceRecoveryScope: 'resource-session-one' };
+  const tree = (value: Bootstrap) => <RuntimeProvider bootstrap={value}><RouteNavigationProvider initialUrl="/new"><RouteHarness /></RouteNavigationProvider></RuntimeProvider>;
+  const view = render(tree(initialBootstrap));
+  const previous = currentTickets!;
+  const thread = previous.create(input, draft);
+  const resource = previous.createResource('terminal', { machineId: 'local', path: '/project' });
+  expect(thread.reloadRecoveryUnavailable).toBe(true);
+
+  view.rerender(tree({ ...bootstrap, resourceRecoveryScope: 'resource-session-two' }));
+
+  expect(currentTickets).toBe(previous);
+  expect(currentTickets?.get(thread.key)?.key).toBe(thread.key);
+  expect(currentTickets?.getDraft(thread.key)?.prompt).toBe(draft.prompt);
+  expect(currentTickets?.getResource(resource.key)).toBeUndefined();
 });
 
 it('recovers an in-memory draft and attachments through Edit draft when storage is denied', async () => {
@@ -221,6 +252,106 @@ it('opens the real thread once and preserves the definitive result when returnin
   expect(screen.getByRole('heading', { name: 'Your thread is ready' })).toBeDefined();
   expect(window.location.pathname).toBe('/new');
   expect(fetcher).toHaveBeenCalledOnce();
+});
+
+it('resumes a persisted resource ticket through status-only polling after reload', async () => {
+  vi.useFakeTimers();
+  const key = '66666666-6666-4666-8666-666666666666';
+  const stored = {
+    kind: 'terminal', endpoint: '/api/terminals', key, normalizedPayload: { machineId: 'local', path: '~/' }, createdAt: Date.now(),
+    operationId: resourceOperationId, statusUrl: `/api/operations/${resourceOperationId}`, state: 'pending', step: 'create',
+    transport: 'accepted', reloadRecoveryUnavailable: false, session: 'default', startupPreset: 'resource-monitor',
+  };
+  sessionStorage.setItem(`${recoveryStoragePrefix(bootstrap.recoveryScope)}resource-ticket:${key}`, JSON.stringify(stored));
+  const fetcher = vi.fn(async (_request: RequestInfo | URL, _init?: RequestInit) => resourceResponse('ready'));
+  vi.stubGlobal('fetch', fetcher);
+  renderRoute(`/new?resourcePending=${key}`);
+  await act(async () => { await vi.runAllTimersAsync(); });
+  expect(fetcher).toHaveBeenCalledOnce();
+  expect(fetcher.mock.calls[0]?.[0]).toBe(`/api/operations/${resourceOperationId}`);
+  expect(fetcher.mock.calls[0]?.[1]).toBeUndefined();
+  expect(window.location.pathname).toBe(`/sessions/default/tabs/${encodeURIComponent(resourceResult.tabId)}`);
+  expect(sessionStorage.getItem(terminalStartupStorageKey('local', resourceResult.tabId))).toBe('resource-monitor');
+});
+
+it('opens a terminal only after its create result is ready, then consumes the startup preset once', async () => {
+  vi.useFakeTimers();
+  const fetcher = vi.fn(async (_request: RequestInfo | URL, init?: RequestInit) => init?.method === 'POST' ? resourceResponse('pending') : resourceResponse('ready'));
+  vi.stubGlobal('fetch', fetcher);
+  renderRoute('/new');
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Start standalone terminal' })));
+  const key = new URL(window.location.href).searchParams.get('resourcePending')!;
+  expect(screen.getByRole('main', { name: 'Pending terminal' })).toBeDefined();
+  expect(sessionStorage.getItem(terminalStartupStorageKey('local', resourceResult.tabId))).toBeNull();
+  await act(async () => { await vi.runAllTimersAsync(); });
+  expect(window.location.pathname).toBe(`/sessions/default/tabs/${encodeURIComponent(resourceResult.tabId)}`);
+  expect(new URL(window.location.href).searchParams.get('startup')).toBe('resource-monitor');
+  expect(sessionStorage.getItem(terminalStartupStorageKey('local', resourceResult.tabId))).toBe('resource-monitor');
+  expect(currentTickets?.getResource(key)?.startupPreset).toBeUndefined();
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it('keeps an uncertain terminal create pending without opening a tab or replaying it', async () => {
+  vi.useFakeTimers();
+  const fetcher = vi.fn(async () => resourceResponse('unknown'));
+  vi.stubGlobal('fetch', fetcher);
+  renderRoute('/new');
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Start standalone terminal' })));
+  await act(async () => { await vi.runAllTimersAsync(); });
+  expect(screen.getByRole('heading', { name: 'Create outcome uncertain' })).toBeDefined();
+  expect(screen.getByRole('alert').textContent).toContain('will not replay');
+  expect(window.location.pathname).toBe('/new');
+  expect(fetcher).toHaveBeenCalledOnce();
+  expect(sessionStorage.getItem(terminalStartupStorageKey('local', resourceResult.tabId))).toBeNull();
+});
+
+it('warns when resource-ticket storage is denied while retaining in-memory recovery', async () => {
+  vi.useFakeTimers();
+  const deniedSetItem = denySessionStorageWrites();
+  const fetcher = vi.fn(async () => resourceResponse('unknown'));
+  vi.stubGlobal('fetch', fetcher);
+  renderRoute('/new');
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Start standalone terminal' })));
+  const key = new URL(window.location.href).searchParams.get('resourcePending')!;
+  await act(async () => { await vi.runAllTimersAsync(); });
+  expect(deniedSetItem).toHaveBeenCalled();
+  expect(currentTickets?.getResource(key)?.reloadRecoveryUnavailable).toBe(true);
+  expect(screen.getByText(/This ticket is held in memory only; reloading will lose recovery/i)).toBeDefined();
+  expect(fetcher).toHaveBeenCalledOnce();
+});
+
+it('retries only an interrupted create POST with the same key and exact normalized payload', async () => {
+  vi.useFakeTimers();
+  let postCount = 0;
+  const fetcher = vi.fn((_request: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method !== 'POST') return Promise.resolve(resourceResponse('ready'));
+    if (postCount++ === 0) return Promise.reject(new Error('connection lost'));
+    return Promise.resolve(resourceResponse('unknown'));
+  });
+  vi.stubGlobal('fetch', fetcher);
+  renderRoute('/new');
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Start standalone terminal' })));
+  await act(async () => { await vi.runAllTimersAsync(); });
+  const posts = fetcher.mock.calls.filter(([, init]) => init?.method === 'POST');
+  expect(posts).toHaveLength(2);
+  expect(posts[0]?.[1]?.headers).toEqual(posts[1]?.[1]?.headers);
+  expect(JSON.parse(posts[0]?.[1]?.body as string)).toEqual(JSON.parse(posts[1]?.[1]?.body as string));
+  expect((posts[0]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toMatch(/^[0-9a-f-]{36}$/);
+  expect(window.location.pathname).toBe('/new');
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it('does not redirect from the composer when the user leaves a pending terminal create', async () => {
+  vi.useFakeTimers();
+  const fetcher = vi.fn(async (_request: RequestInfo | URL, init?: RequestInit) => init?.method === 'POST' ? resourceResponse('pending') : resourceResponse('ready'));
+  vi.stubGlobal('fetch', fetcher);
+  renderRoute('/new');
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Start standalone terminal' })));
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Navigate to composer' })));
+  await act(async () => { await vi.runAllTimersAsync(); });
+  expect(window.location.pathname).toBe('/new');
+  expect(new URL(window.location.href).searchParams.get('resourcePending')).toBeNull();
+  expect(fetcher).toHaveBeenCalledTimes(2);
 });
 
 it('pauses the poll interval while the browser is offline', async () => {

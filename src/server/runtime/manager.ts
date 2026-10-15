@@ -8,12 +8,12 @@ import { projectIconKey, reconcile } from './reconcile';
 import { imageExtension } from '../uploads';
 import type { Icon } from '../transport/icons';
 import type { MetadataDatabase } from '../storage/database';
-import type { Bootstrap, Projection, ProjectRenameResponse, ThreadArchiveResponse, ThreadMetadataAcknowledgement, ThreadRenameResponse } from '../../shared/runtime';
+import { createOperationResult, terminalCreateInput, workspaceCreateInput, type Bootstrap, type CreateOperationInput, type CreateOperationKind, type Projection, type ProjectRenameResponse, type ThreadArchiveResponse, type ThreadMetadataAcknowledgement, type ThreadRenameResponse } from '../../shared/runtime';
 import type { Machine } from '../../lib/machines';
 import { LaunchJournal, type LaunchTargetIdentity } from './launch';
 import { isListedThread } from '../../lib/launch';
 import { isSameOrSiblingWorktree, sameSession } from './recovery';
-import { createWorkspace as createWorkspaceInHerdr, type CreatedWorkspace } from './workspace';
+import { createOperationEnvelope, type CreatedWorkspace } from './workspace';
 
 const CATALOG_TTL_MS = 5 * 60_000;
 const MODELS_PENDING_TTL_MS = 500;
@@ -40,12 +40,15 @@ export class RuntimeManager extends EventEmitter {
   private pendingTerminalTabs = new Map<string, Map<string, PendingTerminalTab>>();
   private titleSyncQueues = new Map<string, TitleSyncQueue>();
   private targetMutations = new Map<string, Promise<void>>();
+  private createRuns = new Map<string, Promise<void>>();
   private deletingThreads = new Set<string>();
   private started = false;
   private closed = false;
   constructor(readonly database: MetadataDatabase, targets: TargetAdapter[]) {
     super(); this.setMaxListeners(100);
+    database.compactLegacyWorkspaceOperations();
     database.markInterruptedTitleSyncs();
+    database.markInterruptedCreateOperations();
     this.journal = new LaunchJournal(database, () => this.publishAll());
     for (const target of targets) this.addTarget(target);
   }
@@ -70,11 +73,11 @@ export class RuntimeManager extends EventEmitter {
     }
     this.pendingTerminalTabs.clear();
     for (const supervisor of this.supervisors.values()) supervisor.stop();
-    await this.journal.stop(); this.removeAllListeners();
+    await Promise.all([this.journal.stop(), ...this.createRuns.values()]); this.removeAllListeners();
   }
-  bootstrap(owner = 'local'): Bootstrap {
+  bootstrap(owner = 'local', resourceOwner = owner): Bootstrap {
     const projections = [...this.projections.values()];
-    return { projections, projects: projections.flatMap((projection) => projection.projects), threads: projections.flatMap((projection) => projection.threads), machines: [...this.supervisors.values()].map((supervisor) => ({ id: supervisor.target.id, name: supervisor.target.name, session: supervisor.target.session, connected: supervisor.connected, projectPaths: Object.fromEntries(supervisor.target.locations.map((location) => [location.projectId, location.path])), harnesses: [], error: supervisor.error, writable: supervisor.target.writable, os: supervisor.target.os, configVersion: this.configVersions.get(supervisor.target.id) })), recoveryScope: this.database.recoveryScope(owner) };
+    return { projections, projects: projections.flatMap((projection) => projection.projects), threads: projections.flatMap((projection) => projection.threads), machines: [...this.supervisors.values()].map((supervisor) => ({ id: supervisor.target.id, name: supervisor.target.name, session: supervisor.target.session, connected: supervisor.connected, projectPaths: Object.fromEntries(supervisor.target.locations.map((location) => [location.projectId, location.path])), harnesses: [], error: supervisor.error, writable: supervisor.target.writable, os: supervisor.target.os, configVersion: this.configVersions.get(supervisor.target.id) })), recoveryScope: this.database.recoveryScope(owner), resourceRecoveryScope: this.database.recoveryScope(resourceOwner) };
   }
   isLaunchTargetCurrent(target: TargetAdapter, identity: LaunchTargetIdentity) {
     const supervisor = this.supervisors.get(target.id);
@@ -151,32 +154,61 @@ export class RuntimeManager extends EventEmitter {
     if (!tab) throw new Error('binding_invalid');
     return identity.target;
   }
-  async createWorkspace(machineId: string, key: string, path: string, label: string): Promise<CreatedWorkspace> {
-    return this.withTargetMutation(machineId, async () => {
-      const supervisor = this.supervisors.get(machineId);
-      if (!supervisor?.connected) throw new Error('machine_disconnected');
-      const identity = this.targetIdentity(supervisor);
-      this.requireCurrentProjection(identity);
-      if (!identity.target.writable) throw new Error('workspace_creation_unavailable');
-      const created = await createWorkspaceInHerdr(this.database, identity.target, key, path, label);
-      this.requireCurrentProjection(identity);
-      supervisor.invalidate();
-      return created;
-    });
+  acceptCreateOperation(owner: string, kind: CreateOperationKind, key: string, input: CreateOperationInput) {
+    const normalized = kind === 'workspace' ? workspaceCreateInput.parse(input) : terminalCreateInput.parse(input);
+    const previous = this.database.findCreateOperation(owner, kind, key, normalized);
+    if (previous) return { envelope: createOperationEnvelope(previous), created: false };
+
+    if (this.database.getSetting(`workspace_operation:${key}`) !== undefined) {
+      this.database.compactLegacyWorkspaceOperation(key);
+      throw new Error('legacy_operation_ownership_ambiguous');
+    }
+
+    const supervisor = this.supervisors.get(normalized.machineId);
+    if (!supervisor?.connected) throw new Error('machine_disconnected');
+    const identity = this.targetIdentity(supervisor);
+    this.requireCurrentProjection(identity);
+    if (!identity.target.writable || !identity.target.createWorkspace) throw new Error('workspace_creation_unavailable');
+    const accepted = this.database.beginCreateOperation(owner, kind, key, normalized, identity);
+    return { envelope: createOperationEnvelope(accepted.operation), created: accepted.created };
   }
-  async createTerminal(machineId: string, path: string, key: string): Promise<CreatedWorkspace> {
-    return this.withTargetMutation(machineId, async () => {
-      const supervisor = this.supervisors.get(machineId);
+  startCreateOperation(operationId: string) {
+    if (this.closed || this.createRuns.has(operationId)) return;
+    const operation = this.database.createOperation(operationId);
+    if (!operation || operation.state !== 'pending') return;
+    const task = this.withTargetMutation(operation.machineId, () => this.runCreateOperation(operationId))
+      .catch(() => {
+        const current = this.database.createOperation(operationId);
+        if (current && (current.state === 'pending' || current.state === 'running')) this.database.updateCreateOperation(operationId, 'unknown', current.step, current.result, 'create_interrupted');
+      })
+      .finally(() => { if (this.createRuns.get(operationId) === task) this.createRuns.delete(operationId); });
+    this.createRuns.set(operationId, task);
+  }
+  private async runCreateOperation(operationId: string) {
+    const operation = this.database.createOperation(operationId);
+    if (!operation || operation.state !== 'pending') return;
+    let effectStarted = false;
+    try {
+      const supervisor = this.supervisors.get(operation.machineId);
       if (!supervisor?.connected) throw new Error('machine_disconnected');
       const identity = this.targetIdentity(supervisor);
+      if (identity.fingerprint !== operation.targetFingerprint || identity.session !== operation.targetSession || identity.configVersion !== operation.targetConfigVersion) throw new Error('create_target_changed');
       this.requireCurrentProjection(identity);
-      if (!identity.target.writable) throw new Error('workspace_creation_unavailable');
-      const created = await createWorkspaceInHerdr(this.database, identity.target, key, path, 'Terminal');
-      this.requireCurrentProjection(identity);
-      this.registerPendingTerminal(supervisor, created);
+      if (!identity.target.writable || !identity.target.createWorkspace) throw new Error('workspace_creation_unavailable');
+      if (!operation.input) throw new Error('create_input_unavailable');
+      const input = operation.kind === 'workspace' ? workspaceCreateInput.parse(operation.input) : terminalCreateInput.parse(operation.input);
+      this.database.updateCreateOperation(operationId, 'running', 'create', {});
+      effectStarted = true;
+      const created = createOperationResult.parse(await identity.target.createWorkspace(input.path, operation.kind === 'workspace' ? input.label : 'Terminal', operation.nativeRequestId));
+      if (!this.hasCurrentProjection(identity)) throw new Error('create_target_changed');
+      if (operation.kind === 'terminal') this.registerPendingTerminal(supervisor, created);
+      this.database.updateCreateOperation(operationId, 'ready', 'ready', created);
       supervisor.invalidate();
-      return created;
-    });
+    } catch (error) {
+      const message = error instanceof Error && /^[a-z][a-z0-9_]{0,79}$/.test(error.message) ? error.message : 'create_failed';
+      this.database.updateCreateOperation(operationId, effectStarted ? 'unknown' : 'failed', effectStarted ? 'create' : 'validate', {}, message);
+      if (effectStarted) console.error(`create ${operationId} outcome is uncertain:`, message);
+    }
   }
   private registerPendingTerminal(supervisor: TargetSupervisor, created: CreatedWorkspace) {
     let machineTabs = this.pendingTerminalTabs.get(supervisor.target.id);

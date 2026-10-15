@@ -9,7 +9,7 @@ import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 import * as schema from './schema';
 import type { Thread, TitleSync } from '../../lib/models';
-import { launchInput, type LaunchInput } from '../../shared/runtime';
+import { createOperationResult, launchInput, terminalCreateInput, workspaceCreateInput, type CreateOperationInput, type CreateOperationKind, type LaunchInput } from '../../shared/runtime';
 
 const AUDIT_RETENTION = 200;
 const projectNameSettingKey = (machineId: string, logicalId: string) => `project-name:${machineId}:${logicalId}`;
@@ -33,6 +33,34 @@ export class MetadataDatabase {
   close() { this.sqlite.close(); }
   getSetting(key: string) { return this.db.select().from(schema.settings).where(eq(schema.settings.key, key)).get()?.value; }
   settingsWithPrefix(prefix: string) { return this.db.select().from(schema.settings).where(sql`substr(${schema.settings.key}, 1, ${prefix.length}) = ${prefix}`).all(); }
+  compactLegacyWorkspaceOperations() {
+    const prefix = 'workspace_operation:';
+    for (const setting of this.settingsWithPrefix(prefix)) this.compactLegacyWorkspaceOperation(setting.key.slice(prefix.length));
+  }
+  compactLegacyWorkspaceOperation(key: string) {
+    const settingKey = `workspace_operation:${key}`;
+    const raw = this.getSetting(settingKey);
+    if (raw === undefined) return;
+    let legacy: Record<string, unknown> = {};
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) legacy = parsed as Record<string, unknown>;
+    } catch { /* Keep only a fail-closed tombstone for malformed records. */ }
+    const knownStates = ['pending', 'running', 'ready', 'failed', 'unknown'];
+    const previousState = typeof legacy.state === 'string' && knownStates.includes(legacy.state) ? legacy.state : 'unknown';
+    const uncertain = previousState === 'pending' || previousState === 'running';
+    const savedResult = createOperationResult.safeParse(legacy.result);
+    const compact = {
+      legacy: true,
+      ...(typeof legacy.id === 'string' ? { id: legacy.id.slice(0, 160) } : {}),
+      ...(typeof legacy.createdAt === 'number' ? { createdAt: legacy.createdAt } : {}),
+      state: uncertain ? 'unknown' : previousState,
+      ...(typeof legacy.input === 'string' ? { inputHash: createHash('sha256').update(legacy.input).digest('hex') } : typeof legacy.inputHash === 'string' ? { inputHash: legacy.inputHash } : {}),
+      ...(!uncertain && previousState === 'ready' && savedResult.success ? { result: savedResult.data } : {}),
+      ...(uncertain ? { error: 'legacy_create_outcome_uncertain' } : {}),
+    };
+    this.setSetting(settingKey, JSON.stringify(compact));
+  }
   deleteSetting(key: string) { this.db.delete(schema.settings).where(eq(schema.settings.key, key)).run(); }
   setSetting(key: string, value: string) { this.db.insert(schema.settings).values({ key, value }).onConflictDoUpdate({ target: schema.settings.key, set: { value } }).run(); }
   threadRows(machineId?: string, session?: string) {
@@ -142,6 +170,50 @@ export class MetadataDatabase {
     if (existing && existing.hash !== hash) throw new Error('idempotency_conflict');
     return existing;
   }
+  private createOperationHash(kind: CreateOperationKind, input: CreateOperationInput) {
+    const normalized = kind === 'workspace' ? workspaceCreateInput.parse(input) : terminalCreateInput.parse(input);
+    return createHash('sha256').update(JSON.stringify([kind, normalized])).digest('hex');
+  }
+  findCreateOperation(accountId: string, kind: CreateOperationKind, key: string, input: CreateOperationInput) {
+    const hash = this.createOperationHash(kind, input);
+    const operation = this.db.select().from(schema.createOperations).where(and(
+      eq(schema.createOperations.accountId, accountId), eq(schema.createOperations.kind, kind), eq(schema.createOperations.key, key),
+    )).get();
+    if (operation && operation.hash !== hash) throw new Error('idempotency_conflict');
+    return operation;
+  }
+  beginCreateOperation(accountId: string, kind: CreateOperationKind, key: string, input: CreateOperationInput,
+    target: { fingerprint: string; session?: string | null; configVersion?: number | null },
+    seed: { nativeRequestId?: string; state?: string; step?: string; result?: Record<string, unknown>; error?: string } = {}) {
+    const normalized = kind === 'workspace' ? workspaceCreateInput.parse(input) : terminalCreateInput.parse(input);
+    const hash = this.createOperationHash(kind, normalized);
+    return this.sqlite.transaction(() => {
+      const existing = this.db.select().from(schema.createOperations).where(and(
+        eq(schema.createOperations.accountId, accountId), eq(schema.createOperations.kind, kind), eq(schema.createOperations.key, key),
+      )).get();
+      if (existing) {
+        if (existing.hash !== hash) throw new Error('idempotency_conflict');
+        return { operation: existing, created: false };
+      }
+      const activeLaunches = this.db.select({ count: sql<number>`count(*)` }).from(schema.operations).where(and(
+        eq(schema.operations.accountId, accountId), sql`json_extract(${schema.operations.input}, '$.machineId') = ${normalized.machineId}`,
+        inArray(schema.operations.state, ['pending', 'running']),
+      )).get()?.count ?? 0;
+      const activeCreates = this.db.select({ count: sql<number>`count(*)` }).from(schema.createOperations).where(and(
+        eq(schema.createOperations.accountId, accountId), eq(schema.createOperations.machineId, normalized.machineId),
+        inArray(schema.createOperations.state, ['pending', 'running']),
+      )).get()?.count ?? 0;
+      if (activeLaunches + activeCreates >= 32) throw new Error('launch_capacity_exceeded');
+      const operation = {
+        id: randomUUID(), accountId, kind, key, hash, input: normalized, machineId: normalized.machineId,
+        nativeRequestId: seed.nativeRequestId ?? randomUUID(), targetFingerprint: target.fingerprint,
+        targetSession: target.session ?? null, targetConfigVersion: target.configVersion ?? null,
+        state: seed.state ?? 'pending', step: seed.step ?? 'validate', result: seed.result ?? {}, error: seed.error ?? null,
+      };
+      this.db.insert(schema.createOperations).values(operation).run();
+      return { operation, created: true };
+    }).immediate();
+  }
   beginLaunch(accountId: string, key: string, input: LaunchInput, thread: Thread, target: { fingerprint: string; session: string; configVersion: number }, kind = 'thread') {
     const normalizedInput = launchInput.parse(input);
     const hash = this.launchHash(normalizedInput);
@@ -152,11 +224,15 @@ export class MetadataDatabase {
         if (existing.hash !== hash) throw new Error('idempotency_conflict');
         return { operation: existing, created: false };
       }
-      const active = this.db.select({ count: sql<number>`count(*)` }).from(schema.operations).where(and(
+      const activeLaunches = this.db.select({ count: sql<number>`count(*)` }).from(schema.operations).where(and(
         eq(schema.operations.accountId, accountId), sql`json_extract(${schema.operations.input}, '$.machineId') = ${normalizedInput.machineId}`,
         inArray(schema.operations.state, ['pending', 'running']),
       )).get()?.count ?? 0;
-      if (active >= 32) throw new Error('launch_capacity_exceeded');
+      const activeCreates = this.db.select({ count: sql<number>`count(*)` }).from(schema.createOperations).where(and(
+        eq(schema.createOperations.accountId, accountId), eq(schema.createOperations.machineId, normalizedInput.machineId),
+        inArray(schema.createOperations.state, ['pending', 'running']),
+      )).get()?.count ?? 0;
+      if (activeLaunches + activeCreates >= 32) throw new Error('launch_capacity_exceeded');
       const operation = {
         id: randomUUID(), accountId, kind, key, hash, threadId: thread.id, input: normalizedInput,
         targetFingerprint: target.fingerprint, targetSession: target.session, targetConfigVersion: target.configVersion,
@@ -178,6 +254,20 @@ export class MetadataDatabase {
   operation(id: string) {
     return this.db.select().from(schema.operations).where(eq(schema.operations.id, id)).get()
       ?? this.db.select().from(schema.launchTombstones).where(eq(schema.launchTombstones.id, id)).get();
+  }
+  createOperation(id: string) { return this.db.select().from(schema.createOperations).where(eq(schema.createOperations.id, id)).get(); }
+  createOperations() { return this.db.select().from(schema.createOperations).all(); }
+  updateCreateOperation(id: string, state: string, step: string, result: Record<string, unknown>, error?: string) {
+    // Keep compact owner/kind/key tombstones permanently; expiry could let a delayed retry repeat a native create.
+    const completed = state === 'ready' || state === 'failed' || state === 'unknown';
+    this.db.update(schema.createOperations).set({ state, step, result, error: error ?? null, ...(completed ? { input: null } : {}) }).where(eq(schema.createOperations.id, id)).run();
+  }
+  markInterruptedCreateOperations() {
+    this.sqlite.transaction(() => {
+      for (const operation of this.createOperations()) {
+        if (operation.state === 'pending' || operation.state === 'running') this.updateCreateOperation(operation.id, 'unknown', operation.step, operation.result, 'create_interrupted');
+      }
+    }).immediate();
   }
   operations() { return this.db.select().from(schema.operations).all(); }
   markInterruptedLaunches() {

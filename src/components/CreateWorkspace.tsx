@@ -1,13 +1,21 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useDirectorySuggestions } from '../client/directory-suggestions';
-import { uuid } from '../lib/uuid';
+import { useThreadTickets } from '../client/provider';
+import type { ResourceTicket } from '../client/create-tickets';
+import { workspaceCreateInput } from '../shared/runtime';
 
 const isAbsoluteOrHome = (path: string) => path.startsWith('/') || path.startsWith('~/');
 
-export function CreateWorkspace({ machineId, session = '', configVersion = 1, onCreated }: { machineId: string; session?: string; configVersion?: number; onCreated: () => void }) {
+export function CreateWorkspace({ machineId, session = '', configVersion = 1, pendingKey, onPending, onCreated }: {
+  machineId: string; session?: string; configVersion?: number; pendingKey?: string; onPending?: (key?: string) => void; onCreated: () => void;
+}) {
+  const tickets = useThreadTickets();
   const [path, setPath] = useState(''); const [label, setLabel] = useState('');
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
+  const [ticket, setTicket] = useState<ResourceTicket | undefined>(() => pendingKey ? tickets.getResource(pendingKey) : undefined);
+  const [pendingMissing, setPendingMissing] = useState(() => !!pendingKey && !tickets.getResource(pendingKey));
   const [highlighted, setHighlighted] = useState(0); const [open, setOpen] = useState(false);
+  const completedKey = useRef<string>();
   const suggestionsQuery = useDirectorySuggestions(machineId, path, session, configVersion);
   const suggestions = suggestionsQuery.data ?? [];
   const hasSuggestionData = suggestionsQuery.data !== undefined;
@@ -22,22 +30,50 @@ export function CreateWorkspace({ machineId, session = '', configVersion = 1, on
     else if (event.key === 'Tab') { event.preventDefault(); accept(suggestions[highlighted] ?? suggestions[0]); }
     else if (event.key === 'Enter') { event.preventDefault(); accept(suggestions[highlighted] ?? suggestions[0]); setOpen(false); }
   };
-  const operation = useRef<{ payload: string; key: string } | null>(null);
-  const submit = async (event: React.SubmitEvent<HTMLFormElement>) => {
-    event.preventDefault(); setBusy(true); setError('');
-    const payload = JSON.stringify({ machineId, path, label });
-    if (operation.current?.payload !== payload) operation.current = { payload, key: uuid() };
+
+  useEffect(() => {
+    const key = pendingKey ?? ticket?.key;
+    if (!key) { setTicket(undefined); setPendingMissing(false); return; }
+    const refresh = () => {
+      const next = tickets.getResource(key);
+      setTicket(next);
+      if (pendingKey) setPendingMissing(!next);
+    };
+    refresh();
+    const unsubscribe = tickets.subscribeResource(key, refresh);
+    if (pendingKey && tickets.getResource(key)) void tickets.startResource(key);
+    return unsubscribe;
+  }, [pendingKey, ticket?.key, tickets]);
+
+  useEffect(() => {
+    if (ticket?.kind !== 'workspace' || ticket.state !== 'ready' || completedKey.current === ticket.key) return;
+    completedKey.current = ticket.key;
+    onCreated();
+  }, [ticket?.key, ticket?.kind, ticket?.state, onCreated, onPending]);
+
+  const start = (next: ResourceTicket) => {
+    setTicket(next); setError(''); setPendingMissing(false); onPending?.(next.key);
+    void tickets.startResource(next.key);
+  };
+  const submit = (event: React.SubmitEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (busy || pendingKey || pendingMissing || !isAbsoluteOrHome(path) || !label.trim()) return;
+    setBusy(true); setError('');
     try {
-      const response = await fetch('/api/workspaces', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operation.current.key }, body: payload });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? 'Could not create workspace');
-      if (result.state === 'unknown') throw new Error('The result is not known; check Herdr before you create another workspace.');
-      onCreated();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not create workspace'); }
+      const normalized = workspaceCreateInput.parse({ machineId, path, label });
+      start(tickets.createResource('workspace', normalized, { session }));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not prepare workspace creation.'); }
     finally { setBusy(false); }
   };
-  return <form className="thread-composer workspace-composer" onSubmit={submit} aria-label="Create workspace" aria-busy={busy}>
-    <label className="path-field">Project folder<input value={path} onChange={(event) => { setPath(event.target.value); setHighlighted(0); setOpen(true); }} onKeyDown={onKeyDown} onBlur={() => setOpen(false)} placeholder="/absolute/path/to/project" autoComplete="off" spellCheck={false} role="combobox" aria-expanded={showing} aria-autocomplete="list" required pattern="(/|~/).*" />
+  const retry = () => {
+    if (!ticket || ticket.state !== 'failed') return;
+    const next = tickets.retryResource(ticket.key);
+    if (next) start(next);
+  };
+  const pending = ticket?.state === 'pending' || ticket?.state === 'running';
+  const locked = !!pendingKey || pendingMissing || pending || ticket?.state === 'unknown' || ticket?.state === 'ready';
+  return <form className="thread-composer workspace-composer" onSubmit={submit} aria-label="Create workspace" aria-busy={busy || pending}>
+    <label className="path-field">Project folder<input value={path} onChange={(event) => { setPath(event.target.value); setHighlighted(0); setOpen(true); }} onKeyDown={onKeyDown} onBlur={() => setOpen(false)} placeholder="/absolute/path/to/project" autoComplete="off" spellCheck={false} role="combobox" aria-expanded={showing} aria-autocomplete="list" required pattern="(/|~/).*" disabled={locked} />
       {showing && <ul className="path-suggestions" role="listbox" aria-busy={suggestionsQuery.isLoading || suggestionsQuery.isFetching}>
         {suggestions.map((suggestion, index) => <li key={suggestion} role="option" aria-selected={index === highlighted} data-highlighted={index === highlighted || undefined} onMouseDown={(event) => { event.preventDefault(); accept(suggestion); }}>{suggestion}</li>)}
         {suggestionsQuery.isLoading && <li className="path-suggestion-state" role="status"><span className="read-skeleton-row" /><span className="read-skeleton-row" /><span className="read-skeleton-row" /></li>}
@@ -45,8 +81,13 @@ export function CreateWorkspace({ machineId, session = '', configVersion = 1, on
         {hasSuggestionData && !suggestions.length && <li className="path-suggestion-state" role="status">No matching directories</li>}
       </ul>}
     </label>
-    <label>Workspace name<input value={label} onChange={(event) => setLabel(event.target.value)} required maxLength={80} /></label>
-    <button type="submit" disabled={busy || !isAbsoluteOrHome(path) || !label.trim()}>{busy ? 'Creating…' : 'Create workspace'}</button>
+    <label>Workspace name<input value={label} onChange={(event) => setLabel(event.target.value)} required maxLength={80} disabled={locked} /></label>
+    <button type="submit" disabled={busy || locked || !isAbsoluteOrHome(path) || !label.trim()}>{pending ? 'Creating…' : 'Create workspace'}</button>
+    {ticket?.state === 'failed' && <><p className="form-error" role="alert">{ticket.error ?? 'Could not create workspace.'}</p><button type="button" className="launch-retry" onClick={retry}>Try again with a new request</button></>}
+    {ticket?.state === 'unknown' && <p className="pending-warning" role="alert">The workspace may have been created. Webr will not replay the native request. Check Herdr before trying again.</p>}
+    {pendingMissing && <p className="pending-warning" role="alert">This pending workspace ticket is unavailable in this tab and was not resubmitted.</p>}
+    {ticket?.transport === 'checking' && ticket.notice && <p className="pending-warning" role="status">{ticket.notice}</p>}
+    {ticket?.reloadRecoveryUnavailable && <p className="pending-warning" role="alert">Browser storage is unavailable. This create is held in memory only; reloading will lose recovery.</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
   </form>;
 }

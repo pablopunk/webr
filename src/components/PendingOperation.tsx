@@ -4,7 +4,8 @@ import { parseRoute, buildPendingThreadUrl } from '../client/navigation';
 import { useRouteNavigation } from '../client/app-navigation';
 import { launchFailureMessage } from '../lib/launch';
 import { LaunchStepList } from './LaunchProgress';
-import type { ThreadTicket } from '../client/create-tickets';
+import type { ResourceTicket, ThreadTicket } from '../client/create-tickets';
+import { terminalStartupStorageKey } from '../client/terminal-presets';
 import type { NewThreadDraft } from '../client/new-thread-draft';
 
 function editDraftUrl(key: string) {
@@ -87,5 +88,80 @@ export function PendingOperation({ ticketKey }: { ticketKey: string }) {
     {draft && <button className="pending-dismiss" type="button" onClick={() => tickets.dismissDraft(ticketKey)}>Dismiss saved draft</button>}
     {ready && ticket.result?.threadId && <a className="launch-retry" href={`/threads/${encodeURIComponent(ticket.result.threadId)}`}>Open thread</a>}
     <a className="pending-leave" href={leaveUrl}>{ready ? 'Back to new thread' : 'Leave this pending view'}</a>
+  </main>;
+}
+
+function terminalUrl(ticket: ResourceTicket, startupPreset = ticket.startupPreset) {
+  if (!ticket.result || !ticket.session) return undefined;
+  const query = new URLSearchParams({ machine: ticket.normalizedPayload.machineId });
+  if (startupPreset) query.set('startup', startupPreset);
+  return `/sessions/${encodeURIComponent(ticket.session)}/tabs/${encodeURIComponent(ticket.result.tabId)}?${query}`;
+}
+
+export function PendingResourceOperation({ ticketKey }: { ticketKey: string }) {
+  const { tickets } = useRuntime();
+  const { navigate } = useRouteNavigation();
+  const [ticket, setTicket] = useState<ResourceTicket | undefined>(() => tickets.getResource(ticketKey));
+  const [accessLost, setAccessLost] = useState(() => tickets.isResourceAccessLost(ticketKey));
+  const previousState = useRef(ticket?.state);
+
+  useEffect(() => {
+    const refresh = () => {
+      const next = tickets.getResource(ticketKey);
+      setTicket(next);
+      setAccessLost(!next && tickets.isResourceAccessLost(ticketKey));
+    };
+    refresh();
+    return tickets.subscribeResource(ticketKey, refresh);
+  }, [ticketKey, tickets]);
+
+  useEffect(() => { if (ticket) void tickets.startResource(ticketKey); }, [ticket, ticketKey, tickets]);
+
+  const openTerminal = (resource: ResourceTicket, auto = false) => {
+    const current = parseRoute(window.location.href);
+    if (auto && (current.type !== 'composer' || current.resourcePendingKey !== ticketKey)) return;
+    const startup = resource.startupPreset;
+    const destination = terminalUrl(resource, startup);
+    if (!destination) return;
+    if (startup && resource.result) {
+      try { sessionStorage.setItem(terminalStartupStorageKey(resource.normalizedPayload.machineId, resource.result.tabId), startup); } catch { /* The whitelisted startup query remains a fallback. */ }
+      tickets.consumeResourceStartup(resource.key);
+    }
+    navigate(destination);
+  };
+
+  useEffect(() => {
+    const before = previousState.current;
+    previousState.current = ticket?.state;
+    if (ticket?.kind !== 'terminal' || ticket.state !== 'ready' || before === 'ready') return;
+    openTerminal(ticket, true);
+  }, [ticket?.state, ticket?.kind, ticket?.result?.tabId, ticketKey]);
+
+  if (!ticket) return <main className="pending-operation" aria-label="Pending create">
+    <h1>{accessLost ? 'Access changed' : 'Pending create unavailable'}</h1>
+    <p role="status">{accessLost ? 'Pending recovery data was cleared after access changed.' : 'This pending create is not available in this tab. It was not resubmitted.'}</p>
+    <a href="/new">Open the composer</a>
+  </main>;
+
+  const ready = ticket.state === 'ready';
+  const failed = ticket.state === 'failed';
+  const unknown = ticket.state === 'unknown';
+  const title = ticket.kind === 'workspace' ? 'workspace' : 'terminal';
+  const retry = () => {
+    const next = tickets.retryResource(ticketKey);
+    if (!next) return;
+    navigate(buildPendingThreadUrl(next.key, window.location.href, 'resource'));
+    void tickets.startResource(next.key);
+  };
+  return <main className="pending-operation" aria-label={`Pending ${title}`}>
+    <h1>{ready ? (ticket.kind === 'workspace' ? 'Project created' : 'Terminal ready') : unknown ? 'Create outcome uncertain' : failed ? `Could not create ${title}` : ticket.transport === 'checking' ? `Checking ${title} acceptance` : `Creating ${title}`}</h1>
+    {ticket.kind === 'workspace' && <p>{(ticket.normalizedPayload as Extract<typeof ticket.normalizedPayload, { label: string }>).label}</p>}
+    {unknown && <p className="pending-warning" role="alert">The native create may have reached Herdr. Webr will not replay it. Check the Herdr session before creating another resource.</p>}
+    {failed && <div className="launch-failure" role="alert"><p>{ticket.error ?? `Could not create ${title}.`}</p><button type="button" className="launch-retry" onClick={retry}>Try again with a new request</button></div>}
+    {ticket.transport === 'checking' && ticket.notice && <p className="pending-warning" role="status">{ticket.notice}</p>}
+    {ready && ticket.kind === 'terminal' && !ticket.result && <p className="pending-warning" role="status">The terminal create completed, but its full identity was not recorded. Check the Herdr session; Webr will not create it again.</p>}
+    {ready && ticket.kind === 'terminal' && ticket.result && <button type="button" className="launch-retry" onClick={() => openTerminal(ticket)}>Open terminal</button>}
+    {ticket.reloadRecoveryUnavailable && <p className="pending-warning" role="alert">Browser storage is unavailable. This ticket is held in memory only; reloading will lose recovery.</p>}
+    <a className="pending-leave" href="/new">Leave this pending view</a>
   </main>;
 }

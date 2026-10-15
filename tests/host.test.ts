@@ -174,9 +174,10 @@ it('keeps operation status within existing owner visibility and includes a persi
 it('passes the authenticated owner into SSR bootstrap instead of using the local recovery scope', async () => {
   const ssr: NonNullable<Parameters<typeof createHost>[2]> = (_request, response, _next, locals) => {
     const owner = locals.accountId as string;
-    const bootstrap = (locals.runtime as RuntimeManager).bootstrap(owner);
+    const resourceOwner = locals.resourceAccountId as string;
+    const bootstrap = (locals.runtime as RuntimeManager).bootstrap(owner, resourceOwner);
     response.setHeader('content-type', 'application/json');
-    response.end(JSON.stringify({ owner, recoveryScope: bootstrap.recoveryScope }));
+    response.end(JSON.stringify({ owner, recoveryScope: bootstrap.recoveryScope, resourceRecoveryScope: bootstrap.resourceRecoveryScope }));
   };
   const { app, headers, database, manager } = await setup(origin, ssr);
   const owner = 'remote-account';
@@ -190,27 +191,42 @@ it('passes the authenticated owner into SSR bootstrap instead of using the local
   const authenticated = await app.inject({ url: '/new', headers: authenticatedHeaders });
   const runtime = await app.inject({ url: '/api/runtime', headers: authenticatedHeaders });
   expect(local.statusCode).toBe(200);
-  expect(local.json()).toEqual({ owner: 'local', recoveryScope: manager.database.recoveryScope('local') });
+  expect(local.json()).toEqual({ owner: 'local', recoveryScope: manager.database.recoveryScope('local'), resourceRecoveryScope: manager.database.recoveryScope('local') });
   expect(authenticated.statusCode).toBe(200);
-  expect(authenticated.json()).toEqual({ owner, recoveryScope: manager.database.recoveryScope(owner) });
+  expect(authenticated.json()).toEqual({ owner, recoveryScope: manager.database.recoveryScope(owner), resourceRecoveryScope: manager.database.recoveryScope(owner) });
   expect(authenticated.json().recoveryScope).not.toBe(local.json().recoveryScope);
   expect(runtime.json().recoveryScope).toBe(authenticated.json().recoveryScope);
 });
-it('creates and exposes a terminal-only tab before returning its direct URL data', async () => {
+it('accepts terminal creation before native work and serves status without replaying the effect', async () => {
   const { app, headers, manager, target } = await setup();
   const workspaceId = 'w2'; const tabId = 'w2:t1'; const paneId = 'w2:p1'; const terminalId = 'term_terminal';
-  let requested: { path: string; label: string } | undefined;
-  target.createWorkspace = async (path, label, _requestId) => {
-    requested = { path, label };
+  let requested: { path: string; label: string; requestId: string } | undefined;
+  let release!: () => void; let entered!: () => void;
+  const enteredNative = new Promise<void>((resolve) => { entered = resolve; });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  target.createWorkspace = async (path, label, requestId) => {
+    requested = { path, label, requestId }; entered(); await gate;
     return { workspaceId, tabId, paneId, terminalId };
   };
-  const readFresh = vi.spyOn(manager.supervisors.get(target.id)!, 'readFresh');
   const key = randomUUID();
-  const response = await app.inject({ method: 'POST', url: '/api/terminals', headers: { ...headers, 'Idempotency-Key': key }, payload: { machineId: target.id, path: '~/' } });
-  expect(response.statusCode).toBe(201);
-  expect(requested).toMatchObject({ path: '~/', label: 'Terminal' });
-  expect(response.json()).toMatchObject({ workspaceId, tabId, paneId, terminalId });
-  expect(readFresh).not.toHaveBeenCalled();
+  const post = () => app.inject({ method: 'POST', url: '/api/terminals', headers: { ...headers, 'Idempotency-Key': key }, payload: { machineId: target.id, path: '~/' } });
+  const response = await post();
+  expect(response.statusCode).toBe(202);
+  const accepted = response.json();
+  expect(accepted).toMatchObject({ operationId: expect.any(String), kind: 'terminal', state: 'pending', step: 'validate', statusUrl: `/api/operations/${accepted.operationId}` });
+  await enteredNative;
+  expect(requested).toMatchObject({ path: '~/', label: 'Terminal', requestId: expect.any(String) });
+  const repeated = await post();
+  expect(repeated.statusCode).toBe(202); expect(repeated.json().operationId).toBe(accepted.operationId);
+  expect(target.createWorkspace).toHaveBeenCalledOnce();
+  const statusWhileRunning = await app.inject({ url: accepted.statusUrl, headers });
+  expect(statusWhileRunning.json()).toMatchObject({ operationId: accepted.operationId, kind: 'terminal', state: 'running' });
+  expect(target.createWorkspace).toHaveBeenCalledOnce();
+
+  release();
+  await expect.poll(() => manager.database.createOperation(accepted.operationId)?.state).toBe('ready');
+  const completed = await app.inject({ url: accepted.statusUrl, headers });
+  expect(completed.json()).toMatchObject({ operationId: accepted.operationId, kind: 'terminal', state: 'ready', result: { workspaceId, tabId, paneId, terminalId } });
   expect(manager.bootstrap().threads.some((item) => item.tabId === tabId)).toBe(false);
   const tab = manager.bootstrap().projections.find((projection) => projection.machineId === target.id)?.availableTabs?.find((item) => item.tabId === tabId);
   expect(tab).toMatchObject({ bound: false, panes: [{ id: paneId, terminalId, title: 'Shell' }] });
@@ -230,6 +246,90 @@ it('creates and exposes a terminal-only tab before returning its direct URL data
   expect(target.streams[0]?.closed).toBe(false);
   sockets.metadata.close();
 });
+it('accepts workspace creation immediately, normalizes labels, and replays recorded status before live checks', async () => {
+  const { app, headers, manager, target } = await setup();
+  const key = randomUUID(); let release!: () => void; let entered!: () => void;
+  const enteredNative = new Promise<void>((resolve) => { entered = resolve; });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const created = { workspaceId: 'w3', tabId: 'w3:t1', paneId: 'w3:p1', terminalId: 'term_workspace' };
+  const nativeCreate = vi.fn(async (_path: string, _label: string, _requestId: string) => { entered(); await gate; return created; });
+  target.createWorkspace = nativeCreate;
+  const post = (payload: Record<string, unknown>) => app.inject({ method: 'POST', url: '/api/workspaces', headers: { ...headers, 'Idempotency-Key': key }, payload });
+  const [first, concurrent] = await Promise.all([
+    post({ machineId: target.id, path: '/project', label: ' Project ' }),
+    post({ machineId: target.id, path: '/project', label: 'Project' }),
+  ]);
+  expect(first.statusCode).toBe(202); expect(concurrent.statusCode).toBe(202);
+  const accepted = first.json();
+  expect(accepted).toMatchObject({ kind: 'workspace', state: 'pending', statusUrl: `/api/operations/${accepted.operationId}` });
+  expect(concurrent.json().operationId).toBe(accepted.operationId);
+  await enteredNative;
+  const duplicate = await post({ machineId: target.id, path: '/project', label: 'Project' });
+  expect(duplicate.statusCode).toBe(202); expect(duplicate.json().operationId).toBe(accepted.operationId);
+  expect((await post({ machineId: target.id, path: '/other', label: 'Project' })).statusCode).toBe(409);
+  expect(nativeCreate).toHaveBeenCalledOnce();
+  release();
+  await expect.poll(() => manager.database.createOperation(accepted.operationId)?.state).toBe('ready');
+  manager.supervisors.get(target.id)!.stop();
+  const afterDisconnect = await post({ machineId: target.id, path: '/project', label: 'Project' });
+  expect(afterDisconnect.statusCode).toBe(202); expect(afterDisconnect.json().operationId).toBe(accepted.operationId);
+  expect(afterDisconnect.json().result).toEqual(created);
+  expect(nativeCreate).toHaveBeenCalledOnce();
+});
+
+it('scopes create idempotency to the authenticated owner and preserves operation visibility', async () => {
+  const { app, headers, target, database } = await setup();
+  const owner = 'remote-create-account'; database.setSetting('allowed_account', owner);
+  const token = 'authenticated-create-test-session'; const now = Date.now();
+  database.addDeviceSession({ id: randomUUID(), name: 'Remote device', createdAt: now, lastSeenAt: now, tokenHash: createHash('sha256').update(token).digest('hex') });
+  target.createWorkspace = async () => ({ workspaceId: 'w4', tabId: 'w4:t1', paneId: 'w4:p1', terminalId: 'term_shared' });
+  const key = randomUUID(); const payload = { machineId: target.id, path: '/shared', label: 'Shared' };
+  const local = await app.inject({ method: 'POST', url: '/api/workspaces', headers: { ...headers, 'Idempotency-Key': key }, payload });
+  const remoteHeaders = { host: 'device.example.ts.net', origin: 'http://device.example.ts.net', cookie: `${SESSION_COOKIE}=${token}`, 'Idempotency-Key': key };
+  const remote = await app.inject({ method: 'POST', url: '/api/workspaces', headers: remoteHeaders, payload });
+  expect(local.statusCode).toBe(202); expect(remote.statusCode).toBe(202);
+  expect(local.json().operationId).not.toBe(remote.json().operationId);
+  expect(database.createOperations().filter((operation) => operation.key === key).map((operation) => operation.accountId).sort()).toEqual(['local', owner].sort());
+  expect((await app.inject({ method: 'POST', url: '/api/workspaces', headers: { ...remoteHeaders }, payload: { ...payload, label: 'Different' } })).statusCode).toBe(409);
+  expect((await app.inject({ url: local.json().statusUrl, headers: remoteHeaders })).statusCode).toBe(200);
+  const stranger = database.beginCreateOperation('stranger', 'workspace', randomUUID(), payload, { fingerprint: target.fingerprint, session: target.session, configVersion: target.configVersion }).operation;
+  expect((await app.inject({ url: `/api/operations/${stranger.id}`, headers })).statusCode).toBe(404);
+});
+
+it('scopes accountless remote creates and recovery to the authenticated device session', async () => {
+  const ssr: NonNullable<Parameters<typeof createHost>[2]> = (_request, response, _next, locals) => {
+    const owner = locals.accountId as string;
+    const resourceOwner = locals.resourceAccountId as string;
+    const bootstrap = (locals.runtime as RuntimeManager).bootstrap(owner, resourceOwner);
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify({ owner, resourceOwner, recoveryScope: bootstrap.recoveryScope, resourceRecoveryScope: bootstrap.resourceRecoveryScope }));
+  };
+  const { app, headers, target, database } = await setup(origin, ssr);
+  const now = Date.now();
+  const sessions = [randomUUID(), randomUUID()];
+  const tokens = ['remote-session-one', 'remote-session-two'];
+  for (let index = 0; index < sessions.length; index++) database.addDeviceSession({ id: sessions[index], name: 'Remote device', createdAt: now, lastSeenAt: now, tokenHash: createHash('sha256').update(tokens[index]!).digest('hex') });
+  target.createWorkspace = async () => ({ workspaceId: 'w5', tabId: 'w5:t1', paneId: 'w5:p1', terminalId: 'term_device' });
+  const key = randomUUID(); const payload = { machineId: target.id, path: '/shared', label: 'Shared' };
+  const remoteHeaders = (token: string) => ({ host: 'device.example.ts.net', origin: 'http://device.example.ts.net', cookie: `${SESSION_COOKIE}=${token}`, 'Idempotency-Key': key });
+  const local = await app.inject({ method: 'POST', url: '/api/workspaces', headers: { ...headers, 'Idempotency-Key': key }, payload });
+  const remote = await app.inject({ method: 'POST', url: '/api/workspaces', headers: remoteHeaders(tokens[0]!), payload });
+  const duplicate = await app.inject({ method: 'POST', url: '/api/workspaces', headers: remoteHeaders(tokens[0]!), payload });
+  expect(local.statusCode).toBe(202); expect(remote.statusCode).toBe(202);
+  expect(remote.json().operationId).not.toBe(local.json().operationId);
+  expect(duplicate.json().operationId).toBe(remote.json().operationId);
+  expect(database.createOperations().filter((operation) => operation.key === key).map((operation) => operation.accountId).sort()).toEqual(['device:' + sessions[0], 'local'].sort());
+  expect((await app.inject({ url: remote.json().statusUrl, headers: remoteHeaders(tokens[0]!) })).statusCode).toBe(200);
+  expect((await app.inject({ url: remote.json().statusUrl, headers: remoteHeaders(tokens[1]!) })).statusCode).toBe(404);
+  const localBootstrap = (await app.inject({ url: '/api/runtime', headers })).json();
+  const firstBootstrap = (await app.inject({ url: '/api/runtime', headers: remoteHeaders(tokens[0]!) })).json();
+  const secondBootstrap = (await app.inject({ url: '/api/runtime', headers: remoteHeaders(tokens[1]!) })).json();
+  expect(new Set([localBootstrap.recoveryScope, firstBootstrap.recoveryScope, secondBootstrap.recoveryScope]).size).toBe(1);
+  expect(new Set([localBootstrap.resourceRecoveryScope, firstBootstrap.resourceRecoveryScope, secondBootstrap.resourceRecoveryScope]).size).toBe(3);
+  const ssr = await app.inject({ url: '/new', headers: remoteHeaders(tokens[0]!) });
+  expect(ssr.json()).toEqual({ owner: 'local', resourceOwner: 'device:' + sessions[0], recoveryScope: localBootstrap.recoveryScope, resourceRecoveryScope: firstBootstrap.resourceRecoveryScope });
+});
+
 it('decodes encoded standalone tab route IDs before resolving them', () => {
   expect(decodeSessionTabId(encodeURIComponent('w1:t1'))).toBe('w1:t1');
   expect(decodeSessionTabId('%E0%A4%A')).toBe('');

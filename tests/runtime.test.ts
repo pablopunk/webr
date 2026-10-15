@@ -386,13 +386,15 @@ it('serializes workspace creation behind destructive tab close', async () => {
   const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
   await expect.poll(() => manager.bootstrap().projections[0]?.availableTabs?.some((tab) => tab.tabId === 'w1:t2')).toBe(true);
   const closing = manager.closeTab(target.id, 'w1:t2', true); await discardStarted;
-  const terminal = manager.createTerminal(target.id, '/terminal', '00000000-0000-4000-8000-000000000001');
-  const workspace = manager.createWorkspace(target.id, '00000000-0000-4000-8000-000000000002', '/project', 'Project');
+  const terminal = manager.acceptCreateOperation('local', 'terminal', '00000000-0000-4000-8000-000000000001', { machineId: target.id, path: '/terminal' });
+  const workspace = manager.acceptCreateOperation('local', 'workspace', '00000000-0000-4000-8000-000000000002', { machineId: target.id, path: '/project', label: 'Project' });
+  manager.startCreateOperation(terminal.envelope.operationId);
+  manager.startCreateOperation(workspace.envelope.operationId);
   await Promise.resolve(); expect(create).not.toHaveBeenCalled();
   finishDiscard();
   await expect(closing).resolves.toEqual({ closed: true, busy: false });
-  await expect(terminal).resolves.toEqual(terminalResult);
-  await expect(workspace).resolves.toEqual(workspaceResult);
+  await expect.poll(() => manager.database.createOperation(terminal.envelope.operationId)).toMatchObject({ state: 'ready', result: terminalResult });
+  await expect.poll(() => manager.database.createOperation(workspace.envelope.operationId)).toMatchObject({ state: 'ready', result: workspaceResult });
   expect(create).toHaveBeenCalledTimes(2);
 });
 it('prevents unarchiving a thread while its archived-tab deletion is in flight', async () => {
@@ -533,12 +535,13 @@ it('revalidates the tab identity before a queued title sync', async () => {
   const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
   await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
   const thread = manager.bootstrap().threads[0];
-  const creating = manager.createWorkspace(target.id, '00000000-0000-4000-8000-000000000003', '/workspace', 'Workspace');
+  const creating = manager.acceptCreateOperation('local', 'workspace', '00000000-0000-4000-8000-000000000003', { machineId: target.id, path: '/workspace', label: 'Workspace' });
+  manager.startCreateOperation(creating.envelope.operationId);
   await createStarted;
   manager.renameThread(target.id, thread.id, 'New title');
   const adoption = manager.adopt(target.id, thread.id, ['term_shell']);
   finishCreate();
-  await expect(creating).resolves.toEqual(workspace);
+  await expect.poll(() => manager.database.createOperation(creating.envelope.operationId)).toMatchObject({ state: 'ready', result: workspace });
   await expect(adoption).resolves.toBeUndefined();
   await expect.poll(() => manager.database.threadRows(target.id)[0]?.metadata.titleSync?.state).toBe('failed');
   expect(manager.bootstrap().threads.find((item) => item.id === thread.id)?.tabId).toBe('w1:t2');
@@ -553,7 +556,8 @@ it('revalidates worktree ownership before a queued title sync', async () => {
   const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
   await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
   const thread = manager.bootstrap().threads[0];
-  const creating = manager.createWorkspace(target.id, '00000000-0000-4000-8000-000000000004', '/workspace', 'Workspace');
+  const creating = manager.acceptCreateOperation('local', 'workspace', '00000000-0000-4000-8000-000000000004', { machineId: target.id, path: '/workspace', label: 'Workspace' });
+  manager.startCreateOperation(creating.envelope.operationId);
   await createStarted;
   manager.renameThread(target.id, thread.id, 'New title');
   const row = manager.database.threadRows(target.id).find((item) => item.id === thread.id)!;
@@ -561,7 +565,7 @@ it('revalidates worktree ownership before a queued title sync', async () => {
   target.event!();
   await expect.poll(() => manager.bootstrap().threads.find((item) => item.id === thread.id)?.ownsWorktree).toBe(true);
   finishCreate();
-  await expect(creating).resolves.toEqual(workspace);
+  await expect.poll(() => manager.database.createOperation(creating.envelope.operationId)).toMatchObject({ state: 'ready', result: workspace });
   await expect.poll(() => manager.database.threadRows(target.id)[0]?.metadata.titleSync?.state).toBe('failed');
   expect(renameTab).not.toHaveBeenCalled();
 });

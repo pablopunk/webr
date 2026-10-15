@@ -6,7 +6,8 @@ import { cpus, freemem, totalmem } from 'node:os';
 import { distRoot } from './dist';
 import { z } from 'zod';
 import type { RuntimeManager } from './runtime/manager';
-import { launchInput, opaqueId } from '../shared/runtime';
+import { createOperationEnvelope } from './runtime/workspace';
+import { launchInput, opaqueId, terminalCreateInput, workspaceCreateInput } from '../shared/runtime';
 import { registerWebsockets } from './websockets';
 import { loadHerdrKeymap } from './herdr-keys';
 import { perfLog, perfLogEnabled } from './perf-log';
@@ -22,6 +23,11 @@ const localOwner = 'local';
 function launchOwner(auth: Auth, request: FastifyRequest, database: RuntimeManager['database']) {
   const access = auth.access(request);
   return access.local || !access.session ? localOwner : database.getSetting('allowed_account') ?? localOwner;
+}
+function createOperationOwner(auth: Auth, request: FastifyRequest, database: RuntimeManager['database']) {
+  const access = auth.access(request);
+  if (access.local || !access.session) return localOwner;
+  return database.getSetting('allowed_account') ?? `device:${access.session.id}`;
 }
 type SsrHandler = (request: FastifyRequest['raw'], response: import('node:http').ServerResponse, next: (error?: unknown) => void, locals: Record<string, unknown>) => void;
 
@@ -55,7 +61,8 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     if (message === 'read_only') return reply.code(403).send({ error: message });
     if (message === 'launch_in_progress') return reply.code(409).send({ error: message });
     if (message === 'launch_capacity_exceeded') return reply.code(429).send({ error: message });
-    return reply.code(['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected', 'workspace_creation_unavailable'].includes(message) ? 409 : 503).send({ error: ['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected', 'workspace_creation_unavailable'].includes(message) ? message : 'request_failed' });
+    const conflict = ['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected', 'workspace_creation_unavailable', 'legacy_operation_ownership_ambiguous', 'legacy_operation_kind_ambiguous'].includes(message);
+    return reply.code(conflict ? 409 : 503).send({ error: conflict ? message : 'request_failed' });
   });
   await app.register(websocket, { options: { maxPayload: 32 * 1024, perMessageDeflate: false } });
   const hub = registerWebsockets(app, manager);
@@ -74,7 +81,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     const { projectId } = z.object({ projectId: opaqueId.optional() }).strict().parse(request.query);
     return manager.catalog(machineId, projectId);
   });
-  app.get('/api/runtime', async (request) => manager.bootstrap(launchOwner(auth, request, manager.database)));
+  app.get('/api/runtime', async (request) => manager.bootstrap(launchOwner(auth, request, manager.database), createOperationOwner(auth, request, manager.database)));
   app.get('/api/herdr-keys', async () => loadHerdrKeymap());
   app.get('/api/metrics', async () => {
     const cores = cpus();
@@ -111,16 +118,20 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     return manager.openWorktree(input.machineId, input.projectId, input.path);
   });
   app.post('/api/workspaces', async (request, reply) => {
-    const input = z.object({ machineId: opaqueId, path: z.string().regex(/^(\/|~\/)/).max(1000).refine((path) => !/[\x00-\x1f]/.test(path)), label: z.string().trim().min(1).max(80) }).strict().parse(request.body);
+    const input = workspaceCreateInput.parse(request.body);
     const key = z.uuid().parse(request.headers['idempotency-key']);
-    const result = await manager.createWorkspace(input.machineId, key, input.path, input.label);
-    return reply.code(201).send(result);
+    const owner = createOperationOwner(auth, request, manager.database);
+    const accepted = manager.acceptCreateOperation(owner, 'workspace', key, input);
+    if (accepted.envelope.state === 'pending') reply.raw.once('finish', () => manager.startCreateOperation(accepted.envelope.operationId));
+    return reply.code(202).send(accepted.envelope);
   });
   app.post('/api/terminals', async (request, reply) => {
-    const input = z.object({ machineId: opaqueId, path: z.string().regex(/^(\/|~\/)/).max(1000).refine((path) => !/[\x00-\x1f]/.test(path)) }).strict().parse(request.body);
+    const input = terminalCreateInput.parse(request.body);
     const key = z.uuid().parse(request.headers['idempotency-key']);
-    const result = await manager.createTerminal(input.machineId, input.path, key);
-    return reply.code(201).send(result);
+    const owner = createOperationOwner(auth, request, manager.database);
+    const accepted = manager.acceptCreateOperation(owner, 'terminal', key, input);
+    if (accepted.envelope.state === 'pending') reply.raw.once('finish', () => manager.startCreateOperation(accepted.envelope.operationId));
+    return reply.code(202).send(accepted.envelope);
   });
   const projectIconTarget = z.object({ machineId: opaqueId, logicalId: z.string().min(1).max(1000) }).strict();
   app.put('/api/projects/icon', { bodyLimit: MAX_PROJECT_ICON_BYTES }, async (request, reply) => {
@@ -217,9 +228,15 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
   app.post('/api/archive/delete', async () => manager.deleteArchived());
   app.get('/api/operations/:id', async (request, reply) => {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
+    const visibleOwners = [localOwner, manager.database.getSetting('allowed_account'), createOperationOwner(auth, request, manager.database)];
     const operation = manager.database.operation(id);
-    if (!operation || ![localOwner, manager.database.getSetting('allowed_account')].includes(operation.accountId)) return reply.code(404).send({ error: 'operation_not_found' });
-    return manager.journal.envelope(operation);
+    if (operation) {
+      if (!visibleOwners.includes(operation.accountId)) return reply.code(404).send({ error: 'operation_not_found' });
+      return manager.journal.envelope(operation);
+    }
+    const createOperation = manager.database.createOperation(id);
+    if (!createOperation || !visibleOwners.includes(createOperation.accountId)) return reply.code(404).send({ error: 'operation_not_found' });
+    return createOperationEnvelope(createOperation);
   });
   app.get('/api/stats', async () => hub.stats());
   if (perfLogEnabled) app.post('/api/dev/perf', { bodyLimit: 256 * 1024 }, async (request) => { for (const record of z.object({ records: z.array(z.record(z.string(), z.unknown())).max(100) }).parse(request.body).records) perfLog('client', record); return { ok: true }; });
@@ -241,7 +258,8 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
       reply.hijack();
       if (perfLogEnabled) reply.raw.setHeader('Document-Policy', 'js-profiling');
       const owner = launchOwner(auth, request, manager.database);
-      ssr(request.raw, reply.raw, () => { if (!reply.raw.headersSent) { reply.raw.statusCode = 404; reply.raw.end('Not found'); } }, { runtime: manager, accountId: owner });
+      const resourceOwner = createOperationOwner(auth, request, manager.database);
+      ssr(request.raw, reply.raw, () => { if (!reply.raw.headersSent) { reply.raw.statusCode = 404; reply.raw.end('Not found'); } }, { runtime: manager, accountId: owner, resourceAccountId: resourceOwner });
     });
   }
   app.addHook('onClose', async () => { transcriber?.close(); return manager.close(); });

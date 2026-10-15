@@ -6,7 +6,7 @@ import { PerfOverlay } from './PerfOverlay';
 import { PairingPrompt } from './PairingPrompt';
 import { CrashReport } from './CrashReport';
 import { NewThreadView } from './NewThreadView';
-import { PendingOperation } from './PendingOperation';
+import { PendingOperation, PendingResourceOperation } from './PendingOperation';
 import { SettingsView } from './SettingsView';
 import { Sidebar, type SidebarMode } from './Sidebar';
 import { UpdateButton } from './UpdateButton';
@@ -22,7 +22,6 @@ import { isListedThread } from '../lib/launch';
 import type { Bootstrap } from '../shared/runtime';
 import type { Pane } from '../lib/models';
 import { selectTerminalMachine } from '../lib/machines';
-import { uuid } from '../lib/uuid';
 import { appShortcutAction, armLeaderPrefix, paletteToggle, sequenceAction, sequenceStarters, subscribeLeaderPrefix, takeLeaderPrefix, requestThreadRename } from '../client/keyboard';
 import { perfAvailable, startPerf } from '../client/perf';
 import { closeThreadPane, openThreadTerminal } from '../client/thread-actions';
@@ -103,7 +102,7 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
   }, [page, terminalStartup, machineId, tabId]);
   useEffect(() => {
     const title = page === 'settings' ? 'Settings'
-      : page === 'new' ? route.type === 'composer' && route.pendingKey ? 'Starting thread…' : 'New thread'
+      : page === 'new' ? route.type === 'composer' && route.resourcePendingKey ? 'Creating resource…' : route.type === 'composer' && route.pendingKey ? 'Starting thread…' : 'New thread'
         : page === 'thread' ? thread?.title ?? 'Opening thread…'
           : page === 'terminal' ? standaloneTab?.label ?? (terminalPending ? 'Opening terminal…' : terminalMissing ? 'Terminal tab not found' : 'Terminal')
             : 'Webr';
@@ -213,21 +212,14 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
     void openThreadTerminal(thread, focusedPane).then(({ paneId }) => setFocusedPane(paneId), reportPaneFailure);
   }, [thread, focusedPane, setFocusedPane]);
   const standaloneTerminalBusy = useRef(false);
-  const standaloneTerminalOperation = useRef<{ payload: string; key: string } | null>(null);
   const openStandaloneTerminal = useCallback(async (startup?: TerminalStartupPreset) => {
     const machine = terminalMachine;
     if (!machine || !machine.connected || !machine.writable || standaloneTerminalBusy.current) return;
-    const path = '~/';
-    const payload = JSON.stringify({ machineId: machine.id, path, startup });
-    const key = standaloneTerminalOperation.current?.payload === payload ? standaloneTerminalOperation.current.key : uuid();
-    standaloneTerminalOperation.current = { payload, key };
     standaloneTerminalBusy.current = true;
-    try {
-      await openTerminalTab(machine, path, key, startup, navigate);
-      standaloneTerminalOperation.current = null;
-    } catch (error) { void alertDialog(error instanceof Error ? error.message : 'Herdr could not create a terminal.'); }
+    try { await openTerminalTab(machine, '~/', startup, tickets, navigate); }
+    catch (error) { void alertDialog(error instanceof Error ? error.message : 'Herdr could not create a terminal.'); }
     finally { standaloneTerminalBusy.current = false; }
-  }, [terminalMachine, navigate]);
+  }, [terminalMachine, tickets, navigate]);
   const closePane = useCallback(async (paneId = focusedPane) => {
     if (!thread || !canClosePane(thread, paneId)) return;
     const pane = thread.panes.find((pane) => pane.id === paneId)!;
@@ -333,9 +325,11 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
       {page === 'thread' && !thread && !threadIsAuthoritativelyMissing && <main className="native-thread-layout" aria-label="Thread"><p className="runtime-notice" role="status">Waiting for this thread to appear…</p></main>}
       {page === 'terminal' && route.type === 'terminal' && routeMachineSession !== route.session && <main className="native-thread-layout" aria-label="Terminal tab"><p className="runtime-notice" role="status">Waiting for this terminal tab to appear…</p></main>}
       {page === 'terminal' && route.type === 'terminal' && routeMachineSession === route.session && machineId && tabId && <TerminalTabView machineId={machineId} tabId={tabId} panes={terminalPanes} connected={!!machines.find((machine) => machine.id === machineId)?.connected} canControl={!!machines.find((machine) => machine.id === machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} pending={terminalPending} missing={terminalMissing} startupPreset={pendingTerminalStartup} onStartupComplete={completeTerminalStartup} />}
-      {page === 'new' && route.type === 'composer' && (route.pendingKey
-        ? <PendingOperation key={`${tickets.recoveryScope}:${route.pendingKey}`} ticketKey={route.pendingKey} />
-        : <NewThreadView key={`${tickets.recoveryScope}:${projectId}`} projects={projects} machines={machines} selectedProjectId={projectId} onOpenSidebar={toggleSidebar} onNavigate={navigate} />)}
+      {page === 'new' && route.type === 'composer' && (route.resourcePendingKey
+        ? <PendingResourceOperation key={`${tickets.resourceRecoveryScope}:${route.resourcePendingKey}`} ticketKey={route.resourcePendingKey} />
+        : route.pendingKey
+          ? <PendingOperation key={`${tickets.recoveryScope}:${route.pendingKey}`} ticketKey={route.pendingKey} />
+          : <NewThreadView key={`${tickets.recoveryScope}:${projectId}`} projects={projects} machines={machines} selectedProjectId={projectId} workspacePendingKey={route.query.find(([key]) => key === 'workspacePending')?.[1]} onOpenSidebar={toggleSidebar} onNavigate={navigate} />)}
       {page === 'settings' && <SettingsView onOpenSidebar={toggleSidebar} />}
       {page === 'missing' && <main className="not-found"><h1>Page not available</h1><a href="/">Open Webr</a></main>}
     </div>

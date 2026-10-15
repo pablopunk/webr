@@ -160,6 +160,41 @@ it('removes the recovery query during the initial composer mount', () => {
   expect(readNewThreadDraft('local').prompt).toBe('Restored prompt');
 });
 
+it('routes resource-pending keys to resource recovery UI, not thread launch UI', () => {
+  vi.stubGlobal('fetch', deferredFetch());
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+  window.history.replaceState(null, '', '/new?resourcePending=resource-not-in-scope');
+
+  render(<App initialUrl={window.location.href} bootstrap={{ ...bootstrap, resourceRecoveryScope: 'device-resource-scope' }} />);
+
+  expect(screen.getByRole('heading', { name: 'Pending create unavailable' })).toBeDefined();
+  expect(screen.queryByRole('heading', { name: 'Pending launch unavailable' })).toBeNull();
+  expect(window.location.pathname).toBe('/new');
+});
+
+it('preserves an unsubmitted composer draft when only resource recovery scope changes', () => {
+  vi.stubGlobal('fetch', deferredFetch());
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+  const storage = window.sessionStorage;
+  const setItem = vi.fn((_key: string, _value: string) => { throw new Error('storage denied'); });
+  vi.stubGlobal('sessionStorage', {
+    get length() { return storage.length; },
+    clear: () => storage.clear(),
+    getItem: (key: string) => storage.getItem(key),
+    key: (index: number) => storage.key(index),
+    removeItem: (key: string) => storage.removeItem(key),
+    setItem,
+  } satisfies Storage);
+  window.history.replaceState(null, '', '/new');
+  const view = render(<App initialUrl={window.location.href} bootstrap={{ ...bootstrap, resourceRecoveryScope: 'resource-scope-one' }} />);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Thread prompt' }), { target: { value: 'Keep this unsubmitted prompt' } });
+  expect(setItem).toHaveBeenCalled();
+
+  view.rerender(<App initialUrl={window.location.href} bootstrap={{ ...bootstrap, resourceRecoveryScope: 'resource-scope-two' }} />);
+
+  expect((screen.getByRole('textbox', { name: 'Thread prompt' }) as HTMLTextAreaElement).value).toBe('Keep this unsubmitted prompt');
+});
+
 it('keeps a thread with stale missing data pending instead of redirecting or waiting on a document fetch', () => {
   const fetchMock = deferredFetch();
   vi.stubGlobal('fetch', fetchMock);

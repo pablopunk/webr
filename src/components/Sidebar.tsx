@@ -17,7 +17,7 @@ import type { AppNavigate } from '../client/app-navigation';
 import { openTerminalTab } from '../client/terminal-navigation';
 import { groupProjectLocations } from '../client/project-groups';
 import { withTildeHome } from '../client/home-path';
-import { uuid } from '../lib/uuid';
+import { useThreadTickets } from '../client/provider';
 import { alertDialog, confirmDialog } from './dialogs';
 import { RENAME_THREAD_EVENT } from '../client/keyboard';
 import { formatShortcut } from './shortcuts';
@@ -62,15 +62,11 @@ const reportFailure = (error: unknown) => alertDialog(error instanceof Error ? e
 const confirmDelete = async (thread: Thread, canDelete: boolean) => { if (canDelete && await confirmDialog(deleteWarning([thread]), { confirmLabel: 'Delete', danger: true })) await deleteThreadPermanently(thread).catch(reportFailure); };
 function NewTerminalButton({ machine, onNavigate }: { machine?: Machine; onNavigate?: AppNavigate }) {
   const [busy, setBusy] = useState(false);
-  const operation = useRef<{ payload: string; key: string } | null>(null);
+  const tickets = useThreadTickets();
   const open = async () => {
     if (!machine || !machine.connected || !machine.writable || busy) return;
-    const path = '~/';
-    const payload = JSON.stringify({ machineId: machine.id, path });
-    const key = operation.current?.payload === payload ? operation.current.key : uuid();
-    operation.current = { payload, key };
     setBusy(true);
-    try { await openTerminalTab(machine, path, key, undefined, onNavigate ?? (() => {})); operation.current = null; }
+    try { await openTerminalTab(machine, '~/', undefined, tickets, onNavigate ?? (() => {})); }
     catch (error) { reportFailure(error); }
     finally { setBusy(false); }
   };
@@ -169,14 +165,11 @@ function ProjectGroupHeader({ project, closed, onToggle, machine, onNavigate }: 
   const [renaming, setRenaming] = useState(false);
   const [changingIcon, setChangingIcon] = useState(false);
   const [terminalBusy, setTerminalBusy] = useState(false);
-  const terminalOperation = useRef<{ payload: string; key: string } | null>(null);
+  const tickets = useThreadTickets();
   const openTerminalHere = async () => {
     if (!machine || !machine.connected || !machine.writable || terminalBusy) return;
-    const payload = JSON.stringify({ machineId: machine.id, path: project.path });
-    const key = terminalOperation.current?.payload === payload ? terminalOperation.current.key : uuid();
-    terminalOperation.current = { payload, key };
     setTerminalBusy(true);
-    try { await openTerminalTab(machine, project.path, key, undefined, onNavigate ?? (() => {})); terminalOperation.current = null; }
+    try { await openTerminalTab(machine, project.path, undefined, tickets, onNavigate ?? (() => {})); }
     catch (error) { reportFailure(error); }
     finally { setTerminalBusy(false); }
   };
@@ -256,17 +249,13 @@ export function Sidebar({ projects, threads, archived = [], floating = [], detac
   const terminalMachine = selectTerminalMachine(machines, currentMachineId);
   const [monitorBusy, setMonitorBusy] = useState(false);
   const monitorBusyRef = useRef(false);
-  const monitorOperation = useRef<{ payload: string; key: string } | null>(null);
+  const tickets = useThreadTickets();
   const openResourceMonitor = async () => {
     const machine = terminalMachine;
     if (!machine || !machine.connected || !machine.writable || monitorBusyRef.current) return;
-    const path = '~/';
-    const payload = JSON.stringify({ machineId: machine.id, path, startup: 'resource-monitor' });
-    const key = monitorOperation.current?.payload === payload ? monitorOperation.current.key : uuid();
-    monitorOperation.current = { payload, key };
     monitorBusyRef.current = true;
     setMonitorBusy(true);
-    try { await openTerminalTab(machine, path, key, 'resource-monitor', onNavigate ?? (() => {})); monitorOperation.current = null; }
+    try { await openTerminalTab(machine, '~/', 'resource-monitor', tickets, onNavigate ?? (() => {})); }
     catch (error) { reportFailure(error); }
     finally { monitorBusyRef.current = false; setMonitorBusy(false); }
   };

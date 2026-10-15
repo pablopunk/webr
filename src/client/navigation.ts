@@ -14,6 +14,7 @@ export interface ComposerRoute extends RouteUrlState {
   readonly type: 'composer';
   readonly projectId?: string;
   readonly pendingKey?: string;
+  readonly resourcePendingKey?: string;
 }
 
 export interface ThreadRoute extends RouteUrlState {
@@ -85,11 +86,13 @@ export function parseRoute(input: string | URL, baseUrl = DEFAULT_BASE_URL): Rou
   if (pathname === '/new') {
     const projectId = url.searchParams.get('project');
     const pendingKey = url.searchParams.get('pending');
+    const resourcePendingKey = url.searchParams.get('resourcePending');
     return {
       type: 'composer',
       ...routeUrlState(url),
       projectId: projectId ?? undefined,
       pendingKey: pendingKey || undefined,
+      resourcePendingKey: resourcePendingKey || undefined,
     };
   }
   if (pathname === '/settings') return { type: 'settings', ...routeUrlState(url) };
@@ -134,6 +137,8 @@ function paramsFromRoute(route: SupportedRoute): URLSearchParams {
     else params.delete('project');
     if (route.pendingKey !== undefined) params.set('pending', route.pendingKey);
     else params.delete('pending');
+    if (route.resourcePendingKey !== undefined) params.set('resourcePending', route.resourcePendingKey);
+    else params.delete('resourcePending');
   }
 
   if (route.type === 'terminal') {
@@ -168,11 +173,17 @@ export function buildRouteUrl(route: SupportedRoute): string {
 }
 
 /** Move the current composer URL to its local pending view without dropping unrelated route state. */
-export function buildPendingThreadUrl(key: string, currentHref: string): string {
+export function buildPendingThreadUrl(key: string, currentHref: string, kind: 'thread' | 'resource' = 'thread'): string {
   const url = new URL(currentHref, DEFAULT_BASE_URL);
   url.pathname = '/new';
   url.searchParams.delete('recover');
-  url.searchParams.set('pending', key);
+  if (kind === 'resource') {
+    url.searchParams.delete('pending');
+    url.searchParams.set('resourcePending', key);
+  } else {
+    url.searchParams.delete('resourcePending');
+    url.searchParams.set('pending', key);
+  }
   return `${url.pathname}${url.search}${url.hash}`;
 }
 

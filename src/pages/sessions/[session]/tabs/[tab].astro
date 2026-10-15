@@ -6,7 +6,7 @@ const manager = Astro.locals.runtime;
 const machineId = Astro.url.searchParams.get('machine');
 const session = Astro.params.session ?? '';
 const tabId = decodeSessionTabId(Astro.params.tab);
-const route = resolveSessionTab(manager, session, machineId, tabId, Astro.locals.accountId);
+const route = resolveSessionTab(manager, session, machineId, tabId, Astro.locals.accountId, Astro.locals.resourceAccountId);
 const { bootstrap, thread, terminalTab } = route;
 ---
 <Base title={thread?.title ?? terminalTab?.label ?? 'Opening terminal…'}>

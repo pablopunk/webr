@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import {
+  buildPendingThreadUrl,
   buildRouteUrl,
   createRouteHistoryController,
   isPlainLinkEligible,
@@ -36,6 +37,16 @@ it('parses and builds composer routes with an opaque pending key and unrelated U
   const legacyKeyRoute = supported(parseRoute('/new?key=not-pending'));
   expect(legacyKeyRoute).toMatchObject({ type: 'composer', pendingKey: undefined });
   expect(buildRouteUrl(legacyKeyRoute)).toBe('/new?key=not-pending');
+});
+
+it('keeps resource-pending routes separate from thread-pending routes', () => {
+  const route = supported(parseRoute('/new?pending=thread%252Fone&resourcePending=resource%252Fone&keep=1#composer'));
+  expect(route).toMatchObject({ type: 'composer', pendingKey: 'thread%2Fone', resourcePendingKey: 'resource%2Fone' });
+  expect(buildRouteUrl(route)).toBe('/new?pending=thread%252Fone&resourcePending=resource%252Fone&keep=1#composer');
+  expect(buildPendingThreadUrl('resource-two', '/new?pending=thread-one&keep=1#composer', 'resource'))
+    .toBe('/new?keep=1&resourcePending=resource-two#composer');
+  expect(buildPendingThreadUrl('thread-two', '/new?resourcePending=resource-one&keep=1#composer'))
+    .toBe('/new?keep=1&pending=thread-two#composer');
 });
 
 it('parses and builds thread routes without double-decoding opaque IDs', () => {

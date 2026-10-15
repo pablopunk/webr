@@ -11,7 +11,20 @@ export const launchInput = z.object({
   worktree: z.boolean(),
 }).strict();
 export type LaunchInput = z.infer<typeof launchInput>;
+const createPath = z.string().regex(/^(\/|~\/)/).max(1000).refine((path) => !/[\x00-\x1f]/.test(path));
+export const workspaceCreateInput = z.object({ machineId: opaqueId, path: createPath, label: z.string().trim().min(1).max(80) }).strict();
+export const terminalCreateInput = z.object({ machineId: opaqueId, path: createPath }).strict();
+export type WorkspaceCreateInput = z.infer<typeof workspaceCreateInput>;
+export type TerminalCreateInput = z.infer<typeof terminalCreateInput>;
+export type CreateOperationKind = 'workspace' | 'terminal';
+export type CreateOperationInput = WorkspaceCreateInput | TerminalCreateInput;
 export const launchOperationState = z.enum(['pending', 'running', 'ready', 'failed', 'unknown']);
+export const createOperationResult = z.object({ workspaceId: z.string().min(1).max(160), tabId: z.string().min(1).max(160), paneId: z.string().min(1).max(160), terminalId: z.string().min(1).max(160) }).strict();
+export const createOperationEnvelope = z.object({
+  operationId: z.uuid(), kind: z.enum(['workspace', 'terminal']), state: launchOperationState, step: z.string().min(1).max(64),
+  result: createOperationResult.optional(), error: z.string().min(1).max(240).optional(), statusUrl: z.string().min(1).max(200),
+}).strict();
+export type CreateOperationEnvelope = z.infer<typeof createOperationEnvelope>;
 export const launchOperationEnvelope = z.object({
   operationId: z.uuid(), kind: z.literal('thread'), state: launchOperationState, step: z.string().min(1).max(64),
   result: z.object({ threadId: z.string().min(1).max(160) }).strict().optional(), error: z.string().min(1).max(240).optional(),
@@ -43,7 +56,7 @@ export type Projection = {
   availableTabs?: { tabId: string; workspaceId: string; label: string; bound: boolean; panes: { id: string; terminalId: string; title: string }[] }[];
   machine?: Machine;
 };
-export type Bootstrap = { projections: Projection[]; machines: Machine[]; projects: Project[]; threads: Thread[]; recoveryScope: string };
+export type Bootstrap = { projections: Projection[]; machines: Machine[]; projects: Project[]; threads: Thread[]; recoveryScope: string; resourceRecoveryScope?: string };
 const streamRef = { streamId: z.number().int().min(1).max(0xffffffff), generation: z.number().int().min(1).max(0xffffffff) };
 export const terminalAction = z.union([
   z.object({ type: z.literal('open'), ...streamRef, machineId: opaqueId, threadId: z.uuid(), terminalId: opaqueId, cols: z.number().int().min(2).max(500), rows: z.number().int().min(1).max(300), mode: z.enum(['observe', 'control']), takeover: z.boolean() }).strict(),

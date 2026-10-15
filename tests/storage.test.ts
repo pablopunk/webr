@@ -1,11 +1,12 @@
 import { expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm, writeFile, mkdir, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { MetadataDatabase } from '../src/server/storage/database';
 import { reconcile } from '../src/server/runtime/reconcile';
 import { RuntimeManager } from '../src/server/runtime/manager';
-import { FakeTarget } from './fixtures/target';
+import { FakeTarget, launch } from './fixtures/target';
 import { listIconCandidates, readApprovedIcon } from '../src/server/transport/icons';
 
 it('migrates a private WAL database repeatedly and retains UUID aliases and avatars after reopening', async () => {
@@ -33,6 +34,19 @@ it('persists recovery scopes across restart while isolating servers and owners',
     try { expect(otherServer.recoveryScope('local')).not.toBe(local); }
     finally { otherServer.close(); }
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+it('shares the 32 accepted-operation limit across thread and resource creates per owner and machine', () => {
+  const database = new MetadataDatabase(':memory:'); const target = new FakeTarget();
+  try {
+    const input = { machineId: target.id, path: '/new-project', label: 'New project' };
+    const identity = { fingerprint: target.fingerprint, session: target.session, configVersion: target.configVersion };
+    for (let index = 0; index < 31; index++) database.beginCreateOperation('local', 'workspace', randomUUID(), input, identity);
+    const base = reconcile(database, target, target.state).threads[0];
+    const thread = { ...base, id: randomUUID(), ownerToken: randomUUID(), prompt: launch.prompt, machineId: target.id, session: target.session, bindingFingerprint: target.fingerprint, bindingConfigVersion: target.configVersion };
+    database.beginLaunch('local', randomUUID(), launch, thread, identity);
+    expect(() => database.beginCreateOperation('local', 'terminal', randomUUID(), { machineId: target.id, path: '~/' }, identity)).toThrow('launch_capacity_exceeded');
+    expect(database.beginCreateOperation('other-account', 'workspace', randomUUID(), input, identity).created).toBe(true);
+  } finally { database.close(); }
 });
 it('reattaches a thread to its tab after cold restore and never reruns a prompt', async () => {
   const database = new MetadataDatabase(':memory:'); const target = new FakeTarget(); const manager = new RuntimeManager(database, [target]);

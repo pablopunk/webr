@@ -35,13 +35,6 @@ export async function resetProjectIcon(project: Project) {
   if (!response.ok) throw new Error('Could not reset this icon.');
 }
 export const openThreadTerminal = (thread: Thread, afterPaneId: string) => post(`/api/threads/${encodeURIComponent(thread.id)}/panes/terminal`, { machineId: thread.machineId, afterPaneId }) as Promise<{ paneId: string }>;
-export async function createTerminalTab(machineId: string, path: string, key: string) {
-  const response = await fetch('/api/terminals', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key }, body: JSON.stringify({ machineId, path }) });
-  const result = await response.json().catch(() => ({})) as { error?: string; state?: string; tabId?: string };
-  if (!response.ok) throw new Error(actionErrors[result.error ?? ''] ?? 'Herdr could not create a terminal.');
-  if (result.state === 'unknown' || !result.tabId) throw new Error('The new terminal is not ready yet; check the Herdr session before trying again.');
-  return { tabId: result.tabId };
-}
 export const closeThreadPane = (thread: Thread, paneId: string, force: boolean) => post(`/api/threads/${encodeURIComponent(thread.id)}/panes/close`, { machineId: thread.machineId, paneId, force }) as Promise<{ closed: boolean; busy: boolean }>;
 export const closeTerminalTab = (machineId: string, tabId: string, force: boolean) => post('/api/tabs/close', { machineId, tabId, force }) as Promise<{ closed: boolean; busy: boolean }>;
 export const deleteThreadPermanently = (thread: Thread) => post(`/api/threads/${encodeURIComponent(thread.id)}/delete`, { machineId: thread.machineId });

@@ -1,7 +1,7 @@
 import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 import type { Thread } from '../../lib/models';
-import type { LaunchInput } from '../../shared/runtime';
+import type { CreateOperationInput, LaunchInput } from '../../shared/runtime';
 
 export const threads = sqliteTable('app_threads', {
   id: text('id').primaryKey(), machineId: text('machine_id').notNull(), session: text('session').notNull(),
@@ -21,6 +21,12 @@ export const launchTombstones = sqliteTable('launch_tombstones', {
   id: text('id').primaryKey(), accountId: text('account_id').notNull(), kind: text('kind').notNull(), key: text('key').notNull(), hash: text('hash').notNull(), threadId: text('thread_id').notNull(),
   state: text('state').notNull(), step: text('step').notNull(), result: text('result', { mode: 'json' }).$type<Record<string, unknown>>().notNull(), error: text('error'),
 }, (table) => [uniqueIndex('account_launch_tombstone_kind_key').on(table.accountId, table.kind, table.key)]);
+export const createOperations = sqliteTable('create_operations', {
+  id: text('id').primaryKey(), accountId: text('account_id').notNull(), kind: text('kind').notNull(), key: text('key').notNull(), hash: text('hash').notNull(),
+  input: text('input', { mode: 'json' }).$type<CreateOperationInput>(), machineId: text('machine_id').notNull(), nativeRequestId: text('native_request_id').notNull(), targetFingerprint: text('target_fingerprint').notNull(),
+  targetSession: text('target_session'), targetConfigVersion: integer('target_config_version'), state: text('state').notNull(), step: text('step').notNull(),
+  result: text('result', { mode: 'json' }).$type<Record<string, unknown>>().notNull(), error: text('error'),
+}, (table) => [uniqueIndex('account_create_operation_kind_key').on(table.accountId, table.kind, table.key), index('create_operation_capacity').on(table.accountId, table.machineId, table.state)]);
 export const settings = sqliteTable('app_settings', { key: text('key').primaryKey(), value: text('value').notNull() });
 export const profiles = sqliteTable('machine_profiles', { id: text('id').primaryKey(), session: text('session').notNull(), configVersion: integer('config_version').notNull(), metadata: text('metadata').notNull() });
 export const projectLocations = sqliteTable('project_locations', { id: text('id').primaryKey(), machineId: text('machine_id').notNull(), projectId: text('project_id').notNull(), path: text('path').notNull() });

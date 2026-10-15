@@ -7,9 +7,9 @@ export function decodeSessionTabId(value: string | undefined) {
   catch { return ''; }
 }
 
-export function resolveSessionTab(manager: Pick<RuntimeManager, 'bootstrap'>, session: string, machineId: string | null, tabId: string, owner: string) {
+export function resolveSessionTab(manager: Pick<RuntimeManager, 'bootstrap'>, session: string, machineId: string | null, tabId: string, owner: string, resourceOwner = owner) {
   const resolve = () => {
-    const bootstrap = manager.bootstrap(owner);
+    const bootstrap = manager.bootstrap(owner, resourceOwner);
     const thread = machineId ? bootstrap.threads.find((item) => item.machineId === machineId && item.session === session && item.tabId === tabId && item.bindingState === 'attached' && isListedThread(item)) : undefined;
     const machine = machineId ? bootstrap.machines.find((item) => item.id === machineId && item.session === session) : undefined;
     const terminalTab = !thread && machine ? bootstrap.projections.find((projection) => projection.machineId === machine.id)?.availableTabs?.find((item) => item.tabId === tabId && !item.bound && item.panes.length > 0) : undefined;
