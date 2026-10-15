@@ -69,6 +69,22 @@ it('revalidates an equal-revision bootstrap before enabling terminal control', (
   manager.stop();
 });
 
+it('waits for accepted projection evidence before mounting in control mode', () => {
+  vi.useFakeTimers(); BrowserSocket.instances = [];
+  vi.spyOn(Math, 'random').mockReturnValue(0.5);
+  vi.stubGlobal('WebSocket', BrowserSocket); vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:4321' });
+  const threadId = '00000000-0000-4000-8000-000000000001';
+  const projection: Projection = { machineId: 'fixture', generation: 'g1', revision: 1, connected: true, freshAt: new Date().toISOString(), threads: [{ id: threadId, bindingState: 'attached', panes: [{ terminalId: 'term_fixture' }] }], projects: [], layouts: [], availableTabs: [] } as unknown as Projection;
+  const manager = new BrowserTerminalManager(() => true, () => {}); manager.start();
+  const [metadata, binary] = BrowserSocket.instances; metadata.open(); binary.open();
+  const terminal = { resize: vi.fn(), write: vi.fn() } as unknown as Terminal;
+  manager.mount({ machineId: 'fixture', threadId, terminalId: 'term_fixture', terminal, mode: 'control', cols: 80, rows: 24, onState: vi.fn() });
+  expect(binary.sent).toEqual([]);
+  metadata.onmessage!({ data: JSON.stringify({ type: 'projection', projection }) });
+  expect(JSON.parse(binary.sent.at(-1)!).mode).toBe('control');
+  manager.stop();
+});
+
 it('opens only two app sockets and ACKs binary output only after xterm finishes it', () => {
   const { manager, binary, writes, open, pane } = setup();
   expect(BrowserSocket.instances).toHaveLength(2);

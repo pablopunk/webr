@@ -6,7 +6,7 @@ import { retryDelay } from '../shared/retry';
 import { count, gauge, perfNow, time } from './perf';
 import { uuid } from '../lib/uuid';
 
-type VisiblePane = { machineId: string; threadId?: string; tabId?: string; terminalId: string; terminal: Terminal; mode: 'observe' | 'control'; generation: number; sequence: FrameSequence; renderer?: TerminalRenderer; writable: boolean; accepted: boolean; baseline: boolean; pending: number; resizing: boolean; awaitingFresh: boolean; reason?: string; cols: number; rows: number; onState: (message: string, writable: boolean) => void; attempts: number };
+type VisiblePane = { machineId: string; threadId?: string; tabId?: string; terminalId: string; terminal: Terminal; mode: 'observe' | 'control'; generation: number; sequence: FrameSequence; renderer?: TerminalRenderer; writable: boolean; accepted: boolean; baseline: boolean; pending: number; resizing: boolean; awaitingFresh: boolean; pendingControl: boolean; reason?: string; cols: number; rows: number; onState: (message: string, writable: boolean) => void; attempts: number };
 export const conflictMessage = 'Another controller owns this terminal.';
 export class BrowserTerminalManager {
   private metadata?: WebSocket;
@@ -29,9 +29,9 @@ export class BrowserTerminalManager {
   constructor(private install: (projection: Projection) => boolean | void, private onConnection: (connected: boolean) => void) {}
   start() { this.stopped = false; this.connect(); }
   stop() { this.stopped = true; clearTimeout(this.reconnect); this.disconnect(); }
-  mount(pane: Omit<VisiblePane, 'generation' | 'sequence' | 'writable' | 'attempts' | 'accepted' | 'baseline' | 'pending' | 'resizing' | 'awaitingFresh'>) {
+  mount(pane: Omit<VisiblePane, 'generation' | 'sequence' | 'writable' | 'attempts' | 'accepted' | 'baseline' | 'pending' | 'resizing' | 'awaitingFresh' | 'pendingControl'>) {
     const id = this.nextId++;
-    this.panes.set(id, { ...pane, generation: 1, sequence: new FrameSequence(), writable: false, accepted: false, baseline: false, pending: 0, resizing: false, awaitingFresh: false, attempts: 0 });
+    this.panes.set(id, { ...pane, generation: 1, sequence: new FrameSequence(), writable: false, accepted: false, baseline: false, pending: 0, resizing: false, awaitingFresh: false, pendingControl: false, attempts: 0 });
     this.open(id);
     return {
       close: () => { const current = this.panes.get(id); if (current) { this.send({ type: 'release', streamId: id, generation: current.generation }); current.renderer?.close(); } this.panes.delete(id); },
@@ -85,7 +85,7 @@ export class BrowserTerminalManager {
     this.projectionGenerations.set(projection.machineId, projection.generation);
   }
   private reopenObserver(id: number, pane: VisiblePane) {
-    pane.awaitingFresh = false; pane.reason = undefined; pane.mode = 'observe'; pane.writable = false; pane.accepted = false; pane.baseline = false; pane.resizing = false;
+    pane.awaitingFresh = false; pane.pendingControl = false; pane.reason = undefined; pane.mode = 'observe'; pane.writable = false; pane.accepted = false; pane.baseline = false; pane.resizing = false;
     this.send({ type: 'release', streamId: id, generation: pane.generation }); ++pane.generation; pane.sequence = new FrameSequence(); this.open(id);
   }
   private receiveProjection(projection: Projection) {
@@ -95,14 +95,15 @@ export class BrowserTerminalManager {
     for (const [id, pane] of this.panes) {
       if (pane.machineId !== projection.machineId) continue;
       if (!fresh) {
-        pane.awaitingFresh = true; pane.writable = false; pane.accepted = false; pane.baseline = false; pane.resizing = false; pane.mode = 'observe'; pane.renderer?.close(); pane.onState('Disconnected; input is disabled.', false);
+        pane.awaitingFresh = true; pane.pendingControl = false; pane.writable = false; pane.accepted = false; pane.baseline = false; pane.resizing = false; pane.mode = 'observe'; pane.renderer?.close(); pane.onState('Disconnected; input is disabled.', false);
         continue;
       }
       if (!this.projectionContains(pane, projection)) {
         this.send({ type: 'release', streamId: id, generation: pane.generation });
-        pane.awaitingFresh = true; pane.writable = false; pane.accepted = false; pane.baseline = false; pane.resizing = false; pane.mode = 'observe'; pane.renderer?.close(); pane.reason = 'Terminal binding is no longer available.'; pane.onState(pane.reason, false);
+        pane.awaitingFresh = true; pane.pendingControl = false; pane.writable = false; pane.accepted = false; pane.baseline = false; pane.resizing = false; pane.mode = 'observe'; pane.renderer?.close(); pane.reason = 'Terminal binding is no longer available.'; pane.onState(pane.reason, false);
         continue;
       }
+      if (pane.pendingControl) { pane.pendingControl = false; this.open(id); continue; }
       if (pane.awaitingFresh) this.reopenObserver(id, pane);
     }
   }
@@ -114,6 +115,13 @@ export class BrowserTerminalManager {
   private open(id: number, takeover = false) {
     const pane = this.panes.get(id);
     if (!pane) return;
+    if (pane.mode === 'control' && !this.canAct(pane)) {
+      pane.pendingControl = true;
+      pane.writable = false;
+      pane.onState('Waiting for fresh terminal binding.', false);
+      return;
+    }
+    pane.pendingControl = false;
     pane.writable = false;
     pane.accepted = false; pane.baseline = false; pane.pending = 0; pane.resizing = false;
     pane.renderer?.close();
@@ -186,7 +194,7 @@ export class BrowserTerminalManager {
     this.metadata?.close(); this.binary?.close(); this.metadata = undefined; this.binary = undefined;
     for (const machineId of this.projections.keys()) this.projectionFresh.set(machineId, false);
     this.onConnection(false);
-    for (const pane of this.panes.values()) { this.projectionFresh.set(pane.machineId, false); pane.renderer?.close(); pane.writable = false; pane.accepted = false; pane.baseline = false; pane.resizing = false; pane.awaitingFresh = false; pane.mode = 'observe'; pane.onState('Disconnected; input was not saved.', false); }
+    for (const pane of this.panes.values()) { this.projectionFresh.set(pane.machineId, false); pane.renderer?.close(); pane.writable = false; pane.accepted = false; pane.baseline = false; pane.resizing = false; pane.awaitingFresh = false; pane.pendingControl = false; pane.mode = 'observe'; pane.onState('Disconnected; input was not saved.', false); }
     clearTimeout(this.reconnect);
     if (!this.stopped) this.reconnect = setTimeout(() => this.connect(), retryDelay(this.failures++));
   }

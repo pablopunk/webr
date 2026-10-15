@@ -8,7 +8,6 @@ import { z } from 'zod';
 import type { RuntimeManager } from './runtime/manager';
 import { launchInput, opaqueId } from '../shared/runtime';
 import { registerWebsockets } from './websockets';
-import { createWorkspace } from './runtime/workspace';
 import { loadHerdrKeymap } from './herdr-keys';
 import { perfLog, perfLogEnabled } from './perf-log';
 import { Auth, type AuthOptions } from './auth/auth';
@@ -114,10 +113,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
   app.post('/api/workspaces', async (request, reply) => {
     const input = z.object({ machineId: opaqueId, path: z.string().regex(/^(\/|~\/)/).max(1000).refine((path) => !/[\x00-\x1f]/.test(path)), label: z.string().trim().min(1).max(80) }).strict().parse(request.body);
     const key = z.uuid().parse(request.headers['idempotency-key']);
-    const supervisor = manager.supervisors.get(input.machineId);
-    if (!supervisor?.connected) return reply.code(409).send({ error: 'machine_disconnected' });
-    const result = await createWorkspace(manager.database, supervisor.target, key, input.path, input.label);
-    supervisor.invalidate();
+    const result = await manager.createWorkspace(input.machineId, key, input.path, input.label);
     return reply.code(201).send(result);
   });
   app.post('/api/terminals', async (request, reply) => {

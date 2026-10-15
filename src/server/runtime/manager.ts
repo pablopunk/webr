@@ -13,7 +13,7 @@ import type { Machine } from '../../lib/machines';
 import { LaunchJournal, type LaunchTargetIdentity } from './launch';
 import { isListedThread } from '../../lib/launch';
 import { isSameOrSiblingWorktree, sameSession } from './recovery';
-import { createWorkspace, type CreatedWorkspace } from './workspace';
+import { createWorkspace as createWorkspaceInHerdr, type CreatedWorkspace } from './workspace';
 
 const CATALOG_TTL_MS = 5 * 60_000;
 const MODELS_PENDING_TTL_MS = 500;
@@ -34,6 +34,7 @@ export class RuntimeManager extends EventEmitter {
   readonly supervisors = new Map<string, TargetSupervisor>();
   readonly journal: LaunchJournal;
   private projections = new Map<string, Projection>();
+  private projectedSnapshotRevisions = new Map<string, number>();
   private catalogs = new Map<string, { expires: number; value: Promise<Machine> }>();
   private configVersions = new Map<string, number>();
   private pendingTerminalTabs = new Map<string, Map<string, PendingTerminalTab>>();
@@ -121,8 +122,8 @@ export class RuntimeManager extends EventEmitter {
     const projection = this.projections.get(target.id);
     return this.supervisors.get(target.id) === supervisor && supervisor.target === target && supervisor.generation === generation
       && target.fingerprint === fingerprint && target.session === session && target.configVersion === configVersion
-      && supervisor.connected && !!supervisor.freshAt && projection?.connected === true && !!projection.freshAt
-      && projection.generation === generation && projection.machine?.session === session && projection.machine?.configVersion === configVersion;
+      && supervisor.connected && !!supervisor.freshAt && this.projectedSnapshotRevisions.get(target.id) === supervisor.revision
+      && projection?.connected === true && !!projection.freshAt && projection.generation === generation && projection.machine?.session === session && projection.machine?.configVersion === configVersion;
   }
   private requireCurrentProjection(identity: RuntimeTargetIdentity) {
     if (!this.hasCurrentProjection(identity)) throw new Error('machine_disconnected');
@@ -150,14 +151,36 @@ export class RuntimeManager extends EventEmitter {
     if (!tab) throw new Error('binding_invalid');
     return identity.target;
   }
+  async createWorkspace(machineId: string, key: string, path: string, label: string): Promise<CreatedWorkspace> {
+    return this.withTargetMutation(machineId, async () => {
+      const supervisor = this.supervisors.get(machineId);
+      if (!supervisor?.connected) throw new Error('machine_disconnected');
+      const identity = this.targetIdentity(supervisor);
+      this.requireCurrentProjection(identity);
+      if (!identity.target.writable) throw new Error('workspace_creation_unavailable');
+      await supervisor.readFresh();
+      this.requireCurrentProjection(identity);
+      const created = await createWorkspaceInHerdr(this.database, identity.target, key, path, label);
+      this.requireCurrentProjection(identity);
+      supervisor.invalidate();
+      return created;
+    });
+  }
   async createTerminal(machineId: string, path: string, key: string): Promise<CreatedWorkspace> {
-    const supervisor = this.supervisors.get(machineId);
-    if (!supervisor?.connected) throw new Error('machine_disconnected');
-    if (!supervisor.target.writable) throw new Error('workspace_creation_unavailable');
-    const created = await createWorkspace(this.database, supervisor.target, key, path, 'Terminal');
-    this.registerPendingTerminal(supervisor, created);
-    supervisor.invalidate();
-    return created;
+    return this.withTargetMutation(machineId, async () => {
+      const supervisor = this.supervisors.get(machineId);
+      if (!supervisor?.connected) throw new Error('machine_disconnected');
+      const identity = this.targetIdentity(supervisor);
+      this.requireCurrentProjection(identity);
+      if (!identity.target.writable) throw new Error('workspace_creation_unavailable');
+      await supervisor.readFresh();
+      this.requireCurrentProjection(identity);
+      const created = await createWorkspaceInHerdr(this.database, identity.target, key, path, 'Terminal');
+      this.requireCurrentProjection(identity);
+      this.registerPendingTerminal(supervisor, created);
+      supervisor.invalidate();
+      return created;
+    });
   }
   private registerPendingTerminal(supervisor: TargetSupervisor, created: CreatedWorkspace) {
     let machineTabs = this.pendingTerminalTabs.get(supervisor.target.id);
@@ -222,30 +245,43 @@ export class RuntimeManager extends EventEmitter {
     return entries.filter((entry) => !entry.is_bare && !entry.is_prunable && !(entry.open_workspace_id && shown.has(entry.open_workspace_id))).map((entry) => ({ path: entry.path, branch: entry.branch ?? null, label: entry.label }));
   }
   async openWorktree(machineId: string, projectId: string, path: string) {
-    const supervisor = this.worktreeSupervisor(machineId);
-    if (!(await this.worktrees(machineId, projectId)).some((worktree) => worktree.path === path)) throw new Error('unknown_worktree');
-    await supervisor.target.openWorktree!(projectId, path);
-    const snapshot = await supervisor.readFresh(); this.publish(supervisor);
-    const workspace = snapshot.workspaces.find((workspace) => workspace.worktree?.checkout_path === path);
-    const tab = snapshot.tabs.find((tab) => tab.workspace_id === workspace?.workspace_id);
-    const thread = this.projections.get(machineId)?.threads.find((thread) => thread.tabId === tab?.tab_id && thread.bindingState === 'attached');
-    if (!thread) throw new Error('worktree_not_opened');
-    if (thread.archivedAt) this.archive(machineId, thread.id, false);
-    return { id: thread.id };
+    return this.withTargetMutation(machineId, async () => {
+      const supervisor = this.worktreeSupervisor(machineId);
+      const identity = this.targetIdentity(supervisor);
+      this.requireCurrentProjection(identity);
+      if (!(await this.worktrees(machineId, projectId)).some((worktree) => worktree.path === path)) throw new Error('unknown_worktree');
+      this.requireCurrentProjection(identity);
+      await identity.target.openWorktree!(projectId, path);
+      const snapshot = await supervisor.readFresh();
+      const projection = this.requireCurrentProjection(identity);
+      const workspace = snapshot.workspaces.find((workspace) => workspace.worktree?.checkout_path === path);
+      const tab = snapshot.tabs.find((tab) => tab.workspace_id === workspace?.workspace_id);
+      const thread = projection.threads.find((thread) => thread.tabId === tab?.tab_id && thread.bindingState === 'attached');
+      if (!thread) throw new Error('worktree_not_opened');
+      if (thread.archivedAt) this.archive(machineId, thread.id, false);
+      return { id: thread.id };
+    });
   }
   async focusPane(machineId: string, threadId: string, paneId: string) {
-    const supervisor = this.supervisors.get(machineId);
-    const thread = this.projections.get(machineId)?.threads.find((thread) => thread.id === threadId);
-    if (!supervisor || !supervisor.connected) throw new Error('invalid_focus');
-    if (!supervisor.target.writable) throw new Error('read_only');
-    if (!thread?.panes.some((pane) => pane.id === paneId) || !supervisor.target.focusPane) throw new Error('invalid_focus');
-    await supervisor.target.focusPane(paneId);
-    const acked = this.clearDoneBadge(machineId, threadId);
-    // Do not publish here: supervisor.snapshot is stale (pre-focus, still
-    // done) and a synchronous publish would re-latch the badge we just
-    // cleared. Invalidate instead so the next refresh reads post-focus state.
-    supervisor.invalidate();
-    return { focused: true, acked };
+    return this.withTargetMutation(machineId, async () => {
+      const supervisor = this.supervisors.get(machineId);
+      if (!supervisor || !supervisor.connected) throw new Error('invalid_focus');
+      const identity = this.targetIdentity(supervisor);
+      this.requireCurrentProjection(identity);
+      if (!identity.target.writable) throw new Error('read_only');
+      const thread = this.projections.get(machineId)?.threads.find((thread) => thread.id === threadId);
+      if (!thread?.panes.some((pane) => pane.id === paneId) || !identity.target.focusPane) throw new Error('invalid_focus');
+      await supervisor.readFresh();
+      const latest = this.requireCurrentProjection(identity).threads.find((item) => item.id === threadId);
+      if (!latest || !this.matchesTargetIdentity(latest, identity) || latest.bindingState !== 'attached' || latest.tabId !== thread.tabId || !latest.panes.some((pane) => pane.id === paneId)) throw new Error('invalid_focus');
+      await identity.target.focusPane(paneId);
+      const acked = this.clearDoneBadge(machineId, threadId);
+      // Do not publish here: supervisor.snapshot is stale (pre-focus, still
+      // done) and a synchronous publish would re-latch the badge we just
+      // cleared. Invalidate instead so the next refresh reads post-focus state.
+      supervisor.invalidate();
+      return { focused: true, acked };
+    });
   }
   clearDoneBadge(machineId: string, threadId: string) {
     const supervisor = this.supervisors.get(machineId);
@@ -350,9 +386,9 @@ export class RuntimeManager extends EventEmitter {
           this.finishTitleSync(job, 'unknown');
           continue;
         }
-        const attempt = Promise.resolve().then(async () => {
+        const attempt = this.withTargetMutation(job.machineId, async () => {
           const current = this.projections.get(job.machineId)?.threads.find((item) => item.id === job.threadId);
-          if (!this.hasCurrentProjection(identity) || !current || current.bindingState !== 'attached' || !this.matchesTargetIdentity(current, identity)) throw new Error('binding_invalid');
+          if (!this.hasCurrentProjection(identity) || !current || current.bindingState !== 'attached' || !this.matchesTargetIdentity(current, identity) || current.tabId !== job.tabId || !!current.ownsWorktree !== job.renameWorkspace) throw new Error('binding_invalid');
           await identity.target.renameTab!(job.tabId, job.title, job.renameWorkspace);
           await supervisor.readFresh();
           this.requireCurrentProjection(identity);
@@ -593,10 +629,27 @@ export class RuntimeManager extends EventEmitter {
 
   private publishAll() { for (const supervisor of this.supervisors.values()) { this.publish(supervisor); supervisor.invalidate(); } }
   private publish(supervisor: TargetSupervisor) {
+    const machineId = supervisor.target.id;
+    this.projectedSnapshotRevisions.delete(machineId);
     try {
       this.buildProjection(supervisor);
+      this.projectedSnapshotRevisions.set(machineId, supervisor.revision);
     } catch (error) {
-      console.error(`projection for ${supervisor.target.id} skipped:`, error instanceof Error ? error.message : error);
+      console.error(`projection for ${machineId} skipped:`, error instanceof Error ? error.message : error);
+      const previous = this.projections.get(machineId);
+      if (previous) {
+        const stale: Projection = {
+          ...previous,
+          revision: previous.revision + 1,
+          freshAt: null,
+          connected: false,
+          error: 'projection_failed',
+          ...(previous.machine ? { machine: { ...previous.machine, connected: false, error: 'projection_failed' } } : {}),
+          threads: previous.threads.map((thread) => ({ ...thread, prompt: '', status: 'unknown' as const })),
+        };
+        this.projections.set(machineId, stale);
+        this.emit('projection', stale);
+      }
     }
   }
   private buildProjection(supervisor: TargetSupervisor) {

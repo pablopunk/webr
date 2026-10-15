@@ -5,6 +5,7 @@ import { RuntimeManager } from '../src/server/runtime/manager';
 import { reconcile } from '../src/server/runtime/reconcile';
 import { createRuntimeStore } from '../src/client/store';
 import { FakeTarget } from './fixtures/target';
+import type { NativeSnapshot } from '../src/server/protocol/native';
 import type { Projection } from '../src/shared/runtime';
 
 const cleanup: (() => void | Promise<void>)[] = [];
@@ -122,6 +123,21 @@ it('detaches a missing resource only after a fresh machine snapshot confirms abs
   expect(manager.database.threadRows(target.id)).toEqual([]);
 });
 
+it('fails closed when the newest native snapshot cannot be projected', async () => {
+  const target = new FakeTarget(); const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().projections[0]?.connected).toBe(true);
+  const thread = manager.bootstrap().threads[0]; const terminalId = thread.panes[0].terminalId;
+  const supervisor = manager.supervisors.get(target.id)!; const revision = supervisor.revision;
+  target.readHook = async () => ({ ...structuredClone(target.state), workspaces: null } as unknown as NativeSnapshot);
+  target.event!();
+  await expect.poll(() => supervisor.revision).toBeGreaterThan(revision);
+  expect(supervisor.connected).toBe(true);
+  expect(manager.bootstrap().projections[0]).toMatchObject({ connected: false, freshAt: null, error: 'projection_failed' });
+  expect(() => manager.binding(target.id, thread.id, terminalId!)).toThrow('machine_disconnected');
+  target.readHook = undefined; target.event!();
+  await expect.poll(() => { try { manager.binding(target.id, thread.id, terminalId!); return true; } catch { return false; } }).toBe(true);
+});
+
 it('does not delete stale detached metadata or clean tabs after machine loss', async () => {
   const target = new FakeTarget(); const db = database(); const manager = new RuntimeManager(db, [target]); cleanup.push(() => manager.close()); manager.start();
   await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
@@ -227,6 +243,23 @@ it('serializes pane splits against terminal-pane close', async () => {
   await expect(closing).resolves.toEqual({ closed: true, busy: false });
   expect(target.effects.slice(-2)).toEqual(['split:right', `close:${paneId}`]);
 });
+it('serializes pane focus against terminal-pane close', async () => {
+  const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0]; const { paneId } = await manager.openTerminal(target.id, thread.id, 'w1:p1');
+  let finishFocus!: () => void; let started!: () => void; const order: string[] = [];
+  const focusStarted = new Promise<void>((resolve) => { started = resolve; });
+  target.focusPane = async (id) => { order.push(`focus:${id}`); started(); await new Promise<void>((resolve) => { finishFocus = resolve; }); target.focused.push(id); };
+  const close = target.closePane.bind(target);
+  target.closePane = async (id) => { order.push(`close:${id}`); await close(id); };
+  const focusing = manager.focusPane(target.id, thread.id, paneId); await focusStarted;
+  const closing = manager.closePane(target.id, thread.id, paneId, true);
+  await Promise.resolve(); expect(order).toEqual([`focus:${paneId}`]);
+  finishFocus();
+  await expect(focusing).resolves.toMatchObject({ focused: true });
+  await expect(closing).resolves.toEqual({ closed: true, busy: false });
+  expect(order).toEqual([`focus:${paneId}`, `close:${paneId}`]);
+});
 it('closes only terminal panes and asks the client to confirm while a process runs', async () => {
   const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
   await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
@@ -317,6 +350,50 @@ it('serializes adoption behind destructive tab close and rejects the closed snap
   await expect(closing).resolves.toEqual({ closed: true, busy: false });
   await expect(adoption).rejects.toThrow('invalid_adoption');
   expect(target.effects).toContain('discard:w1:t2');
+});
+it('serializes worktree reopening against archived deletion', async () => {
+  const target = new FakeTarget();
+  let finishOpen!: () => void; let started!: () => void;
+  const openStarted = new Promise<void>((resolve) => { started = resolve; });
+  Object.assign(target, {
+    worktrees: async () => [{ path: '/fixture', branch: 'main', label: 'Fixture', is_bare: false, is_prunable: false }],
+    openWorktree: async () => { started(); await new Promise<void>((resolve) => { finishOpen = resolve; }); },
+  });
+  const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0]; manager.archive(target.id, thread.id, true);
+  const opening = manager.openWorktree(target.id, thread.projectId, '/fixture');
+  await openStarted;
+  const deleting = manager.deleteArchived();
+  await Promise.resolve(); expect(target.effects).not.toContain(`discard:${thread.tabId}`);
+  finishOpen();
+  await expect(opening).resolves.toEqual({ id: thread.id });
+  await expect(deleting).resolves.toEqual({ deleted: 0, orphanTabsDeleted: 0, failed: [thread.id], skippedMachines: [] });
+  expect(target.effects).not.toContain(`discard:${thread.tabId}`);
+});
+it('serializes workspace creation behind destructive tab close', async () => {
+  const target = new FakeTarget(); target.state.tabs.push({ tab_id: 'w1:t2', workspace_id: 'w1', label: 'Shell' });
+  target.state.panes.push({ ...target.state.panes[0], pane_id: 'w1:p2', terminal_id: 'term_shell', tab_id: 'w1:t2', agent: null, focused: false });
+  target.state.layouts.push({ workspace_id: 'w1', tab_id: 'w1:t2', area: { x: 0, y: 0, width: 80, height: 24 }, panes: [{ pane_id: 'w1:p2', rect: { x: 0, y: 0, width: 80, height: 24 } }] });
+  let finishDiscard!: () => void; let started!: () => void;
+  const discardStarted = new Promise<void>((resolve) => { started = resolve; });
+  const discard = target.discardTab.bind(target);
+  target.discardTab = async (snapshot, tabId, removeWorktree) => { started(); await new Promise<void>((resolve) => { finishDiscard = resolve; }); await discard(snapshot, tabId, removeWorktree); };
+  const terminalResult = { workspaceId: 'w2', tabId: 'w2:t1', paneId: 'w2:p1', terminalId: 'term_terminal' };
+  const workspaceResult = { workspaceId: 'w3', tabId: 'w3:t1', paneId: 'w3:p1', terminalId: 'term_project' };
+  const create = vi.fn().mockResolvedValueOnce(terminalResult).mockResolvedValueOnce(workspaceResult);
+  Object.assign(target, { createWorkspace: create });
+  const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().projections[0]?.availableTabs?.some((tab) => tab.tabId === 'w1:t2')).toBe(true);
+  const closing = manager.closeTab(target.id, 'w1:t2', true); await discardStarted;
+  const terminal = manager.createTerminal(target.id, '/terminal', '00000000-0000-4000-8000-000000000001');
+  const workspace = manager.createWorkspace(target.id, '00000000-0000-4000-8000-000000000002', '/project', 'Project');
+  await Promise.resolve(); expect(create).not.toHaveBeenCalled();
+  finishDiscard();
+  await expect(closing).resolves.toEqual({ closed: true, busy: false });
+  await expect(terminal).resolves.toEqual(terminalResult);
+  await expect(workspace).resolves.toEqual(workspaceResult);
+  expect(create).toHaveBeenCalledTimes(2);
 });
 it('prevents unarchiving a thread while its archived-tab deletion is in flight', async () => {
   const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
@@ -422,4 +499,69 @@ it('acknowledges native rename failure, timeout, and interrupted restart state',
   await expect.poll(() => restarted.bootstrap().threads.length).toBe(1);
   expect(db.threadRows(hanging.id)[0].metadata.titleSync).toEqual({ version: 2, state: 'unknown' });
   expect(attempts).toBe(1);
+});
+it('serializes native title sync against destructive thread deletion', async () => {
+  const target = new FakeTarget(); target.state.panes[0].agent = 'claude';
+  let finishRename!: () => void; let started!: () => void; const order: string[] = [];
+  const renameStarted = new Promise<void>((resolve) => { started = resolve; });
+  Object.assign(target, { renameTab: async (_tabId: string, title: string) => { order.push('rename-start'); started(); await new Promise<void>((resolve) => { finishRename = resolve; }); target.state.tabs[0].label = title; order.push('rename-finish'); } });
+  const discard = target.discardTab.bind(target);
+  target.discardTab = async (snapshot, tabId, removeWorktree) => { order.push('discard'); await discard(snapshot, tabId, removeWorktree); };
+  const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0]; manager.renameThread(target.id, thread.id, 'New title');
+  await renameStarted;
+  const deleting = manager.deleteThread(target.id, thread.id);
+  await Promise.resolve(); expect(order).toEqual(['rename-start']);
+  finishRename();
+  await expect(deleting).resolves.toBeUndefined();
+  expect(order).toEqual(['rename-start', 'rename-finish', 'discard']);
+});
+it('revalidates the tab identity before a queued title sync', async () => {
+  const target = new FakeTarget();
+  target.state.tabs.push({ tab_id: 'w1:t2', workspace_id: 'w1', label: 'Shell' });
+  target.state.panes.push({ ...target.state.panes[0], pane_id: 'w1:p2', terminal_id: 'term_shell', tab_id: 'w1:t2', agent: null, focused: false });
+  target.state.layouts.push({ workspace_id: 'w1', tab_id: 'w1:t2', area: { x: 0, y: 0, width: 80, height: 24 }, panes: [{ pane_id: 'w1:p2', rect: { x: 0, y: 0, width: 80, height: 24 } }] });
+  let finishCreate!: () => void; let started!: () => void;
+  const createStarted = new Promise<void>((resolve) => { started = resolve; });
+  const workspace = { workspaceId: 'w2', tabId: 'w2:t1', paneId: 'w2:p1', terminalId: 'term_workspace' };
+  const renamed: string[] = [];
+  Object.assign(target, {
+    createWorkspace: async () => { started(); await new Promise<void>((resolve) => { finishCreate = resolve; }); return workspace; },
+    renameTab: async (tabId: string) => { renamed.push(tabId); },
+  });
+  const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0];
+  const creating = manager.createWorkspace(target.id, '00000000-0000-4000-8000-000000000003', '/workspace', 'Workspace');
+  await createStarted;
+  manager.renameThread(target.id, thread.id, 'New title');
+  const adoption = manager.adopt(target.id, thread.id, ['term_shell']);
+  finishCreate();
+  await expect(creating).resolves.toEqual(workspace);
+  await expect(adoption).resolves.toBeUndefined();
+  await expect.poll(() => manager.database.threadRows(target.id)[0]?.metadata.titleSync?.state).toBe('failed');
+  expect(manager.bootstrap().threads.find((item) => item.id === thread.id)?.tabId).toBe('w1:t2');
+  expect(renamed).toEqual([]);
+});
+it('revalidates worktree ownership before a queued title sync', async () => {
+  const target = new FakeTarget(); let finishCreate!: () => void; let started!: () => void;
+  const createStarted = new Promise<void>((resolve) => { started = resolve; });
+  const workspace = { workspaceId: 'w2', tabId: 'w2:t1', paneId: 'w2:p1', terminalId: 'term_workspace' };
+  const renameTab = vi.fn(async () => {});
+  Object.assign(target, { createWorkspace: async () => { started(); await new Promise<void>((resolve) => { finishCreate = resolve; }); return workspace; }, renameTab });
+  const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0];
+  const creating = manager.createWorkspace(target.id, '00000000-0000-4000-8000-000000000004', '/workspace', 'Workspace');
+  await createStarted;
+  manager.renameThread(target.id, thread.id, 'New title');
+  const row = manager.database.threadRows(target.id).find((item) => item.id === thread.id)!;
+  manager.database.saveThread({ ...row.metadata, ownsWorktree: true }, row.anchors, row.alias);
+  target.event!();
+  await expect.poll(() => manager.bootstrap().threads.find((item) => item.id === thread.id)?.ownsWorktree).toBe(true);
+  finishCreate();
+  await expect(creating).resolves.toEqual(workspace);
+  await expect.poll(() => manager.database.threadRows(target.id)[0]?.metadata.titleSync?.state).toBe('failed');
+  expect(renameTab).not.toHaveBeenCalled();
 });
