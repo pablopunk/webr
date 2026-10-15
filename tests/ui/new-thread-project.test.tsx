@@ -6,8 +6,8 @@ vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
 vi.mock('../../src/client/catalog', () => ({ useMachineCatalog: () => ({ data: { harnesses: [{ id: 'claude', name: 'Claude Code', models: ['Default'], launchEnabled: true }] }, isError: false }) }));
 
 const projects = [
-  { id: 'local:first', name: 'First', path: '/first', color: '#555', initial: 'F' },
-  { id: 'local:second', name: 'Second', path: '/second', color: '#555', initial: 'S' },
+  { id: 'local:first', name: 'First', path: '/first', color: '#555', initial: 'F', metadataVersion: 0 },
+  { id: 'local:second', name: 'Second', path: '/second', color: '#555', initial: 'S', metadataVersion: 0 },
 ];
 const machines = [{ id: 'local', name: 'Local', connected: true, session: 'default', projectPaths: { 'local:first': '/first', 'local:second': '/second' }, harnesses: [] }];
 const view = (selectedProjectId?: string) => <NewThreadView projects={projects} machines={machines} selectedProjectId={selectedProjectId} onOpenSidebar={() => {}} />;
