@@ -3,6 +3,7 @@ import type { TargetProfile } from './registry';
 import { localSocket } from './registry';
 import { SocketApi } from '../protocol/socket';
 import { nativeSnapshot, nativeWorkspace, nativeTab, nativePane } from '../protocol/native';
+import type { NativeSnapshot } from '../protocol/native';
 import { openCliStream } from '../terminal/cli';
 import { boundedProcess } from './process';
 import { uploadOverSsh } from './remote-upload';

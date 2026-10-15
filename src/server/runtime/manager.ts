@@ -442,7 +442,8 @@ export class RuntimeManager extends EventEmitter {
     const identity = this.targetIdentity(supervisor);
     this.requireCurrentProjection(identity);
     const target = identity.target;
-    if (!target.writable || !target.discardTab) throw new Error('read_only');
+    const discardTab = target.discardTab?.bind(target);
+    if (!target.writable || !discardTab) throw new Error('read_only');
     if (this.launchInProgress(machineId)) throw new Error('launch_in_progress');
     const initial = await supervisor.readFresh();
     this.requireCurrentProjection(identity);
@@ -471,7 +472,7 @@ export class RuntimeManager extends EventEmitter {
       const latestPanes = freshSnapshot.panes.filter((pane) => pane.tab_id === tabId);
       if (!force && (latestPanes.length !== currentPanes.length || latestPanes.some((pane) => !currentPanes.some((current) => current.pane_id === pane.pane_id && current.terminal_id === pane.terminal_id)))) return { closed: false, busy: true };
       const pending = this.pendingTerminalTabs.get(machineId)?.get(tabId);
-      try { await target.discardTab(freshSnapshot, tabId, false); }
+      try { await discardTab(freshSnapshot, tabId, false); }
       catch { /* A failed Herdr reply can still mean the tab closed; verify its snapshot below. */ }
       const fresh = await supervisor.readFresh();
       this.requireCurrentProjection(identity);
@@ -577,10 +578,6 @@ export class RuntimeManager extends EventEmitter {
       }
     }
     return { deleted, orphanTabsDeleted, failed, skippedMachines: [...new Set(skippedMachines)] };
-  }
-  private listedThreadOwnsTab(machineId: string, tabId: string) {
-    return this.database.threadRows(machineId).some((row) => row.alias === tabId && isListedThread(row.metadata))
-      || this.projections.get(machineId)?.threads.some((thread) => thread.tabId === tabId && isListedThread(thread)) === true;
   }
   private threadOwnsTab(machineId: string, tabId: string) {
     return this.database.threadRows(machineId).some((row) => row.alias === tabId)
