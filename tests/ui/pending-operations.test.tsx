@@ -383,6 +383,7 @@ it('recovers a persisted worktree ticket through status-only polling and opens i
   vi.stubGlobal('fetch', fetcher);
   renderRoute(`/new?resourcePending=${key}`);
   const queryKey = ['worktrees', 'pending-ui-scope', 'local', 'local:first'] as const;
+  currentQueryClient!.setQueryDefaults(queryKey, { gcTime: Infinity });
   currentQueryClient!.setQueryData(queryKey, [{ path: '/first/worktrees/feature' }]);
 
   await act(async () => { await vi.runAllTimersAsync(); });
@@ -408,6 +409,7 @@ it.each([
   vi.stubGlobal('fetch', fetcher);
   renderRoute('/new');
   const queryKey = ['worktrees', 'pending-ui-scope', 'local', 'local:first'] as const;
+  currentQueryClient!.setQueryDefaults(queryKey, { gcTime: Infinity });
   currentQueryClient!.setQueryData(queryKey, [{ path: '/first/worktrees/feature' }]);
   act(() => fireEvent.click(screen.getByRole('button', { name: 'Start worktree' })));
 

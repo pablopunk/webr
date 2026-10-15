@@ -62,8 +62,8 @@ it('navigates to resource-pending immediately and submits a durable worktree tic
   vi.stubGlobal('fetch', fetch);
   const navigate = vi.fn();
 
-  const user = await openWorktreeMenu(queryClient, navigate);
-  await user.click(await screen.findByRole('menuitem', { name: /feature/ }));
+  await openWorktreeMenu(queryClient, navigate);
+  fireEvent.click(await screen.findByRole('menuitem', { name: /feature/ }));
 
   expect(navigate).toHaveBeenCalledOnce();
   const destination = String(navigate.mock.calls[0]?.[0]);
