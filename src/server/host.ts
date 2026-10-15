@@ -7,7 +7,7 @@ import { distRoot } from './dist';
 import { z } from 'zod';
 import type { RuntimeManager } from './runtime/manager';
 import { createOperationEnvelope } from './runtime/workspace';
-import { launchInput, opaqueId, terminalCreateInput, workspaceCreateInput } from '../shared/runtime';
+import { launchInput, opaqueId, terminalCreateInput, worktreeOpenInput, workspaceCreateInput } from '../shared/runtime';
 import { registerWebsockets } from './websockets';
 import { loadHerdrKeymap } from './herdr-keys';
 import { perfLog, perfLogEnabled } from './perf-log';
@@ -113,9 +113,13 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     const { machineId, projectId } = z.object({ machineId: opaqueId, projectId: opaqueId }).strict().parse(request.query);
     return manager.worktrees(machineId, projectId);
   });
-  app.post('/api/worktrees/open', async (request) => {
-    const input = z.object({ machineId: opaqueId, projectId: opaqueId, path: z.string().min(1).max(1000) }).strict().parse(request.body);
-    return manager.openWorktree(input.machineId, input.projectId, input.path);
+  app.post('/api/worktrees/open', async (request, reply) => {
+    const input = worktreeOpenInput.parse(request.body);
+    const key = z.uuid().parse(request.headers['idempotency-key']);
+    const owner = createOperationOwner(auth, request, manager.database);
+    const accepted = manager.acceptCreateOperation(owner, 'worktree', key, input);
+    if (accepted.envelope.state === 'pending') reply.raw.once('finish', () => manager.startCreateOperation(accepted.envelope.operationId));
+    return reply.code(202).send(accepted.envelope);
   });
   app.post('/api/workspaces', async (request, reply) => {
     const input = workspaceCreateInput.parse(request.body);

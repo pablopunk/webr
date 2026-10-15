@@ -7,6 +7,7 @@ import { directorySuggestionsQueryKey } from '../../src/client/directory-suggest
 import { CreateWorkspace } from '../../src/components/CreateWorkspace';
 import { LaunchSelectors } from '../../src/components/LaunchSelectors';
 import { OpenWorktree } from '../../src/components/OpenWorktree';
+import type { AppNavigate } from '../../src/client/app-navigation';
 import type { Machine } from '../../src/lib/machines';
 import type { Project } from '../../src/lib/models';
 
@@ -26,9 +27,9 @@ const tree = { path: '/project/worktrees/feature', branch: 'feature', label: 'Fe
 const worktreeKey = ['worktrees', '', machine.id, project.id] as const;
 const createQueryClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
-async function openWorktreeMenu(queryClient: QueryClient) {
+async function openWorktreeMenu(queryClient: QueryClient, onNavigate?: AppNavigate) {
   const user = userEvent.setup();
-  render(<QueryClientProvider client={queryClient}><OpenWorktree projects={[project]} /></QueryClientProvider>);
+  render(<QueryClientProvider client={queryClient}><OpenWorktree projects={[project]} onNavigate={onNavigate} /></QueryClientProvider>);
   await user.click(screen.getByRole('button', { name: 'Open existing worktree' }));
   await user.hover(await screen.findByRole('menuitem', { name: /Project One/ }));
   return user;
@@ -51,6 +52,30 @@ it('shows a cached worktree immediately while its stale query is still pending',
   await openWorktreeMenu(queryClient);
   expect(await screen.findByRole('menuitem', { name: /feature/ })).toBeTruthy();
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it('navigates to resource-pending immediately and submits a durable worktree ticket', async () => {
+  const queryClient = createQueryClient();
+  const acceptance = deferred<Response>();
+  const fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input).startsWith('/api/worktrees?')
+    ? Promise.resolve(response([tree])) : String(input) === '/api/worktrees/open' ? acceptance.promise : Promise.resolve(response({}, 404)));
+  vi.stubGlobal('fetch', fetch);
+  const navigate = vi.fn();
+
+  const user = await openWorktreeMenu(queryClient, navigate);
+  await user.click(await screen.findByRole('menuitem', { name: /feature/ }));
+
+  expect(navigate).toHaveBeenCalledOnce();
+  const destination = String(navigate.mock.calls[0]?.[0]);
+  expect(destination).toContain('resourcePending=');
+  const key = new URL(destination, window.location.origin).searchParams.get('resourcePending');
+  expect(key).toMatch(/^[0-9a-f-]{36}$/);
+  await waitFor(() => expect(fetch.mock.calls.some(([url, init]) => String(url) === '/api/worktrees/open' && init?.method === 'POST')).toBe(true));
+  const post = fetch.mock.calls.find(([url, init]) => String(url) === '/api/worktrees/open' && init?.method === 'POST');
+  expect(JSON.parse(post?.[1]?.body as string)).toEqual({ machineId: machine.id, projectId: project.id, path: tree.path });
+  expect((post?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(key);
+
+  await act(async () => { acceptance.resolve(response({ error: 'test_failure' }, 409)); await acceptance.promise; });
 });
 
 it('retains cached worktrees and reports a subtle warning after refresh failure', async () => {

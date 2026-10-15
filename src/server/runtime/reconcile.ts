@@ -34,6 +34,11 @@ function projectIconUrl(database: MetadataDatabase, target: TargetAdapter, id: s
 }
 
 export function reconcile(database: MetadataDatabase, target: TargetAdapter, snapshot: NativeSnapshot): { threads: Thread[]; projects: Project[] } {
+  const tabIds = new Set<string>();
+  for (const tab of snapshot.tabs) {
+    if (tabIds.has(tab.tab_id)) throw new Error('ambiguous_tab_identity');
+    tabIds.add(tab.tab_id);
+  }
   const saved = database.threadRows(target.id);
   const projects: Project[] = [];
   const tabProjects = new Map<string, string>();

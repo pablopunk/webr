@@ -44,7 +44,7 @@ it('shares the 32 accepted-operation limit across thread and resource creates pe
     const base = reconcile(database, target, target.state).threads[0];
     const thread = { ...base, id: randomUUID(), ownerToken: randomUUID(), prompt: launch.prompt, machineId: target.id, session: target.session, bindingFingerprint: target.fingerprint, bindingConfigVersion: target.configVersion };
     database.beginLaunch('local', randomUUID(), launch, thread, identity);
-    expect(() => database.beginCreateOperation('local', 'terminal', randomUUID(), { machineId: target.id, path: '~/' }, identity)).toThrow('launch_capacity_exceeded');
+    expect(() => database.beginCreateOperation('local', 'worktree', randomUUID(), { machineId: target.id, projectId: 'fixture:project', path: '/fixture' }, identity)).toThrow('launch_capacity_exceeded');
     expect(database.beginCreateOperation('other-account', 'workspace', randomUUID(), input, identity).created).toBe(true);
   } finally { database.close(); }
 });

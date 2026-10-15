@@ -14,17 +14,33 @@ export type LaunchInput = z.infer<typeof launchInput>;
 const createPath = z.string().regex(/^(\/|~\/)/).max(1000).refine((path) => !/[\x00-\x1f]/.test(path));
 export const workspaceCreateInput = z.object({ machineId: opaqueId, path: createPath, label: z.string().trim().min(1).max(80) }).strict();
 export const terminalCreateInput = z.object({ machineId: opaqueId, path: createPath }).strict();
+export const worktreeOpenInput = z.object({ machineId: opaqueId, projectId: opaqueId, path: z.string().min(1).max(1000).refine((path) => !/[\x00-\x1f]/.test(path)) }).strict();
 export type WorkspaceCreateInput = z.infer<typeof workspaceCreateInput>;
 export type TerminalCreateInput = z.infer<typeof terminalCreateInput>;
-export type CreateOperationKind = 'workspace' | 'terminal';
-export type CreateOperationInput = WorkspaceCreateInput | TerminalCreateInput;
+export type WorktreeOpenInput = z.infer<typeof worktreeOpenInput>;
+export type CreateOperationKind = 'workspace' | 'terminal' | 'worktree';
+export type CreateOperationInput = WorkspaceCreateInput | TerminalCreateInput | WorktreeOpenInput;
+export function parseCreateOperationInput(kind: string, input: unknown): CreateOperationInput {
+  if (kind === 'workspace') return workspaceCreateInput.parse(input);
+  if (kind === 'terminal') return terminalCreateInput.parse(input);
+  if (kind === 'worktree') return worktreeOpenInput.parse(input);
+  throw new Error('invalid_create_operation_kind');
+}
 export const launchOperationState = z.enum(['pending', 'running', 'ready', 'failed', 'unknown']);
 export const createOperationResult = z.object({ workspaceId: z.string().min(1).max(160), tabId: z.string().min(1).max(160), paneId: z.string().min(1).max(160), terminalId: z.string().min(1).max(160) }).strict();
+export const worktreeOperationResult = z.object({ threadId: z.string().min(1).max(160) }).strict();
 export const createOperationEnvelope = z.object({
   operationId: z.uuid(), kind: z.enum(['workspace', 'terminal']), state: launchOperationState, step: z.string().min(1).max(64),
   result: createOperationResult.optional(), error: z.string().min(1).max(240).optional(), statusUrl: z.string().min(1).max(200),
 }).strict();
+export const worktreeOperationEnvelope = z.object({
+  operationId: z.uuid(), kind: z.literal('worktree'), state: launchOperationState, step: z.string().min(1).max(64),
+  result: worktreeOperationResult.optional(), error: z.string().min(1).max(240).optional(), statusUrl: z.string().min(1).max(200),
+}).strict().superRefine((envelope, context) => {
+  if (envelope.state === 'ready' && !envelope.result) context.addIssue({ code: 'custom', path: ['result'], message: 'ready worktree operation requires a thread identity' });
+});
 export type CreateOperationEnvelope = z.infer<typeof createOperationEnvelope>;
+export type WorktreeOperationEnvelope = z.infer<typeof worktreeOperationEnvelope>;
 export const launchOperationEnvelope = z.object({
   operationId: z.uuid(), kind: z.literal('thread'), state: launchOperationState, step: z.string().min(1).max(64),
   result: z.object({ threadId: z.string().min(1).max(160) }).strict().optional(), error: z.string().min(1).max(240).optional(),

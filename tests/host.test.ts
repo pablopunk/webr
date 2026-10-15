@@ -332,6 +332,36 @@ it('scopes accountless remote creates and recovery to the authenticated device s
   expect(pageResponse.json()).toEqual({ owner: 'local', resourceOwner: 'device:' + sessions[0], recoveryScope: localBootstrap.recoveryScope, resourceRecoveryScope: firstBootstrap.resourceRecoveryScope });
 });
 
+it('scopes accountless worktree operations and status to the authenticated device session', async () => {
+  const { app, headers, target, database, manager } = await setup();
+  cleanups.push(() => manager.close());
+  const now = Date.now();
+  const sessions = [randomUUID(), randomUUID()];
+  const tokens = ['worktree-device-one', 'worktree-device-two'];
+  for (let index = 0; index < sessions.length; index++) database.addDeviceSession({ id: sessions[index]!, name: 'Remote device', createdAt: now, lastSeenAt: now, tokenHash: createHash('sha256').update(tokens[index]!).digest('hex') });
+  const openWorktree = vi.fn(async () => {});
+  Object.assign(target, {
+    worktrees: async () => [{ path: '/fixture', branch: 'main', label: 'Fixture', is_bare: false, is_prunable: false }],
+    openWorktree,
+  });
+  const key = randomUUID();
+  const payload = { machineId: target.id, projectId: 'fixture:project', path: '/fixture' };
+  const remoteHeaders = (token: string) => ({ host: 'device.example.ts.net', origin: 'http://device.example.ts.net', cookie: `${SESSION_COOKIE}=${token}`, 'Idempotency-Key': key });
+
+  const local = await app.inject({ method: 'POST', url: '/api/worktrees/open', headers: { ...headers, 'Idempotency-Key': key }, payload });
+  const remote = await app.inject({ method: 'POST', url: '/api/worktrees/open', headers: remoteHeaders(tokens[0]!), payload });
+  expect(local.statusCode).toBe(202); expect(remote.statusCode).toBe(202);
+  expect(remote.json().operationId).not.toBe(local.json().operationId);
+  await expect.poll(() => database.createOperation(local.json().operationId)?.state).toBe('ready');
+  await expect.poll(() => database.createOperation(remote.json().operationId)?.state).toBe('ready');
+  const duplicate = await app.inject({ method: 'POST', url: '/api/worktrees/open', headers: remoteHeaders(tokens[0]!), payload });
+  expect(duplicate.json().operationId).toBe(remote.json().operationId);
+  expect((await app.inject({ url: remote.json().statusUrl, headers: remoteHeaders(tokens[0]!) })).statusCode).toBe(200);
+  expect((await app.inject({ url: remote.json().statusUrl, headers: remoteHeaders(tokens[1]!) })).statusCode).toBe(404);
+  expect(database.createOperations().filter((operation) => operation.key === key).map((operation) => operation.accountId).sort()).toEqual(['device:' + sessions[0], 'local'].sort());
+  expect(openWorktree).toHaveBeenCalledTimes(2);
+});
+
 it('decodes encoded standalone tab route IDs before resolving them', () => {
   expect(decodeSessionTabId(encodeURIComponent('w1:t1'))).toBe('w1:t1');
   expect(decodeSessionTabId('%E0%A4%A')).toBe('');

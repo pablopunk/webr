@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Menu } from '@base-ui/react/menu';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import type { AppNavigate } from '../client/app-navigation';
-import { isAccessLossError, useRuntimeCacheScope } from '../client/provider';
+import { buildPendingThreadUrl } from '../client/navigation';
+import { isAccessLossError, useRuntimeCacheScope, useThreadTickets } from '../client/provider';
 import { ChevronRight, FolderGit2, GitBranch, Search } from 'lucide-react';
 import type { Project } from '../lib/models';
 import { ProjectIcon } from './ProjectIcon';
@@ -20,30 +21,17 @@ const fetchWorktrees = async (project: Project, signal: AbortSignal) => {
   if (!response.ok) throw Object.assign(new Error('Could not list worktrees.'), { status: response.status });
   return await response.json() as Worktree[];
 };
-const openWorktree = async (project: Project, worktree: Worktree) => {
-  const response = await fetch('/api/worktrees/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ machineId: project.machineId ?? 'local', projectId: project.id, path: worktree.path }) });
-  if (!response.ok) throw new Error('Could not open this worktree.');
-  return (await response.json() as { id: string }).id;
-};
-const openAndShow = async (project: Project, worktree: Worktree, onNavigate: AppNavigate | undefined, onOpened: () => void) => {
-  try {
-    const id = await openWorktree(project, worktree);
-    onOpened();
-    onNavigate?.(`/threads/${encodeURIComponent(id)}`);
-  } catch (error) { void alertDialog(error instanceof Error ? error.message : 'Could not open this worktree.'); }
-};
 const keepTypingInsideInput = (event: React.KeyboardEvent) => { if (event.key.length === 1 || event.key === 'Backspace') event.stopPropagation(); };
 
 function WorktreeSearch({ project, onNavigate }: { project: Project; onNavigate?: AppNavigate }) {
   const [query, setQuery] = useState('');
-  const queryClient = useQueryClient();
+  const tickets = useThreadTickets();
   const cacheScope = useRuntimeCacheScope();
   const machineId = project.machineId ?? 'local';
   const queryKey = ['worktrees', cacheScope, machineId, project.id] as const;
   const worktrees = useQuery({ queryKey, queryFn: ({ signal }) => fetchWorktrees(project, signal), staleTime: 15_000, gcTime: 5 * 60_000 });
   const accessLost = isAccessLossError(worktrees.error);
   const matches = (accessLost ? [] : worktrees.data ?? []).filter((worktree) => matchesSearch(worktree, query));
-  const invalidateWorktrees = () => { void queryClient.invalidateQueries({ queryKey }); };
   return <>
     <div className="composer-select-search"><Search size={14} aria-hidden="true" />
       <input autoFocus aria-label="Search worktrees" placeholder="Search worktrees…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={keepTypingInsideInput} />
@@ -52,7 +40,14 @@ function WorktreeSearch({ project, onNavigate }: { project: Project; onNavigate?
       {worktrees.isLoading && <div className="worktree-menu-skeleton" role="status" aria-label="Loading worktrees">
         <span className="read-skeleton-row" /><span className="read-skeleton-row" /><span className="read-skeleton-row" />
       </div>}
-      {matches.map((worktree) => <Tooltip key={worktree.path} label={worktree.path} side="right"><Menu.Item className="thread-menu-item" onClick={() => void openAndShow(project, worktree, onNavigate, invalidateWorktrees)}>
+      {matches.map((worktree) => <Tooltip key={worktree.path} label={worktree.path} side="right"><Menu.Item className="thread-menu-item" onClick={() => {
+        if (!onNavigate) return;
+        try {
+          const ticket = tickets.createResource('worktree', { machineId, projectId: project.id, path: worktree.path });
+          onNavigate(buildPendingThreadUrl(ticket.key, window.location.href, 'resource'));
+          void tickets.startResource(ticket.key);
+        } catch (error) { void alertDialog(error instanceof Error ? error.message : 'Could not open this worktree.'); }
+      }}>
         <GitBranch size={14} aria-hidden="true" /><span className="worktree-menu-name">{worktreeName(worktree)}<small>{folderName(worktree)}</small></span>
       </Menu.Item></Tooltip>)}
       {worktrees.isError && <p className="worktree-menu-note" role={accessLost || !worktrees.data ? 'alert' : 'status'}>{worktrees.data && !accessLost ? 'Could not refresh worktrees. Showing cached results.' : 'Could not list worktrees.'}</p>}

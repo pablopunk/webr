@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useRuntime } from '../client/provider';
 import { parseRoute, buildPendingThreadUrl } from '../client/navigation';
 import { useRouteNavigation } from '../client/app-navigation';
@@ -92,15 +93,16 @@ export function PendingOperation({ ticketKey }: { ticketKey: string }) {
 }
 
 function terminalUrl(ticket: ResourceTicket, startupPreset = ticket.startupPreset) {
-  if (!ticket.result || !ticket.session) return undefined;
+  if (ticket.kind !== 'terminal' || !ticket.result || !ticket.session) return undefined;
   const query = new URLSearchParams({ machine: ticket.normalizedPayload.machineId });
   if (startupPreset) query.set('startup', startupPreset);
   return `/sessions/${encodeURIComponent(ticket.session)}/tabs/${encodeURIComponent(ticket.result.tabId)}?${query}`;
 }
 
 export function PendingResourceOperation({ ticketKey }: { ticketKey: string }) {
-  const { tickets } = useRuntime();
+  const { tickets, cacheScope } = useRuntime();
   const { navigate } = useRouteNavigation();
+  const queryClient = useQueryClient();
   const [ticket, setTicket] = useState<ResourceTicket | undefined>(() => tickets.getResource(ticketKey));
   const [accessLost, setAccessLost] = useState(() => tickets.isResourceAccessLost(ticketKey));
   const previousState = useRef(ticket?.state);
@@ -118,6 +120,7 @@ export function PendingResourceOperation({ ticketKey }: { ticketKey: string }) {
   useEffect(() => { if (ticket) void tickets.startResource(ticketKey); }, [ticket, ticketKey, tickets]);
 
   const openTerminal = (resource: ResourceTicket, auto = false) => {
+    if (resource.kind !== 'terminal') return;
     const current = parseRoute(window.location.href);
     if (auto && (current.type !== 'composer' || current.resourcePendingKey !== ticketKey)) return;
     const startup = resource.startupPreset;
@@ -131,11 +134,21 @@ export function PendingResourceOperation({ ticketKey }: { ticketKey: string }) {
   };
 
   useEffect(() => {
+    if (ticket?.kind !== 'worktree' || ticket.state !== 'ready') return;
+    void queryClient.invalidateQueries({ queryKey: ['worktrees', cacheScope, ticket.normalizedPayload.machineId, ticket.normalizedPayload.projectId] });
+  }, [ticket?.kind, ticket?.state, ticket?.key, cacheScope, queryClient]);
+
+  useEffect(() => {
     const before = previousState.current;
     previousState.current = ticket?.state;
+    if (ticket?.kind === 'worktree' && ticket.state === 'ready' && ticket.result) {
+      const current = parseRoute(window.location.href);
+      if (current.type === 'composer' && current.resourcePendingKey === ticketKey) navigate(`/threads/${encodeURIComponent(ticket.result.threadId)}`);
+      return;
+    }
     if (ticket?.kind !== 'terminal' || ticket.state !== 'ready' || before === 'ready') return;
     openTerminal(ticket, true);
-  }, [ticket?.state, ticket?.kind, ticket?.result?.tabId, ticketKey]);
+  }, [ticket?.state, ticket?.kind, ticket?.result, ticketKey, navigate]);
 
   if (!ticket) return <main className="pending-operation" aria-label="Pending create">
     <h1>{accessLost ? 'Access changed' : 'Pending create unavailable'}</h1>
@@ -146,7 +159,7 @@ export function PendingResourceOperation({ ticketKey }: { ticketKey: string }) {
   const ready = ticket.state === 'ready';
   const failed = ticket.state === 'failed';
   const unknown = ticket.state === 'unknown';
-  const title = ticket.kind === 'workspace' ? 'workspace' : 'terminal';
+  const title = ticket.kind === 'workspace' ? 'workspace' : ticket.kind === 'terminal' ? 'terminal' : 'worktree';
   const retry = () => {
     const next = tickets.retryResource(ticketKey);
     if (!next) return;
@@ -154,13 +167,15 @@ export function PendingResourceOperation({ ticketKey }: { ticketKey: string }) {
     void tickets.startResource(next.key);
   };
   return <main className="pending-operation" aria-label={`Pending ${title}`}>
-    <h1>{ready ? (ticket.kind === 'workspace' ? 'Project created' : 'Terminal ready') : unknown ? 'Create outcome uncertain' : failed ? `Could not create ${title}` : ticket.transport === 'checking' ? `Checking ${title} acceptance` : `Creating ${title}`}</h1>
-    {ticket.kind === 'workspace' && <p>{(ticket.normalizedPayload as Extract<typeof ticket.normalizedPayload, { label: string }>).label}</p>}
-    {unknown && <p className="pending-warning" role="alert">The native create may have reached Herdr. Webr will not replay it. Check the Herdr session before creating another resource.</p>}
-    {failed && <div className="launch-failure" role="alert"><p>{ticket.error ?? `Could not create ${title}.`}</p><button type="button" className="launch-retry" onClick={retry}>Try again with a new request</button></div>}
+    <h1>{ready ? (ticket.kind === 'workspace' ? 'Project created' : ticket.kind === 'terminal' ? 'Terminal ready' : 'Worktree opened') : unknown ? (ticket.kind === 'worktree' ? 'Worktree outcome uncertain' : 'Create outcome uncertain') : failed ? (ticket.kind === 'worktree' ? 'Could not open worktree' : `Could not create ${title}`) : ticket.transport === 'checking' ? `Checking ${title} acceptance` : ticket.kind === 'worktree' ? 'Opening worktree' : `Creating ${title}`}</h1>
+    {ticket.kind === 'workspace' && <p>{ticket.normalizedPayload.label}</p>}
+    {ticket.kind === 'worktree' && <p>{ticket.normalizedPayload.path}</p>}
+    {unknown && <p className="pending-warning" role="alert">{ticket.kind === 'worktree' ? 'The worktree may have been opened in Herdr. Webr will not replay it. Check the Herdr session before trying again.' : 'The native create may have reached Herdr. Webr will not replay it. Check the Herdr session before creating another resource.'}</p>}
+    {failed && <div className="launch-failure" role="alert"><p>{ticket.error ?? (ticket.kind === 'worktree' ? 'Could not open worktree.' : `Could not create ${title}.`)}</p><button type="button" className="launch-retry" onClick={retry}>Try again with a new request</button></div>}
     {ticket.transport === 'checking' && ticket.notice && <p className="pending-warning" role="status">{ticket.notice}</p>}
     {ready && ticket.kind === 'terminal' && !ticket.result && <p className="pending-warning" role="status">The terminal create completed, but its full identity was not recorded. Check the Herdr session; Webr will not create it again.</p>}
     {ready && ticket.kind === 'terminal' && ticket.result && <button type="button" className="launch-retry" onClick={() => openTerminal(ticket)}>Open terminal</button>}
+    {ready && ticket.kind === 'worktree' && ticket.result && <a className="launch-retry" href={`/threads/${encodeURIComponent(ticket.result.threadId)}`}>Open thread</a>}
     {ticket.reloadRecoveryUnavailable && <p className="pending-warning" role="alert">Browser storage is unavailable. This ticket is held in memory only; reloading will lose recovery.</p>}
     <a className="pending-leave" href="/new">Leave this pending view</a>
   </main>;

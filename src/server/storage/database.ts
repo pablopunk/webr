@@ -9,7 +9,7 @@ import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 import * as schema from './schema';
 import type { Thread, TitleSync } from '../../lib/models';
-import { createOperationResult, launchInput, terminalCreateInput, workspaceCreateInput, type CreateOperationInput, type CreateOperationKind, type LaunchInput } from '../../shared/runtime';
+import { createOperationResult, launchInput, parseCreateOperationInput, type CreateOperationInput, type CreateOperationKind, type LaunchInput } from '../../shared/runtime';
 
 const AUDIT_RETENTION = 200;
 const projectNameSettingKey = (machineId: string, logicalId: string) => `project-name:${machineId}:${logicalId}`;
@@ -171,7 +171,7 @@ export class MetadataDatabase {
     return existing;
   }
   private createOperationHash(kind: CreateOperationKind, input: CreateOperationInput) {
-    const normalized = kind === 'workspace' ? workspaceCreateInput.parse(input) : terminalCreateInput.parse(input);
+    const normalized = parseCreateOperationInput(kind, input);
     return createHash('sha256').update(JSON.stringify([kind, normalized])).digest('hex');
   }
   findCreateOperation(accountId: string, kind: CreateOperationKind, key: string, input: CreateOperationInput) {
@@ -185,7 +185,7 @@ export class MetadataDatabase {
   beginCreateOperation(accountId: string, kind: CreateOperationKind, key: string, input: CreateOperationInput,
     target: { fingerprint: string; session?: string | null; configVersion?: number | null },
     seed: { nativeRequestId?: string; state?: string; step?: string; result?: Record<string, unknown>; error?: string } = {}) {
-    const normalized = kind === 'workspace' ? workspaceCreateInput.parse(input) : terminalCreateInput.parse(input);
+    const normalized = parseCreateOperationInput(kind, input);
     const hash = this.createOperationHash(kind, normalized);
     return this.sqlite.transaction(() => {
       const existing = this.db.select().from(schema.createOperations).where(and(

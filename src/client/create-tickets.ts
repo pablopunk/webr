@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { uuid } from '../lib/uuid';
-import { createOperationEnvelope, createOperationResult, launchInput, launchOperationEnvelope, launchOperationState, terminalCreateInput, workspaceCreateInput, type CreateOperationInput, type CreateOperationKind, type LaunchInput } from '../shared/runtime';
+import { createOperationEnvelope, createOperationResult, launchInput, launchOperationEnvelope, launchOperationState, terminalCreateInput, worktreeOpenInput, worktreeOperationEnvelope, worktreeOperationResult, workspaceCreateInput, type CreateOperationInput, type CreateOperationKind, type LaunchInput } from '../shared/runtime';
 import { clearLaunchDraft, clearLaunchDrafts, clearNewThreadDraft, clearNewThreadDraftForLaunch, readLaunchDraft, recoveryStoragePrefix, writeLaunchDraft, type NewThreadDraft } from './new-thread-draft';
 import type { TerminalStartupPreset } from './terminal-presets';
 
@@ -18,14 +18,27 @@ const ticketSchema = z.object({
   error: z.string().optional(), notice: z.string().optional(), transport: z.enum(['submitting', 'checking', 'accepted']),
   reloadRecoveryUnavailable: z.boolean(), draft: draftSnapshotSchema.optional(),
 }).strict();
-const resourceTicketSchema = z.object({
-  kind: z.enum(['workspace', 'terminal']), endpoint: z.enum(['/api/workspaces', '/api/terminals']), key: z.uuid(),
-  normalizedPayload: z.union([workspaceCreateInput, terminalCreateInput]), createdAt: z.number().nonnegative(),
-  operationId: z.uuid().optional(), statusUrl: z.string().optional(), state: launchOperationState.optional(), step: z.string().optional(),
-  result: createOperationResult.optional(), error: z.string().optional(), notice: z.string().optional(),
+const resourceTicketCommon = {
+  key: z.uuid(), createdAt: z.number().nonnegative(), operationId: z.uuid().optional(), statusUrl: z.string().optional(),
+  state: launchOperationState.optional(), step: z.string().optional(), error: z.string().optional(), notice: z.string().optional(),
   transport: z.enum(['submitting', 'checking', 'accepted']), reloadRecoveryUnavailable: z.boolean(),
   session: z.string().optional(), startupPreset: z.enum(['resource-monitor']).optional(),
+};
+const workspaceResourceTicketSchema = z.object({
+  ...resourceTicketCommon, kind: z.literal('workspace'), endpoint: z.literal('/api/workspaces'),
+  normalizedPayload: workspaceCreateInput, result: createOperationResult.optional(),
 }).strict();
+const terminalResourceTicketSchema = z.object({
+  ...resourceTicketCommon, kind: z.literal('terminal'), endpoint: z.literal('/api/terminals'),
+  normalizedPayload: terminalCreateInput, result: createOperationResult.optional(),
+}).strict();
+const worktreeResourceTicketSchema = z.object({
+  ...resourceTicketCommon, kind: z.literal('worktree'), endpoint: z.literal('/api/worktrees/open'),
+  normalizedPayload: worktreeOpenInput, result: worktreeOperationResult.optional(),
+}).strict().superRefine((ticket, context) => {
+  if (ticket.state === 'ready' && !ticket.result) context.addIssue({ code: 'custom', path: ['result'], message: 'ready worktree ticket requires a thread identity' });
+});
+const resourceTicketSchema = z.discriminatedUnion('kind', [workspaceResourceTicketSchema, terminalResourceTicketSchema, worktreeResourceTicketSchema]);
 
 export type DraftSnapshot = z.infer<typeof draftSnapshotSchema>;
 export type ThreadTicket = z.infer<typeof ticketSchema>;
@@ -33,6 +46,11 @@ export type ResourceTicket = z.infer<typeof resourceTicketSchema>;
 type TicketRecord = { ticket: ThreadTicket; liveDraft?: NewThreadDraft };
 type TicketDependencies = { fetch?: typeof fetch; sleep?: (milliseconds: number) => Promise<void>; now?: () => number };
 type ResourceTicketOptions = { session?: string; startupPreset?: TerminalStartupPreset };
+type ResourceTicketPatch = {
+  operationId?: string; statusUrl?: string; state?: ResourceTicket['state']; step?: string;
+  result?: ResourceTicket['result']; error?: string; notice?: string; transport?: ResourceTicket['transport'];
+  startupPreset?: ResourceTicket['startupPreset']; reloadRecoveryUnavailable?: boolean;
+};
 
 function storageKey(scope: string, key: string) {
   return `${storagePrefix(scope)}${key}`;
@@ -108,7 +126,9 @@ function parseEnvelope(value: unknown) {
   return parsed.data;
 }
 function parseResourceEnvelope(value: unknown) {
-  const parsed = createOperationEnvelope.safeParse(value);
+  if (!value || typeof value !== 'object') return undefined;
+  const response = value as Record<string, unknown>;
+  const parsed = response.kind === 'worktree' ? worktreeOperationEnvelope.safeParse(value) : createOperationEnvelope.safeParse(value);
   if (!parsed.success || parsed.data.statusUrl !== `/api/operations/${parsed.data.operationId}`) return undefined;
   return parsed.data;
 }
@@ -194,11 +214,6 @@ export class ThreadTickets {
       if (!raw) return undefined;
       const parsed = resourceTicketSchema.safeParse(JSON.parse(raw));
       if (!parsed.success || parsed.data.key !== key) return undefined;
-      const expectedEndpoint = parsed.data.kind === 'workspace' ? '/api/workspaces' : '/api/terminals';
-      const payloadValid = parsed.data.kind === 'workspace'
-        ? workspaceCreateInput.safeParse(parsed.data.normalizedPayload).success
-        : terminalCreateInput.safeParse(parsed.data.normalizedPayload).success;
-      if (parsed.data.endpoint !== expectedEndpoint || !payloadValid) return undefined;
       this.resourceRecords.set(key, parsed.data);
       return parsed.data;
     } catch { return undefined; }
@@ -223,7 +238,7 @@ export class ThreadTickets {
     } catch { return false; }
   }
 
-  private replaceResource(key: string, patch: Partial<ResourceTicket>) {
+  private replaceResource(key: string, patch: ResourceTicketPatch) {
     const ticket = this.getResource(key);
     if (!ticket) return undefined;
     const next = { ...ticket, ...patch };
@@ -238,14 +253,17 @@ export class ThreadTickets {
 
   createResource(kind: CreateOperationKind, input: CreateOperationInput, options: ResourceTicketOptions = {}) {
     this.resourceAccessLost = false;
-    const normalizedPayload = kind === 'workspace' ? workspaceCreateInput.parse(input) : terminalCreateInput.parse(input);
-    const key = uuid();
-    const ticket: ResourceTicket = {
-      kind, endpoint: kind === 'workspace' ? '/api/workspaces' : '/api/terminals', key, normalizedPayload,
-      createdAt: this.now(), transport: 'submitting', reloadRecoveryUnavailable: false,
+    const common = {
+      key: uuid(), createdAt: this.now(), transport: 'submitting' as const, reloadRecoveryUnavailable: false,
       ...(options.session ? { session: options.session } : {}),
       ...(options.startupPreset ? { startupPreset: options.startupPreset } : {}),
     };
+    const ticket: ResourceTicket = kind === 'workspace'
+      ? { ...common, kind, endpoint: '/api/workspaces', normalizedPayload: workspaceCreateInput.parse(input) }
+      : kind === 'terminal'
+        ? { ...common, kind, endpoint: '/api/terminals', normalizedPayload: terminalCreateInput.parse(input) }
+        : { ...common, kind, endpoint: '/api/worktrees/open', normalizedPayload: worktreeOpenInput.parse(input) };
+    const { key } = ticket;
     this.resourceRecords.set(key, ticket);
     if (!this.persistResource(ticket)) {
       ticket.reloadRecoveryUnavailable = true;

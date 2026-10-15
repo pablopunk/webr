@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useQueryClient } from '@tanstack/react-query';
 import { RuntimeProvider, useRuntime } from '../../src/client/provider';
 import { handleRouteClick, RouteNavigationProvider, useRouteNavigation } from '../../src/client/app-navigation';
 import { buildPendingThreadUrl } from '../../src/client/navigation';
@@ -31,22 +32,35 @@ const response = (state: 'pending' | 'ready' | 'failed' | 'unknown') => new Resp
   result: { threadId: 'thread-real-id' }, statusUrl: `/api/operations/${operationId}`,
 }), { status: 202, headers: { 'Content-Type': 'application/json' } });
 const resourceOperationId = '33333333-3333-4333-8333-333333333333';
+const worktreeOperationId = '44444444-4444-4444-8444-444444444444';
+const worktreeResult = { threadId: 'thread-from-worktree' };
+const worktreeResponse = (state: 'pending' | 'ready' | 'failed' | 'unknown') => new Response(JSON.stringify({
+  operationId: worktreeOperationId, kind: 'worktree', state, step: state === 'ready' ? 'ready' : 'open',
+  ...(state === 'ready' ? { result: worktreeResult } : {}), ...(state === 'failed' ? { error: 'unknown_worktree' } : {}), statusUrl: `/api/operations/${worktreeOperationId}`,
+}), { status: 202, headers: { 'Content-Type': 'application/json' } });
 const resourceResult = { workspaceId: 'workspace-resource', tabId: 'workspace-resource:tab', paneId: 'workspace-resource:pane', terminalId: 'term_resource' };
 const resourceResponse = (state: 'pending' | 'ready' | 'unknown') => new Response(JSON.stringify({
   operationId: resourceOperationId, kind: 'terminal', state, step: state === 'ready' ? 'ready' : 'workspace',
   ...(state === 'ready' ? { result: resourceResult } : {}), statusUrl: `/api/operations/${resourceOperationId}`,
 }), { status: 202, headers: { 'Content-Type': 'application/json' } });
 let currentTickets: ThreadTickets | undefined;
+let currentQueryClient: ReturnType<typeof useQueryClient> | undefined;
 
 function RouteHarness() {
   const { route, navigate } = useRouteNavigation();
   currentTickets = useRuntime().tickets;
+  currentQueryClient = useQueryClient();
   return <div onClickCapture={(event) => handleRouteClick(event, navigate)}>
     <button type="button" onClick={() => navigate('/new?project=local%3Afirst')}>Navigate to composer</button>
     <button type="button" onClick={() => {
       const ticket = currentTickets!.createResource('terminal', { machineId: 'local', path: '~/' }, { session: 'default', startupPreset: 'resource-monitor' });
       navigate(buildPendingThreadUrl(ticket.key, window.location.href, 'resource'));
     }}>Start standalone terminal</button>
+    <button type="button" onClick={() => {
+      const ticket = currentTickets!.createResource('worktree', { machineId: 'local', projectId: 'local:first', path: '/first/worktrees/feature' });
+      navigate(buildPendingThreadUrl(ticket.key, window.location.href, 'resource'));
+      void currentTickets!.startResource(ticket.key);
+    }}>Start worktree</button>
     {route.type === 'composer' && route.resourcePendingKey
       ? <PendingResourceOperation key={`${currentTickets?.resourceRecoveryScope}:${route.resourcePendingKey}`} ticketKey={route.resourcePendingKey} />
       : route.type === 'composer' && route.pendingKey
@@ -79,7 +93,7 @@ function denySessionStorageWrites() {
 afterEach(() => {
   cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers();
   Reflect.deleteProperty(document, 'visibilityState');
-  localStorage.clear(); sessionStorage.clear(); window.history.replaceState(null, '', '/'); currentTickets = undefined;
+  localStorage.clear(); sessionStorage.clear(); window.history.replaceState(null, '', '/'); currentTickets = undefined; currentQueryClient = undefined;
 });
 
 it('leaves the composer for a local pending view before the acceptance response resolves', async () => {
@@ -143,6 +157,7 @@ it('preserves memory-only thread recovery when only the resource scope changes',
   const previous = currentTickets!;
   const thread = previous.create(input, draft);
   const resource = previous.createResource('terminal', { machineId: 'local', path: '/project' });
+  const worktree = previous.createResource('worktree', { machineId: 'local', projectId: 'local:first', path: '/first/worktrees/feature' });
   expect(thread.reloadRecoveryUnavailable).toBe(true);
 
   view.rerender(tree({ ...bootstrap, resourceRecoveryScope: 'resource-session-two' }));
@@ -151,6 +166,7 @@ it('preserves memory-only thread recovery when only the resource scope changes',
   expect(currentTickets?.get(thread.key)?.key).toBe(thread.key);
   expect(currentTickets?.getDraft(thread.key)?.prompt).toBe(draft.prompt);
   expect(currentTickets?.getResource(resource.key)).toBeUndefined();
+  expect(currentTickets?.getResource(worktree.key)).toBeUndefined();
 });
 
 it('recovers an in-memory draft and attachments through Edit draft when storage is denied', async () => {
@@ -352,6 +368,107 @@ it('does not redirect from the composer when the user leaves a pending terminal 
   expect(window.location.pathname).toBe('/new');
   expect(new URL(window.location.href).searchParams.get('resourcePending')).toBeNull();
   expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it('recovers a persisted worktree ticket through status-only polling and opens its confirmed thread', async () => {
+  vi.useFakeTimers();
+  const key = '77777777-7777-4777-8777-777777777777';
+  const stored = {
+    kind: 'worktree', endpoint: '/api/worktrees/open', key, createdAt: Date.now(), normalizedPayload: { machineId: 'local', projectId: 'local:first', path: '/first/worktrees/feature' },
+    operationId: worktreeOperationId, statusUrl: `/api/operations/${worktreeOperationId}`, state: 'pending', step: 'open',
+    transport: 'accepted', reloadRecoveryUnavailable: false,
+  };
+  sessionStorage.setItem(`${recoveryStoragePrefix(bootstrap.recoveryScope)}resource-ticket:${key}`, JSON.stringify(stored));
+  const fetcher = vi.fn(async () => worktreeResponse('ready'));
+  vi.stubGlobal('fetch', fetcher);
+  renderRoute(`/new?resourcePending=${key}`);
+  const queryKey = ['worktrees', 'pending-ui-scope', 'local', 'local:first'] as const;
+  currentQueryClient!.setQueryData(queryKey, [{ path: '/first/worktrees/feature' }]);
+
+  await act(async () => { await vi.runAllTimersAsync(); });
+
+  expect(fetcher).toHaveBeenCalledOnce();
+  expect(fetcher.mock.calls[0]?.[0]).toBe(`/api/operations/${worktreeOperationId}`);
+  expect(fetcher.mock.calls[0]?.[1]).toBeUndefined();
+  expect(window.location.pathname).toBe(`/threads/${worktreeResult.threadId}`);
+  expect(currentQueryClient!.getQueryState(queryKey)?.isInvalidated).toBe(true);
+});
+
+it.each([
+  { label: 'missing', result: undefined },
+  { label: 'wrong-shaped', result: 'wrong' },
+  { label: 'extra-field', result: { threadId: 'guessed-thread', extra: true } },
+])('never navigates or invalidates worktrees for a $label ready result', async ({ result }) => {
+  vi.useFakeTimers();
+  const malformed = new Response(JSON.stringify({
+    operationId: worktreeOperationId, kind: 'worktree', state: 'ready', step: 'ready',
+    ...(result !== undefined ? { result } : {}), statusUrl: `/api/operations/${worktreeOperationId}`,
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  const fetcher = vi.fn(async (_request: RequestInfo | URL, init?: RequestInit) => init?.method === 'POST' ? worktreeResponse('pending') : malformed);
+  vi.stubGlobal('fetch', fetcher);
+  renderRoute('/new');
+  const queryKey = ['worktrees', 'pending-ui-scope', 'local', 'local:first'] as const;
+  currentQueryClient!.setQueryData(queryKey, [{ path: '/first/worktrees/feature' }]);
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Start worktree' })));
+
+  await act(async () => { await vi.runAllTimersAsync(); });
+
+  expect(screen.getByRole('heading', { name: 'Worktree outcome uncertain' })).toBeDefined();
+  expect(screen.queryByRole('link', { name: 'Open thread' })).toBeNull();
+  expect(window.location.pathname).toBe('/new');
+  expect(currentQueryClient!.getQueryState(queryKey)?.isInvalidated).toBe(false);
+});
+
+it('uses a new idempotency key only after an explicit retry of a failed worktree open', async () => {
+  vi.useFakeTimers();
+  const fetcher = vi.fn(async () => worktreeResponse('failed'));
+  vi.stubGlobal('fetch', fetcher);
+  renderRoute('/new');
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Start worktree' })));
+  await act(async () => { await vi.runAllTimersAsync(); });
+  expect(screen.getByRole('heading', { name: 'Could not open worktree' })).toBeDefined();
+  const firstKey = (fetcher.mock.calls[0]?.[1]?.headers as Record<string, string>)['Idempotency-Key'];
+
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Try again with a new request' })));
+  await act(async () => { await vi.runAllTimersAsync(); });
+  expect(screen.getByRole('heading', { name: 'Could not open worktree' })).toBeDefined();
+  const posts = fetcher.mock.calls.map(([, init]) => (init?.headers as Record<string, string>)['Idempotency-Key']);
+  expect(posts).toHaveLength(2);
+  expect(firstKey).not.toBe(posts[1]);
+});
+
+it('does not navigate after a worktree ticket completes when the user leaves its pending view', async () => {
+  vi.useFakeTimers();
+  const fetcher = vi.fn(async (_request: RequestInfo | URL, init?: RequestInit) => init?.method === 'POST' ? worktreeResponse('pending') : worktreeResponse('ready'));
+  vi.stubGlobal('fetch', fetcher);
+  renderRoute('/new');
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Start worktree' })));
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(fetcher).toHaveBeenCalledOnce();
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Navigate to composer' })));
+
+  await act(async () => { await vi.runAllTimersAsync(); });
+
+  expect(window.location.pathname).toBe('/new');
+  expect(new URL(window.location.href).searchParams.get('resourcePending')).toBeNull();
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it('warns when worktree recovery storage is denied while retaining the in-memory ticket', async () => {
+  vi.useFakeTimers();
+  const deniedSetItem = denySessionStorageWrites();
+  const fetcher = vi.fn(async () => worktreeResponse('unknown'));
+  vi.stubGlobal('fetch', fetcher);
+  renderRoute('/new');
+  act(() => fireEvent.click(screen.getByRole('button', { name: 'Start worktree' })));
+  const key = new URL(window.location.href).searchParams.get('resourcePending')!;
+
+  await act(async () => { await vi.runAllTimersAsync(); });
+
+  expect(deniedSetItem).toHaveBeenCalled();
+  expect(currentTickets?.getResource(key)?.reloadRecoveryUnavailable).toBe(true);
+  expect(screen.getByText(/held in memory only; reloading will lose recovery/i)).toBeDefined();
+  expect(fetcher).toHaveBeenCalledOnce();
 });
 
 it('pauses the poll interval while the browser is offline', async () => {

@@ -8,7 +8,7 @@ import { projectIconKey, reconcile } from './reconcile';
 import { imageExtension } from '../uploads';
 import type { Icon } from '../transport/icons';
 import type { MetadataDatabase } from '../storage/database';
-import { createOperationResult, terminalCreateInput, workspaceCreateInput, type Bootstrap, type CreateOperationInput, type CreateOperationKind, type Projection, type ProjectRenameResponse, type ThreadArchiveResponse, type ThreadMetadataAcknowledgement, type ThreadRenameResponse } from '../../shared/runtime';
+import { createOperationResult, parseCreateOperationInput, terminalCreateInput, worktreeOpenInput, workspaceCreateInput, type Bootstrap, type CreateOperationInput, type CreateOperationKind, type Projection, type ProjectRenameResponse, type ThreadArchiveResponse, type ThreadMetadataAcknowledgement, type ThreadRenameResponse } from '../../shared/runtime';
 import type { Machine } from '../../lib/machines';
 import { LaunchJournal, type LaunchTargetIdentity } from './launch';
 import { isListedThread } from '../../lib/launch';
@@ -155,7 +155,7 @@ export class RuntimeManager extends EventEmitter {
     return identity.target;
   }
   acceptCreateOperation(owner: string, kind: CreateOperationKind, key: string, input: CreateOperationInput) {
-    const normalized = kind === 'workspace' ? workspaceCreateInput.parse(input) : terminalCreateInput.parse(input);
+    const normalized = parseCreateOperationInput(kind, input);
     const previous = this.database.findCreateOperation(owner, kind, key, normalized);
     if (previous) return { envelope: createOperationEnvelope(previous), created: false };
 
@@ -168,7 +168,9 @@ export class RuntimeManager extends EventEmitter {
     if (!supervisor?.connected) throw new Error('machine_disconnected');
     const identity = this.targetIdentity(supervisor);
     this.requireCurrentProjection(identity);
-    if (!identity.target.writable || !identity.target.createWorkspace) throw new Error('workspace_creation_unavailable');
+    if (kind === 'worktree') {
+      if (!identity.target.worktrees || !identity.target.openWorktree) throw new Error('machine_disconnected');
+    } else if (!identity.target.writable || !identity.target.createWorkspace) throw new Error('workspace_creation_unavailable');
     const accepted = this.database.beginCreateOperation(owner, kind, key, normalized, identity);
     return { envelope: createOperationEnvelope(accepted.operation), created: accepted.created };
   }
@@ -176,7 +178,7 @@ export class RuntimeManager extends EventEmitter {
     if (this.closed || this.createRuns.has(operationId)) return;
     const operation = this.database.createOperation(operationId);
     if (!operation || operation.state !== 'pending') return;
-    const task = this.withTargetMutation(operation.machineId, () => this.runCreateOperation(operationId))
+    const task = this.withTargetMutation(operation.machineId, () => operation.kind === 'worktree' ? this.runWorktreeOperation(operationId) : this.runCreateOperation(operationId))
       .catch(() => {
         const current = this.database.createOperation(operationId);
         if (current && (current.state === 'pending' || current.state === 'running')) this.database.updateCreateOperation(operationId, 'unknown', current.step, current.result, 'create_interrupted');
@@ -210,6 +212,55 @@ export class RuntimeManager extends EventEmitter {
       const message = error instanceof Error && /^[a-z][a-z0-9_]{0,79}$/.test(error.message) ? error.message : 'create_failed';
       this.database.updateCreateOperation(operationId, effectStarted ? 'unknown' : 'failed', effectStarted ? 'create' : 'validate', {}, message);
       if (effectStarted) console.error(`create ${operationId} outcome is uncertain:`, message);
+    }
+  }
+  private async runWorktreeOperation(operationId: string) {
+    const operation = this.database.createOperation(operationId);
+    if (!operation || operation.state !== 'pending') return;
+    let effectStarted = false;
+    try {
+      if (!operation.input) throw new Error('create_input_unavailable');
+      const input = worktreeOpenInput.parse(operation.input);
+      if (input.machineId !== operation.machineId) throw new Error('create_target_changed');
+      const supervisor = this.worktreeSupervisor(operation.machineId);
+      const identity = this.targetIdentity(supervisor);
+      if (identity.fingerprint !== operation.targetFingerprint || identity.session !== operation.targetSession || identity.configVersion !== operation.targetConfigVersion) throw new Error('create_target_changed');
+      this.requireCurrentProjection(identity);
+      this.database.updateCreateOperation(operationId, 'running', 'discover', {});
+      const candidates = (await this.worktrees(input.machineId, input.projectId)).filter((worktree) => worktree.path === input.path);
+      this.requireCurrentProjection(identity);
+      if (candidates.length !== 1) throw new Error(candidates.length ? 'ambiguous_worktree' : 'unknown_worktree');
+      this.requireCurrentProjection(identity);
+      this.database.updateCreateOperation(operationId, 'running', 'open', {});
+      effectStarted = true;
+      await identity.target.openWorktree!(input.projectId, input.path);
+      const snapshot = await supervisor.readFresh();
+      const projection = this.requireCurrentProjection(identity);
+      const workspaces = snapshot.workspaces.filter((workspace) => workspace.worktree?.checkout_path === input.path);
+      if (workspaces.length !== 1) throw new Error(workspaces.length ? 'ambiguous_worktree_workspace' : 'worktree_not_opened');
+      const workspace = workspaces[0]!;
+      const tabs = snapshot.tabs.filter((tab) => tab.workspace_id === workspace.workspace_id);
+      if (tabs.length !== 1) throw new Error(tabs.length ? 'ambiguous_worktree_tab' : 'worktree_not_opened');
+      const tab = tabs[0]!;
+      if (snapshot.tabs.filter((candidate) => candidate.tab_id === tab.tab_id).length !== 1) throw new Error('ambiguous_worktree_tab');
+      const nativePanes = snapshot.panes.filter((pane) => pane.workspace_id === workspace.workspace_id && pane.tab_id === tab.tab_id);
+      const paneKeys = new Set(nativePanes.map((pane) => JSON.stringify([pane.pane_id, pane.terminal_id])));
+      const duplicatedPaneKeys = new Set(nativePanes.filter((pane) => snapshot.panes.some((other) =>
+        (other.workspace_id !== workspace.workspace_id || other.tab_id !== tab.tab_id)
+        && other.pane_id === pane.pane_id && other.terminal_id === pane.terminal_id,
+      )).map((pane) => JSON.stringify([pane.pane_id, pane.terminal_id])));
+      if (paneKeys.size !== nativePanes.length || duplicatedPaneKeys.size) throw new Error('ambiguous_worktree_thread');
+      const threads = projection.threads.filter((thread) => thread.tabId === tab.tab_id && thread.bindingState === 'attached' && this.matchesTargetIdentity(thread, identity)
+        && thread.panes.some((pane) => !!pane.terminalId && paneKeys.has(JSON.stringify([pane.id, pane.terminalId]))));
+      if (threads.length !== 1) throw new Error(threads.length ? 'ambiguous_worktree_thread' : 'worktree_not_opened');
+      const thread = threads[0]!;
+      if (thread.archivedAt) this.archive(input.machineId, thread.id, false);
+      this.database.updateCreateOperation(operationId, 'ready', 'ready', { threadId: thread.id });
+      supervisor.invalidate();
+    } catch (error) {
+      const message = error instanceof Error && /^[a-z][a-z0-9_]{0,79}$/.test(error.message) ? error.message : 'worktree_open_failed';
+      this.database.updateCreateOperation(operationId, effectStarted ? 'unknown' : 'failed', effectStarted ? 'open' : 'validate', {}, message);
+      if (effectStarted) console.error(`worktree open ${operationId} outcome is uncertain:`, message);
     }
   }
   private registerPendingTerminal(supervisor: TargetSupervisor, created: CreatedWorkspace) {
