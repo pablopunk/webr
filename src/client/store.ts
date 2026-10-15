@@ -2,7 +2,7 @@ import { createStore } from 'zustand/vanilla';
 import type { Bootstrap, Projection } from '../shared/runtime';
 import type { Project, Thread } from '../lib/models';
 
-type RuntimeState = { projections: Record<string, Projection>; threads: Record<string, Thread>; projects: Record<string, Project>; threadIds: string[]; projectIds: string[]; connected: boolean; install(projection: Projection): void; connection(connected: boolean): void };
+type RuntimeState = { projections: Record<string, Projection>; threads: Record<string, Thread>; projects: Record<string, Project>; threadIds: string[]; projectIds: string[]; connected: boolean; install(projection: Projection): boolean; connection(connected: boolean): void };
 const equal = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
 const share = <T>(previous: T | undefined, next: T): T => previous && equal(previous, next) ? previous : next;
 
@@ -14,14 +14,14 @@ export function createRuntimeStore(bootstrap: Bootstrap) {
     connection: (connected) => set((state) => {
       if (connected) return { connected };
       for (const id of Object.keys(state.projections)) awaiting.add(id);
-      return { connected, projections: Object.fromEntries(Object.entries(state.projections).map(([id, projection]) => [id, { ...projection, connected: false, freshAt: null }])), threads: Object.fromEntries(Object.entries(state.threads).map(([id, thread]) => [id, { ...thread, status: 'unknown' as const, bindingState: 'detached' as const, recovery: thread.providerSession ? { state: 'known' as const } : thread.recovery }])) };
+      return { connected, projections: Object.fromEntries(Object.entries(state.projections).map(([id, projection]) => [id, { ...projection, freshAt: null }])), threads: Object.fromEntries(Object.entries(state.threads).map(([id, thread]) => [id, thread.status === 'unknown' ? thread : { ...thread, status: 'unknown' as const }])) };
     }),
     install: (projection) => {
-      if (!projection || typeof projection.machineId !== 'string') { console.warn('Dropping projection without machine identity.'); return; }
+      if (!projection || typeof projection.machineId !== 'string') { console.warn('Dropping projection without machine identity.'); return false; }
       const old = get();
       const previous = old.projections[projection.machineId];
       const generations = retired.get(projection.machineId) ?? new Set<string>();
-      if (generations.has(projection.generation) || !awaiting.has(projection.machineId) && previous?.generation === projection.generation && previous.revision >= projection.revision) return;
+      if (generations.has(projection.generation) || previous?.generation === projection.generation && (projection.revision < previous.revision || projection.revision === previous.revision && !awaiting.has(projection.machineId))) return false;
       awaiting.delete(projection.machineId);
       if (previous && previous.generation !== projection.generation) generations.add(previous.generation);
       if (generations.size > 8) generations.delete(generations.values().next().value!);
@@ -46,6 +46,7 @@ export function createRuntimeStore(bootstrap: Bootstrap) {
       const threadIds = Object.values(threads).sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '')).map((thread) => thread.id);
       const projectIds = Object.keys(projects);
       set({ projections, threads, projects, threadIds: share(old.threadIds, threadIds), projectIds: share(old.projectIds, projectIds) });
+      return true;
     },
   }));
   for (const projection of bootstrap.projections) store.getState().install(projection);

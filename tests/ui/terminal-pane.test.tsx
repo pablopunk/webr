@@ -35,6 +35,35 @@ it('mounts a standalone terminal with its tab identity instead of a thread id', 
   expect(fixture.mount.mock.calls[0][0]).toMatchObject({ machineId: 'fixture', tabId: 'w2:t1', terminalId: 'term_shell' });
   expect(fixture.mount.mock.calls[0][0]).not.toHaveProperty('threadId');
 });
+it('retains terminal DOM on disconnect while removing writable input and suppressing control', async () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
+  const pane = { id: 'w1:p1', terminalId: 'term_fixture', title: 'Agent', kind: 'agent' as const };
+  const props = { pane, machineId: 'fixture', threadId: 'fixture-thread', active: true, canControl: true, onFocus: () => {} };
+  const view = render(<TerminalPane {...props} connected />);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
+  const mounted = fixture.mount.mock.calls[0][0];
+  await act(async () => mounted.onState('Input control is active.', true));
+  expect(screen.getByLabelText('Terminal input')).toBeDefined();
+  const host = view.container.querySelector('.terminal-host'); const cachedOutput = document.createElement('span'); cachedOutput.textContent = 'cached terminal output'; host!.append(cachedOutput);
+  view.rerender(<TerminalPane {...props} connected={false} />);
+  await act(async () => mounted.onState('Disconnected; input is disabled.', false));
+  expect(view.container.querySelector('.terminal-host')).toBe(host); expect(host!.contains(cachedOutput)).toBe(true);
+  expect(screen.queryByLabelText('Terminal input')).toBeNull();
+  fireEvent.click(screen.getByLabelText('Agent terminal')); expect(fixture.control).not.toHaveBeenCalled();
+});
+
+it('does not queue a startup command while disconnected or replay it after reconnection', async () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
+  const onStartupComplete = vi.fn();
+  render(<TerminalPane pane={{ id: 'w2:p1', terminalId: 'term_shell', title: 'Shell', kind: 'shell' }} machineId="fixture" tabId="w2:t1" active canControl connected={false} onFocus={() => {}} startupPreset="resource-monitor" onStartupComplete={onStartupComplete} />);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
+  expect(onStartupComplete).toHaveBeenCalledOnce(); expect(fixture.input).not.toHaveBeenCalled();
+  await act(async () => fixture.mount.mock.calls[0][0].onState('Input control is active.', true));
+  expect(fixture.input).not.toHaveBeenCalled();
+});
+
 it('starts a resource monitor once the terminal is writable', async () => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));

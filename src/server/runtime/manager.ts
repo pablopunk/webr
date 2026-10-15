@@ -22,6 +22,7 @@ type AvailableTab = NonNullable<Projection['availableTabs']>[number];
 type PendingTerminalTab = { tab: AvailableTab; timer: ReturnType<typeof setTimeout> };
 type TitleSyncJob = { machineId: string; threadId: string; version: number; title: string; tabId: string; renameWorkspace: boolean };
 type TitleSyncQueue = { pending?: TitleSyncJob; running: boolean; stopped: boolean };
+type RuntimeTargetIdentity = { supervisor: TargetSupervisor; target: TargetAdapter; generation: string; fingerprint: string; session: string; configVersion: number };
 const TITLE_SYNC_TIMEOUT_MS = 5000;
 const threadMetadataAcknowledgement = (thread: Thread): ThreadMetadataAcknowledgement => ({
   entityId: thread.id,
@@ -37,6 +38,8 @@ export class RuntimeManager extends EventEmitter {
   private configVersions = new Map<string, number>();
   private pendingTerminalTabs = new Map<string, Map<string, PendingTerminalTab>>();
   private titleSyncQueues = new Map<string, TitleSyncQueue>();
+  private targetMutations = new Map<string, Promise<void>>();
+  private deletingThreads = new Set<string>();
   private started = false;
   private closed = false;
   constructor(readonly database: MetadataDatabase, targets: TargetAdapter[]) {
@@ -97,20 +100,55 @@ export class RuntimeManager extends EventEmitter {
     for (const key of this.catalogs.keys()) if (JSON.parse(key)[0] === machineId) this.catalogs.delete(key);
     this.supervisors.get(machineId)?.invalidate();
   }
+  private async withTargetMutation<T>(machineId: string, action: () => Promise<T>): Promise<T> {
+    const previous = this.targetMutations.get(machineId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    const tail = previous.then(() => current);
+    this.targetMutations.set(machineId, tail);
+    await previous;
+    try { return await action(); }
+    finally {
+      release();
+      if (this.targetMutations.get(machineId) === tail) this.targetMutations.delete(machineId);
+    }
+  }
+  private targetIdentity(supervisor: TargetSupervisor): RuntimeTargetIdentity {
+    return { supervisor, target: supervisor.target, generation: supervisor.generation, fingerprint: supervisor.target.fingerprint, session: supervisor.target.session, configVersion: supervisor.target.configVersion };
+  }
+  private hasCurrentProjection(identity: RuntimeTargetIdentity) {
+    const { supervisor, target, generation, fingerprint, session, configVersion } = identity;
+    const projection = this.projections.get(target.id);
+    return this.supervisors.get(target.id) === supervisor && supervisor.target === target && supervisor.generation === generation
+      && target.fingerprint === fingerprint && target.session === session && target.configVersion === configVersion
+      && supervisor.connected && !!supervisor.freshAt && projection?.connected === true && !!projection.freshAt
+      && projection.generation === generation && projection.machine?.session === session && projection.machine?.configVersion === configVersion;
+  }
+  private requireCurrentProjection(identity: RuntimeTargetIdentity) {
+    if (!this.hasCurrentProjection(identity)) throw new Error('machine_disconnected');
+    return this.projections.get(identity.target.id)!;
+  }
+  private matchesTargetIdentity(thread: Thread, identity: RuntimeTargetIdentity) {
+    return thread.bindingFingerprint === identity.fingerprint && thread.bindingConfigVersion === identity.configVersion && thread.session === identity.session;
+  }
   binding(machineId: string, threadId: string, terminalId: string) {
     const supervisor = this.supervisors.get(machineId);
-    const projection = this.projections.get(machineId);
-    const thread = projection?.threads.find((thread) => thread.id === threadId);
-    if (!supervisor?.connected || !thread || thread.bindingFingerprint !== supervisor.target.fingerprint || thread.bindingConfigVersion !== supervisor.target.configVersion || thread.session !== supervisor.target.session || thread.bindingState !== 'attached' || !thread.panes.some((pane) => pane.terminalId === terminalId)) throw new Error('binding_invalid');
-    return supervisor.target;
+    if (!supervisor) throw new Error('binding_invalid');
+    const identity = this.targetIdentity(supervisor);
+    const projection = this.requireCurrentProjection(identity);
+    const thread = projection.threads.find((thread) => thread.id === threadId);
+    if (!thread || !this.matchesTargetIdentity(thread, identity) || thread.bindingState !== 'attached' || !thread.panes.some((pane) => pane.terminalId === terminalId)) throw new Error('binding_invalid');
+    return identity.target;
   }
   terminalBinding(machineId: string, terminalId: string, ref: { threadId?: string; tabId?: string }) {
     if (ref.threadId) return this.binding(machineId, ref.threadId, terminalId);
     const supervisor = this.supervisors.get(machineId);
-    const projection = this.projections.get(machineId);
-    const tab = ref.tabId && projection?.availableTabs?.find((item) => item.tabId === ref.tabId && !item.bound && item.panes.some((pane) => pane.terminalId === terminalId));
-    if (!supervisor?.connected || !projection?.connected || !tab) throw new Error('binding_invalid');
-    return supervisor.target;
+    if (!supervisor) throw new Error('binding_invalid');
+    const identity = this.targetIdentity(supervisor);
+    const projection = this.requireCurrentProjection(identity);
+    const tab = ref.tabId && projection.availableTabs?.find((item) => item.tabId === ref.tabId && !item.bound && item.panes.some((pane) => pane.terminalId === terminalId));
+    if (!tab) throw new Error('binding_invalid');
+    return identity.target;
   }
   async createTerminal(machineId: string, path: string, key: string): Promise<CreatedWorkspace> {
     const supervisor = this.supervisors.get(machineId);
@@ -141,23 +179,32 @@ export class RuntimeManager extends EventEmitter {
     this.publish(supervisor);
   }
   async adopt(machineId: string, threadId: string, terminalIds: string[]) {
+    return this.withTargetMutation(machineId, () => this.adoptUnderTargetMutation(machineId, threadId, terminalIds));
+  }
+  private async adoptUnderTargetMutation(machineId: string, threadId: string, terminalIds: string[]) {
     const supervisor = this.supervisors.get(machineId);
     const row = this.database.threadRows(machineId).find((row) => row.id === threadId);
     if (!supervisor?.connected || !row || !terminalIds.length || new Set(terminalIds).size !== terminalIds.length) throw new Error('invalid_adoption');
+    const identity = this.targetIdentity(supervisor);
+    this.requireCurrentProjection(identity);
     const snapshot = await supervisor.readFresh();
+    this.requireCurrentProjection(identity);
+    const currentRow = this.database.threadRows(machineId).find((item) => item.id === threadId);
+    if (!currentRow) throw new Error('invalid_adoption');
     const panes = snapshot.panes.filter((pane) => terminalIds.includes(pane.terminal_id));
     const tab = panes[0]?.tab_id;
     if (panes.length !== terminalIds.length || !tab || panes.some((pane) => pane.tab_id !== tab) || snapshot.panes.filter((pane) => pane.tab_id === tab).length !== panes.length) throw new Error('invalid_adoption');
     if (this.projections.get(machineId)?.threads.some((other) => other.id !== threadId && other.bindingState === 'attached' && other.tabId === tab)) throw new Error('binding_conflict');
     const reports = panes.filter((pane) => pane.agent_session);
-    if (row.metadata.providerSession && (reports.length !== 1 || !sameSession(row.metadata.providerSession, reports[0].agent_session!))) throw new Error('conversation_changed');
+    if (currentRow.metadata.providerSession && (reports.length !== 1 || !sameSession(currentRow.metadata.providerSession, reports[0].agent_session!))) throw new Error('conversation_changed');
     if (reports.length > 1) throw new Error('conversation_conflict');
     const report = reports[0];
     const worktree = snapshot.workspaces.find((workspace) => workspace.workspace_id === report?.workspace_id)?.worktree;
     const cwd = report?.foreground_cwd ?? report?.cwd;
-    if (report && (!cwd || report.agent && report.agent !== report.agent_session!.agent || row.metadata.expectedCwd && row.metadata.expectedCwd !== cwd && !(row.metadata.providerSession && isSameOrSiblingWorktree(row.metadata.expectedCwd, cwd!)) || row.metadata.expectedRepository && worktree?.repo_key !== row.metadata.expectedRepository || row.metadata.expectedCheckout && worktree?.checkout_path !== row.metadata.expectedCheckout)) throw new Error('worktree_changed');
-    const identity = report ? { providerSession: report.agent_session!, expectedCwd: cwd!, observedCwd: cwd!, expectedRepository: row.metadata.expectedRepository ?? worktree?.repo_key, expectedCheckout: row.metadata.expectedCheckout ?? worktree?.checkout_path, agent: report.agent_session!.agent } : {};
-    this.database.saveThread({ ...row.metadata, ...identity, session: supervisor.target.session, tabId: tab, bindingFingerprint: supervisor.target.fingerprint, bindingConfigVersion: supervisor.target.configVersion, semanticSignature: undefined }, terminalIds, tab); this.publish(supervisor);
+    if (report && (!cwd || report.agent && report.agent !== report.agent_session!.agent || currentRow.metadata.expectedCwd && currentRow.metadata.expectedCwd !== cwd && !(currentRow.metadata.providerSession && isSameOrSiblingWorktree(currentRow.metadata.expectedCwd, cwd!)) || currentRow.metadata.expectedRepository && worktree?.repo_key !== currentRow.metadata.expectedRepository || currentRow.metadata.expectedCheckout && worktree?.checkout_path !== currentRow.metadata.expectedCheckout)) throw new Error('worktree_changed');
+    const adoption = report ? { providerSession: report.agent_session!, expectedCwd: cwd!, observedCwd: cwd!, expectedRepository: currentRow.metadata.expectedRepository ?? worktree?.repo_key, expectedCheckout: currentRow.metadata.expectedCheckout ?? worktree?.checkout_path, agent: report.agent_session!.agent } : {};
+    this.requireCurrentProjection(identity);
+    this.database.saveThread({ ...currentRow.metadata, ...adoption, session: identity.session, tabId: tab, bindingFingerprint: identity.fingerprint, bindingConfigVersion: identity.configVersion, semanticSignature: undefined }, terminalIds, tab); this.publish(supervisor);
   }
   private workspacesWithThreads(machineId: string) {
     const shownTabs = new Set(this.projections.get(machineId)?.threads.filter((thread) => thread.bindingState === 'attached' && !thread.archivedAt).map((thread) => thread.tabId));
@@ -210,6 +257,7 @@ export class RuntimeManager extends EventEmitter {
   archive(machineId: string, threadId: string, archived: boolean): ThreadArchiveResponse {
     const supervisor = this.supervisors.get(machineId);
     if (!supervisor) throw new Error('thread_not_found');
+    if (this.deletingThreads.has(JSON.stringify([machineId, threadId]))) throw new Error('delete_in_progress');
     const mutation = this.database.updateThreadMetadata(machineId, threadId, { archived });
     if (!mutation) throw new Error('thread_not_found');
     this.publish(supervisor);
@@ -252,7 +300,8 @@ export class RuntimeManager extends EventEmitter {
     const normalizedTitle = title === null ? null : title.trim();
     const queueKey = this.titleSyncQueueKey(machineId, threadId);
     const queueStopped = this.titleSyncQueues.get(queueKey)?.stopped === true;
-    const canSync = normalizedTitle !== null && thread?.bindingState === 'attached' && supervisor.connected && !!supervisor.target.renameTab && !queueStopped;
+    const identity = this.targetIdentity(supervisor);
+    const canSync = normalizedTitle !== null && thread?.bindingState === 'attached' && this.hasCurrentProjection(identity) && this.matchesTargetIdentity(thread, identity) && !!identity.target.renameTab && !queueStopped;
     const mutation = this.database.updateThreadMetadata(machineId, threadId, {
       titleOverride: normalizedTitle,
       titleSyncState: canSync ? 'pending' : 'unknown',
@@ -294,13 +343,19 @@ export class RuntimeManager extends EventEmitter {
         const job = queue.pending;
         queue.pending = undefined;
         const supervisor = this.supervisors.get(job.machineId);
-        if (!supervisor?.connected || !supervisor.target.renameTab) {
+        if (!supervisor) { this.finishTitleSync(job, 'unknown'); continue; }
+        const identity = this.targetIdentity(supervisor);
+        const thread = this.projections.get(job.machineId)?.threads.find((item) => item.id === job.threadId);
+        if (!this.hasCurrentProjection(identity) || !thread || thread.bindingState !== 'attached' || !this.matchesTargetIdentity(thread, identity) || !identity.target.renameTab) {
           this.finishTitleSync(job, 'unknown');
           continue;
         }
         const attempt = Promise.resolve().then(async () => {
-          await supervisor.target.renameTab!(job.tabId, job.title, job.renameWorkspace);
+          const current = this.projections.get(job.machineId)?.threads.find((item) => item.id === job.threadId);
+          if (!this.hasCurrentProjection(identity) || !current || current.bindingState !== 'attached' || !this.matchesTargetIdentity(current, identity)) throw new Error('binding_invalid');
+          await identity.target.renameTab!(job.tabId, job.title, job.renameWorkspace);
           await supervisor.readFresh();
+          this.requireCurrentProjection(identity);
         });
         let timedOut = false;
         let timer: ReturnType<typeof setTimeout> | undefined;
@@ -344,69 +399,141 @@ export class RuntimeManager extends EventEmitter {
     if (supervisor) this.publish(supervisor);
   }
   async openTerminal(machineId: string, threadId: string, afterPaneId: string) {
-    const { supervisor, thread } = this.attachedThread(machineId, threadId);
-    if (!thread.panes.some((pane) => pane.id === afterPaneId) || !supervisor.target.splitTerminal) throw new Error('thread_not_found');
-    const paneId = await supervisor.target.splitTerminal(afterPaneId, 'right');
-    this.saveThreadMetadata(machineId, threadId, { paneOrder: insertAfter(thread.panes.map((pane) => pane.id), afterPaneId, paneId) });
-    await supervisor.readFresh(); this.publish(supervisor);
-    return { paneId };
+    const { identity, supervisor, thread } = this.attachedThread(machineId, threadId);
+    if (!thread.panes.some((pane) => pane.id === afterPaneId) || !identity.target.splitTerminal) throw new Error('thread_not_found');
+    return this.withTargetMutation(machineId, async () => {
+      await supervisor.readFresh();
+      const current = this.requireCurrentProjection(identity).threads.find((item) => item.id === threadId);
+      if (!current || !this.matchesTargetIdentity(current, identity) || current.bindingState !== 'attached' || current.tabId !== thread.tabId) throw new Error('machine_disconnected');
+      if (!current.panes.some((pane) => pane.id === afterPaneId)) throw new Error('thread_not_found');
+      const paneId = await identity.target.splitTerminal!(afterPaneId, 'right');
+      await supervisor.readFresh();
+      const latest = this.requireCurrentProjection(identity).threads.find((item) => item.id === threadId);
+      if (!latest || !this.matchesTargetIdentity(latest, identity) || latest.bindingState !== 'attached' || latest.tabId !== current.tabId) throw new Error('machine_disconnected');
+      this.saveThreadMetadata(machineId, threadId, { paneOrder: insertAfter(current.panes.map((pane) => pane.id), afterPaneId, paneId) });
+      this.publish(supervisor);
+      return { paneId };
+    });
   }
   async closePane(machineId: string, threadId: string, paneId: string, force: boolean) {
-    const { supervisor, thread } = this.attachedThread(machineId, threadId);
+    const { identity, supervisor, thread } = this.attachedThread(machineId, threadId);
     if (!canClosePane(thread, paneId)) return { closed: false, busy: false };
-    if (!force && await supervisor.target.paneBusy?.(paneId)) return { closed: false, busy: true };
-    await supervisor.target.closePane?.(paneId);
-    await supervisor.readFresh(); this.publish(supervisor);
-    return { closed: true, busy: false };
+    if (!force && await identity.target.paneBusy?.(paneId)) return { closed: false, busy: true };
+    return this.withTargetMutation(machineId, async () => {
+      await supervisor.readFresh();
+      const current = this.requireCurrentProjection(identity).threads.find((item) => item.id === threadId);
+      if (!current || !this.matchesTargetIdentity(current, identity) || current.bindingState !== 'attached' || current.tabId !== thread.tabId) throw new Error('machine_disconnected');
+      if (!canClosePane(current, paneId)) return { closed: false, busy: false };
+      if (!force && await identity.target.paneBusy?.(paneId)) return { closed: false, busy: true };
+      await supervisor.readFresh();
+      const latest = this.requireCurrentProjection(identity).threads.find((item) => item.id === threadId);
+      if (!latest || !this.matchesTargetIdentity(latest, identity) || latest.bindingState !== 'attached' || latest.tabId !== thread.tabId) throw new Error('machine_disconnected');
+      if (!canClosePane(latest, paneId)) return { closed: false, busy: false };
+      await identity.target.closePane?.(paneId);
+      await supervisor.readFresh();
+      this.requireCurrentProjection(identity);
+      this.publish(supervisor);
+      return { closed: true, busy: false };
+    });
   }
   async closeTab(machineId: string, tabId: string, force: boolean) {
     const supervisor = this.supervisors.get(machineId);
-    if (!supervisor?.connected) throw new Error('machine_disconnected');
-    if (!supervisor.target.writable || !supervisor.target.discardTab) throw new Error('read_only');
+    if (!supervisor) throw new Error('machine_disconnected');
+    const identity = this.targetIdentity(supervisor);
+    this.requireCurrentProjection(identity);
+    const target = identity.target;
+    if (!target.writable || !target.discardTab) throw new Error('read_only');
     if (this.launchInProgress(machineId)) throw new Error('launch_in_progress');
-    const snapshot = await supervisor.readFresh();
-    const tab = snapshot.tabs.find((item) => item.tab_id === tabId);
-    if (!tab) throw new Error('tab_not_found');
-    if (this.listedThreadOwnsTab(machineId, tabId)) throw new Error('binding_conflict');
-    const panes = snapshot.panes.filter((pane) => pane.tab_id === tabId);
-    if (!force && supervisor.target.paneBusy) {
-      for (const pane of panes) {
-        if (await supervisor.target.paneBusy(pane.pane_id)) return { closed: false, busy: true };
+    const initial = await supervisor.readFresh();
+    this.requireCurrentProjection(identity);
+    if (!initial.tabs.some((item) => item.tab_id === tabId)) throw new Error('tab_not_found');
+    if (this.threadOwnsTab(machineId, tabId)) throw new Error('binding_conflict');
+    const probedPanes = initial.panes.filter((pane) => pane.tab_id === tabId);
+    if (!force && target.paneBusy) {
+      for (const pane of probedPanes) if (await target.paneBusy(pane.pane_id)) return { closed: false, busy: true };
+    }
+    return this.withTargetMutation(machineId, async () => {
+      const snapshot = await supervisor.readFresh();
+      this.requireCurrentProjection(identity);
+      if (!snapshot.tabs.some((item) => item.tab_id === tabId)) throw new Error('tab_not_found');
+      if (this.threadOwnsTab(machineId, tabId)) throw new Error('binding_conflict');
+      if (this.launchInProgress(machineId)) throw new Error('launch_in_progress');
+      const currentPanes = snapshot.panes.filter((pane) => pane.tab_id === tabId);
+      if (!force && (currentPanes.length !== probedPanes.length || currentPanes.some((pane) => !probedPanes.some((probed) => probed.pane_id === pane.pane_id && probed.terminal_id === pane.terminal_id)))) return { closed: false, busy: true };
+      if (!force && target.paneBusy) {
+        for (const pane of currentPanes) if (await target.paneBusy(pane.pane_id)) return { closed: false, busy: true };
       }
-    }
-    const pending = this.pendingTerminalTabs.get(machineId)?.get(tabId);
-    try { await supervisor.target.discardTab(tabId, false); }
-    catch { /* A failed Herdr reply can still mean the tab closed; verify its snapshot below. */ }
-    if (pending) {
-      clearTimeout(pending.timer);
-      this.pendingTerminalTabs.get(machineId)?.delete(tabId);
-      if (!this.pendingTerminalTabs.get(machineId)?.size) this.pendingTerminalTabs.delete(machineId);
-    }
-    const fresh = await supervisor.readFresh();
-    this.publish(supervisor);
-    return fresh.tabs.some((item) => item.tab_id === tabId) ? { closed: false, busy: false } : { closed: true, busy: false };
+      const freshSnapshot = await supervisor.readFresh();
+      this.requireCurrentProjection(identity);
+      if (!freshSnapshot.tabs.some((item) => item.tab_id === tabId)) throw new Error('tab_not_found');
+      if (this.threadOwnsTab(machineId, tabId)) throw new Error('binding_conflict');
+      if (this.launchInProgress(machineId)) throw new Error('launch_in_progress');
+      const latestPanes = freshSnapshot.panes.filter((pane) => pane.tab_id === tabId);
+      if (!force && (latestPanes.length !== currentPanes.length || latestPanes.some((pane) => !currentPanes.some((current) => current.pane_id === pane.pane_id && current.terminal_id === pane.terminal_id)))) return { closed: false, busy: true };
+      const pending = this.pendingTerminalTabs.get(machineId)?.get(tabId);
+      try { await target.discardTab(freshSnapshot, tabId, false); }
+      catch { /* A failed Herdr reply can still mean the tab closed; verify its snapshot below. */ }
+      const fresh = await supervisor.readFresh();
+      this.requireCurrentProjection(identity);
+      if (pending && !fresh.tabs.some((item) => item.tab_id === tabId) && this.pendingTerminalTabs.get(machineId)?.get(tabId) === pending) {
+        clearTimeout(pending.timer);
+        this.pendingTerminalTabs.get(machineId)?.delete(tabId);
+        if (!this.pendingTerminalTabs.get(machineId)?.size) this.pendingTerminalTabs.delete(machineId);
+      }
+      this.publish(supervisor);
+      return fresh.tabs.some((item) => item.tab_id === tabId) ? { closed: false, busy: false } : { closed: true, busy: false };
+    });
   }
   private attachedThread(machineId: string, threadId: string) {
     const supervisor = this.supervisors.get(machineId);
-    const thread = this.projections.get(machineId)?.threads.find((thread) => thread.id === threadId);
-    if (!supervisor || !thread) throw new Error('thread_not_found');
-    if (!supervisor.connected || thread.bindingState !== 'attached') throw new Error('machine_disconnected');
-    return { supervisor, thread };
+    if (!supervisor) throw new Error('thread_not_found');
+    const identity = this.targetIdentity(supervisor);
+    const projection = this.requireCurrentProjection(identity);
+    const thread = projection.threads.find((thread) => thread.id === threadId);
+    if (!thread) throw new Error('thread_not_found');
+    if (!this.matchesTargetIdentity(thread, identity) || thread.bindingState !== 'attached') throw new Error('machine_disconnected');
+    return { identity, supervisor, thread };
   }
   private saveThreadMetadata(machineId: string, threadId: string, change: Partial<Thread>) {
     const row = this.database.threadRows(machineId).find((row) => row.id === threadId);
     if (row) this.database.saveThread({ ...row.metadata, ...change }, row.anchors, row.alias);
   }
-  async deleteThread(machineId: string, threadId: string) {
+  async deleteThread(machineId: string, threadId: string, archivedOnly = false) {
+    return this.withTargetMutation(machineId, () => this.deleteThreadUnderTargetMutation(machineId, threadId, archivedOnly));
+  }
+  private async deleteThreadUnderTargetMutation(machineId: string, threadId: string, archivedOnly: boolean) {
     const supervisor = this.supervisors.get(machineId);
-    const thread = this.projections.get(machineId)?.threads.find((thread) => thread.id === threadId);
-    if (!supervisor || !thread) throw new Error('thread_not_found');
+    if (!supervisor) throw new Error('thread_not_found');
+    const identity = this.targetIdentity(supervisor);
+    this.requireCurrentProjection(identity);
+    const snapshot = await supervisor.readFresh();
+    const projection = this.requireCurrentProjection(identity);
+    const thread = projection.threads.find((thread) => thread.id === threadId);
+    if (!thread) throw new Error('thread_not_found');
+    if (archivedOnly && !thread.archivedAt) throw new Error('thread_not_found');
+    if (!this.matchesTargetIdentity(thread, identity)) throw new Error('binding_invalid');
     if (['pending', 'running'].includes(thread.operation?.state ?? '')) throw new Error('launch_in_progress');
+    const target = identity.target;
     if (thread.bindingState === 'attached') {
-      if (!supervisor.connected || !supervisor.target.discardTab) throw new Error('machine_disconnected');
-      await supervisor.target.discardTab(thread.tabId, !!thread.ownsWorktree);
-      await supervisor.readFresh();
+      if (!target.discardTab || !snapshot.tabs.some((tab) => tab.tab_id === thread.tabId)) throw new Error('binding_invalid');
+      const deletionKey = JSON.stringify([machineId, threadId]);
+      this.deletingThreads.add(deletionKey);
+      try {
+        await target.discardTab(snapshot, thread.tabId, !!thread.ownsWorktree);
+        const fresh = await supervisor.readFresh();
+        const current = this.requireCurrentProjection(identity);
+        const currentThread = current.threads.find((item) => item.id === threadId);
+        if (!currentThread || archivedOnly && !currentThread.archivedAt || !this.matchesTargetIdentity(currentThread, identity) || currentThread.tabId !== thread.tabId || ['pending', 'running'].includes(currentThread.operation?.state ?? '')) throw new Error('thread_not_found');
+        if (fresh.tabs.some((tab) => tab.tab_id === thread.tabId)) throw new Error('tab_delete_unconfirmed');
+        this.database.deleteThread(threadId);
+        this.publish(supervisor);
+      } finally { this.deletingThreads.delete(deletionKey); }
+      return;
     }
+    if (thread.bindingState !== 'detached' || thread.tabId && snapshot.tabs.some((tab) => tab.tab_id === thread.tabId)) throw new Error('binding_uncertain');
+    const current = this.requireCurrentProjection(identity);
+    const currentThread = current.threads.find((item) => item.id === threadId);
+    if (!currentThread || archivedOnly && !currentThread.archivedAt || !this.matchesTargetIdentity(currentThread, identity) || currentThread.tabId !== thread.tabId) throw new Error('thread_not_found');
     this.database.deleteThread(threadId);
     this.publish(supervisor);
   }
@@ -417,32 +544,36 @@ export class RuntimeManager extends EventEmitter {
     let deleted = 0;
     let orphanTabsDeleted = 0;
     for (const thread of archived) {
-      try { await this.deleteThread(thread.machineId, thread.id); ++deleted; }
+      try { await this.deleteThread(thread.machineId, thread.id, true); ++deleted; }
       catch { failed.push(thread.id); }
     }
     for (const supervisor of this.supervisors.values()) {
       const machineId = supervisor.target.id;
-      if (!supervisor.connected) { skippedMachines.push(machineId); continue; }
+      const identity = this.targetIdentity(supervisor);
+      if (!this.hasCurrentProjection(identity)) { skippedMachines.push(machineId); continue; }
       let snapshot: NativeSnapshot;
-      try { snapshot = await supervisor.readFresh(); }
+      try { snapshot = await supervisor.readFresh(); this.requireCurrentProjection(identity); }
       catch { skippedMachines.push(machineId); continue; }
       const orphanTabs = snapshot.tabs.filter((tab) => !this.threadOwnsTab(machineId, tab.tab_id)).map((tab) => tab.tab_id);
       for (const tabId of orphanTabs) {
-        if (!supervisor.connected || !supervisor.target.writable || !supervisor.target.discardTab) {
-          skippedMachines.push(machineId);
-          break;
-        }
-        try { snapshot = await supervisor.readFresh(); }
-        catch { skippedMachines.push(machineId); break; }
-        if (!supervisor.connected || this.launchInProgress(machineId)) { skippedMachines.push(machineId); break; }
-        if (!snapshot.tabs.some((tab) => tab.tab_id === tabId) || this.threadOwnsTab(machineId, tabId)) continue;
-        try { await supervisor.target.discardTab(tabId, false); }
-        catch { /* A failed Herdr reply can still mean the tab closed; verify its snapshot below. */ }
-        try { snapshot = await supervisor.readFresh(); }
-        catch { failed.push(`${machineId}:${tabId}`); skippedMachines.push(machineId); break; }
-        const remains = snapshot.tabs.some((tab) => tab.tab_id === tabId);
-        if (!remains) ++orphanTabsDeleted;
-        else if (!this.threadOwnsTab(machineId, tabId)) failed.push(`${machineId}:${tabId}`);
+        await this.withTargetMutation(machineId, async () => {
+          const target = identity.target;
+          if (!this.hasCurrentProjection(identity) || !target.writable || !target.discardTab) {
+            skippedMachines.push(machineId);
+            return;
+          }
+          try { snapshot = await supervisor.readFresh(); this.requireCurrentProjection(identity); }
+          catch { skippedMachines.push(machineId); return; }
+          if (this.launchInProgress(machineId)) { skippedMachines.push(machineId); return; }
+          if (!snapshot.tabs.some((tab) => tab.tab_id === tabId) || this.threadOwnsTab(machineId, tabId)) return;
+          try { await target.discardTab(snapshot, tabId, false); }
+          catch { /* A failed Herdr reply can still mean the tab closed; verify its snapshot below. */ }
+          try { snapshot = await supervisor.readFresh(); this.requireCurrentProjection(identity); }
+          catch { failed.push(`${machineId}:${tabId}`); skippedMachines.push(machineId); return; }
+          const remains = snapshot.tabs.some((tab) => tab.tab_id === tabId);
+          if (!remains) ++orphanTabsDeleted;
+          else if (!this.threadOwnsTab(machineId, tabId)) failed.push(`${machineId}:${tabId}`);
+        });
       }
     }
     return { deleted, orphanTabsDeleted, failed, skippedMachines: [...new Set(skippedMachines)] };
@@ -469,17 +600,23 @@ export class RuntimeManager extends EventEmitter {
   }
   private buildProjection(supervisor: TargetSupervisor) {
     const previous = this.projections.get(supervisor.target.id);
-    const records = supervisor.snapshot ? reconcile(this.database, supervisor.target, supervisor.snapshot) : {
-      threads: this.database.threadRows(supervisor.target.id).map((row) => ({ ...row.metadata, panes: [], bindingState: 'detached' as const, status: 'unknown' as const })),
+    const current = supervisor.connected && !!supervisor.freshAt && !!supervisor.snapshot;
+    const saved = new Map(this.database.threadRows(supervisor.target.id).map((row) => [row.id, row.metadata]));
+    const staleThreads = previous ? previous.threads.map((thread) => {
+      const metadata = saved.get(thread.id);
+      return { ...thread, ...(metadata ?? {}), panes: thread.panes, bindingState: thread.bindingState ?? metadata?.bindingState, prompt: '', status: 'unknown' as const };
+    }) : [...saved.values()].map((thread) => ({ ...thread, panes: [], prompt: '', status: 'unknown' as const }));
+    const records = current ? reconcile(this.database, supervisor.target, supervisor.snapshot!) : {
+      threads: staleThreads,
       projects: (previous?.projects ?? []).map((project) => {
         const logicalId = project.logicalId ?? project.id;
         return { ...project, name: this.database.projectName(supervisor.target.id, logicalId) ?? project.name, metadataVersion: this.database.projectMetadataVersion(supervisor.target.id, logicalId) };
       }),
     };
-    const projection: Projection = { machineId: supervisor.target.id, generation: supervisor.generation, revision: (previous?.revision ?? 0) + 1, freshAt: supervisor.freshAt, connected: supervisor.connected, error: supervisor.error, ...records, layouts: supervisor.snapshot?.layouts.map((layout) => ({ workspaceId: layout.workspace_id, tabId: layout.tab_id, area: layout.area, panes: layout.panes.map((pane) => ({ paneId: pane.pane_id, rect: pane.rect })) })) ?? [] };
-    projection.threads = projection.threads.map((thread) => ({ ...thread, prompt: '', ...(!projection.connected ? { panes: [], status: 'unknown' as const, bindingState: 'detached' as const, recovery: thread.providerSession ? { state: 'known' as const } : thread.recovery } : {}) }));
-    const availableTabs = projection.connected ? supervisor.snapshot?.tabs.map((tab) => ({ tabId: tab.tab_id, workspaceId: tab.workspace_id, label: tab.label ?? tab.tab_id, bound: projection.threads.some((thread) => thread.bindingState === 'attached' && thread.tabId === tab.tab_id && isListedThread(thread)), panes: supervisor.snapshot!.panes.filter((pane) => pane.tab_id === tab.tab_id && pane.workspace_id === tab.workspace_id).map((pane) => ({ id: pane.pane_id, terminalId: pane.terminal_id, title: pane.title ?? pane.agent ?? 'Shell' })) })) ?? [] : [];
-    const pending = this.pendingTerminalTabs.get(supervisor.target.id);
+    const projection: Projection = { machineId: supervisor.target.id, generation: supervisor.generation, revision: (previous?.revision ?? 0) + 1, freshAt: current ? supervisor.freshAt : null, connected: current, error: supervisor.error, ...records, layouts: current ? supervisor.snapshot!.layouts.map((layout) => ({ workspaceId: layout.workspace_id, tabId: layout.tab_id, area: layout.area, panes: layout.panes.map((pane) => ({ paneId: pane.pane_id, rect: pane.rect })) })) : previous?.layouts ?? [] };
+    projection.threads = projection.threads.map((thread) => ({ ...thread, prompt: '', ...(!current ? { status: 'unknown' as const } : {}) }));
+    const availableTabs = current ? supervisor.snapshot!.tabs.map((tab) => ({ tabId: tab.tab_id, workspaceId: tab.workspace_id, label: tab.label ?? tab.tab_id, bound: projection.threads.some((thread) => thread.bindingState === 'attached' && thread.tabId === tab.tab_id && isListedThread(thread)), panes: supervisor.snapshot!.panes.filter((pane) => pane.tab_id === tab.tab_id && pane.workspace_id === tab.workspace_id).map((pane) => ({ id: pane.pane_id, terminalId: pane.terminal_id, title: pane.title ?? pane.agent ?? 'Shell' })) })) : previous?.availableTabs ?? [];
+    const pending = current ? this.pendingTerminalTabs.get(supervisor.target.id) : undefined;
     for (const [tabId, entry] of pending ?? []) {
       const observed = availableTabs.find((tab) => tab.tabId === tabId);
       if (observed?.panes.some((pane) => pane.terminalId === entry.tab.panes[0]?.terminalId)) {
@@ -494,7 +631,7 @@ export class RuntimeManager extends EventEmitter {
     }
     if (pending && !pending.size) this.pendingTerminalTabs.delete(supervisor.target.id);
     projection.availableTabs = availableTabs;
-    projection.machine = this.machine(supervisor);
+    projection.machine = { ...this.machine(supervisor), connected: current };
     const semantic = (value: Projection) => JSON.stringify({ ...value, revision: 0, freshAt: null });
     if (previous && semantic(previous) === semantic(projection) && (!projection.freshAt || Date.parse(projection.freshAt) - Date.parse(previous.freshAt ?? '') < 30_000)) return;
     this.projections.set(supervisor.target.id, projection);

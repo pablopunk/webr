@@ -59,7 +59,7 @@ const statusBadges: Partial<Record<Thread['status'], typeof CircleHelp>> = {
 };
 
 const reportFailure = (error: unknown) => alertDialog(error instanceof Error ? error.message : 'Herdr could not complete this action.');
-const confirmDelete = async (thread: Thread) => { if (await confirmDialog(deleteWarning([thread]), { confirmLabel: 'Delete', danger: true })) await deleteThreadPermanently(thread).catch(reportFailure); };
+const confirmDelete = async (thread: Thread, canDelete: boolean) => { if (canDelete && await confirmDialog(deleteWarning([thread]), { confirmLabel: 'Delete', danger: true })) await deleteThreadPermanently(thread).catch(reportFailure); };
 function NewTerminalButton({ machine, onNavigate }: { machine?: Machine; onNavigate?: AppNavigate }) {
   const [busy, setBusy] = useState(false);
   const operation = useRef<{ payload: string; key: string } | null>(null);
@@ -77,7 +77,7 @@ function NewTerminalButton({ machine, onNavigate }: { machine?: Machine; onNavig
   return <Tooltip label="New Terminal"><button type="button" className="sidebar-action-icon" aria-label="New Terminal" disabled={!machine || !machine.connected || !machine.writable || busy} onClick={() => void open()}><SquareTerminal size={16} aria-hidden="true" /></button></Tooltip>;
 }
 
-const ThreadRow = memo(function ThreadRow({ thread, project, machineName, current, showProject, href }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean; href: string }) {
+const ThreadRow = memo(function ThreadRow({ thread, project, machineName, current, showProject, href, connected, canDelete }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean; href: string; connected: boolean; canDelete: boolean }) {
   const archived = !!thread.archivedAt;
   const ArchiveIcon = archived ? ArchiveRestore : Archive;
   const archiveLabel = archived ? `Unarchive ${thread.title}` : `Archive ${thread.title}`;
@@ -94,11 +94,11 @@ const ThreadRow = memo(function ThreadRow({ thread, project, machineName, curren
   const flipId = thread.bindingState === 'attached' && thread.tabId ? sidebarTabKey(thread.machineId, thread.tabId) : thread.id;
   return <ContextMenu.Root>
     <ContextMenu.Trigger className="thread-item" data-flip-id={flipId} onDoubleClick={(event) => { event.preventDefault(); setRenaming(true); }}>
-      <ThreadLink thread={thread} project={project} machineName={machineName} current={current} showProject={showProject} editor={editor} href={href} />
+      <ThreadLink thread={thread} project={project} machineName={machineName} current={current} showProject={showProject} editor={editor} href={href} connected={connected} />
       <Tooltip label={archived ? 'Unarchive' : 'Archive'}><button type="button" className="thread-archive" aria-label={archiveLabel} onClick={() => void setThreadArchived(thread, !archived).catch(reportFailure)}><ArchiveIcon size={15} strokeWidth={1.8} aria-hidden="true" /></button></Tooltip>
     </ContextMenu.Trigger>
     <ContextMenu.Portal><ContextMenu.Positioner className="thread-menu-positioner"><ContextMenu.Popup className="thread-menu">
-      <ContextMenu.Item className="thread-menu-item is-danger" onClick={() => void confirmDelete(thread)}><Trash2 size={14} aria-hidden="true" />Delete permanently</ContextMenu.Item>
+      <ContextMenu.Item className="thread-menu-item is-danger" disabled={!canDelete} onClick={() => void confirmDelete(thread, canDelete)}><Trash2 size={14} aria-hidden="true" />Delete permanently</ContextMenu.Item>
     </ContextMenu.Popup></ContextMenu.Positioner></ContextMenu.Portal>
   </ContextMenu.Root>;
 });
@@ -126,10 +126,10 @@ const TerminalRow = memo(function TerminalRow({ tab, session, machineName, curre
   </div>;
 });
 
-function ThreadLink({ thread, project, machineName, current, showProject, editor, href }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean; href: string; editor?: ReactNode }) {
+function ThreadLink({ thread, project, machineName, current, showProject, editor, href, connected }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean; href: string; connected: boolean; editor?: ReactNode }) {
   const avatar = useRef<HTMLSpanElement>(null);
   const projectSlot = useRef<HTMLSpanElement>(null);
-  const launching = isLaunching(thread); const failed = launchFailed(thread);
+  const launching = connected && isLaunching(thread); const failed = connected && launchFailed(thread);
   const canReplaceAvatar = !!project && !launching && !failed;
   useLayoutEffect(() => {
     const slot = projectSlot.current;
@@ -150,10 +150,11 @@ function ThreadLink({ thread, project, machineName, current, showProject, editor
     return () => observer.disconnect();
   }, [showProject, canReplaceAvatar, editor]);
   const warning = failed;
-  const unseen = hasUnseenDone(thread);
-  const StatusIcon = warning ? TriangleAlert : launching ? undefined : unseen ? CircleCheck : thread.status === 'done' ? undefined : statusBadges[thread.status];
-  const needsAttention = warning || thread.status === 'blocked' || unseen;
-  const status = launching ? launchLabel(thread) : failed ? 'Launch stopped' : unseen ? statusLabel.done : statusLabel[thread.status];
+  const unseen = connected && hasUnseenDone(thread);
+  const currentStatus = connected ? thread.status : 'unknown';
+  const StatusIcon = warning ? TriangleAlert : launching ? undefined : unseen ? CircleCheck : currentStatus === 'done' ? undefined : statusBadges[currentStatus];
+  const needsAttention = warning || currentStatus === 'blocked' || unseen;
+  const status = !connected ? statusLabel.unknown : launching ? launchLabel(thread) : failed ? 'Launch stopped' : unseen ? statusLabel.done : statusLabel[currentStatus];
   const context = launching || failed ? status : showProject ? project?.name : harnessName(thread.agent);
   const Row = editor ? 'div' : 'a';
   return <Tooltip label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`} side="right"><Row className={`thread-row ${current ? 'is-current' : ''} ${needsAttention ? `needs-attention status-${warning || thread.status === 'blocked' ? 'blocked' : 'done'}` : ''}`} href={editor ? undefined : href} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${status}`}>
@@ -277,7 +278,8 @@ export function Sidebar({ projects, threads, archived = [], floating = [], detac
     const href = ownedTab ? terminalHref(ownedTab.session || machine?.session || 'default', ownedTab) : `/threads/${encodeURIComponent(thread.id)}`;
     const viewingOwnedTab = !!ownedTab && currentTab?.machineId === ownedTab.machineId && currentTab?.tabId === ownedTab.tabId;
     const keyed = ownedTab || thread.bindingState === 'attached' && thread.tabId;
-    return <ThreadRow key={keyed ? sidebarTabKey(thread.machineId, ownedTab?.tabId ?? thread.tabId) : thread.id} thread={thread} project={project} machineName={machine?.name ?? thread.machineId} current={currentId === thread.id || viewingOwnedTab} showProject={showProject} href={href} />;
+    const connected = machine?.connected === true;
+    return <ThreadRow key={keyed ? sidebarTabKey(thread.machineId, ownedTab?.tabId ?? thread.tabId) : thread.id} thread={thread} project={project} machineName={machine?.name ?? thread.machineId} current={currentId === thread.id || viewingOwnedTab} showProject={showProject} href={href} connected={connected} canDelete={connected} />;
   };
   const terminalLink = (tab: FloatingTab) => {
     const machine = machines.find((item) => item.id === tab.machineId);

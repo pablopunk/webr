@@ -69,7 +69,7 @@ export class FakeTarget implements TargetAdapter {
     return pane.pane_id;
   }
   async closePane(paneId: string) { this.effect('close:' + paneId); this.state.panes = this.state.panes.filter((pane) => pane.pane_id !== paneId); }
-  async discardTab(tabId: string, removeWorktree = false) {
+  async discardTab(_snapshot: NativeSnapshot, tabId: string, removeWorktree = false) {
     this.effect('discard:' + tabId);
     this.discards.push({ tabId, removeWorktree });
     const terminalIds = new Set(this.state.panes.filter((pane) => pane.tab_id === tabId).map((pane) => pane.terminal_id));

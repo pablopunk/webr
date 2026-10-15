@@ -10,6 +10,7 @@ export type FloatingTab = {
   label: string;
   paneCount: number;
   panes: { id: string; terminalId: string; title: string }[];
+  stale?: boolean;
 };
 
 export const sidebarTabKey = (machineId: string, tabId: string) => `${machineId}:${tabId}`;
@@ -48,6 +49,7 @@ function computeFloatingTabs(
       label: tab.label ?? tab.tabId,
       paneCount: tab.panes.length,
       panes: tab.panes,
+      stale: !projection.connected || !projection.freshAt,
     }))).sort((a, b) => (a.label ?? '').localeCompare(b.label ?? '') || (a.tabId ?? '').localeCompare(b.tabId ?? ''));
 }
 
@@ -61,7 +63,7 @@ const tabKeyOf = (thread: Thread) => sidebarTabKey(thread.machineId, thread.tabI
  * a live tab and not launching are detached and never become a row that opens nothing.
  */
 export function partitionSidebar(threads: Thread[], unboundTabs: FloatingTab[], now = Date.now()): SidebarPartition {
-  const liveTabs = new Map(unboundTabs.map((tab) => [sidebarTabKey(tab.machineId, tab.tabId), tab]));
+  const liveTabs = new Map(unboundTabs.filter((tab) => !tab.stale).map((tab) => [sidebarTabKey(tab.machineId, tab.tabId), tab]));
   const candidates = threads.filter((thread) => isListedThread(thread, now));
   const owners = new Map<string, Thread>();
   for (const thread of candidates) {
@@ -115,7 +117,7 @@ export function decideFlipNavigation(args: {
     if (!thread) return { to: null };
     const demoted = thread.bindingState !== 'attached' || !thread.panes.some((pane) => pane.kind === 'agent');
     if (demoted) {
-      const tab = args.floating.find((item) => item.machineId === thread.machineId && item.tabId === thread.tabId);
+      const tab = args.floating.find((item) => !item.stale && item.machineId === thread.machineId && item.tabId === thread.tabId);
       if (tab) return { to: 'terminal', session: tab.session, machineId: tab.machineId, tabId: tab.tabId };
     }
   }

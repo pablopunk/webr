@@ -74,7 +74,7 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
   const unboundTabs = useRuntimeSelector(useShallow((state) => floatingTabsFromProjections(state.projections, Object.fromEntries(bootstrap.machines.map((machine) => [machine.id, machine.session])))));
   const { listed: threads, detached, terminals: floating, ownedTabs } = useMemo(() => partitionSidebar(activeThreads, unboundTabs), [activeThreads, unboundTabs]);
   const terminalPanes: Pane[] = standaloneTab?.panes.map((pane) => ({ ...pane, kind: 'shell' })) ?? [];
-  const machines = Object.values(projections).flatMap((projection) => { const machine = projection.machine ?? bootstrap.machines.find((machine) => machine.id === projection.machineId); return machine ? [{ ...machine, connected: gatewayConnected && projection.connected, error: projection.error }] : []; });
+  const machines = Object.values(projections).flatMap((projection) => { const machine = projection.machine ?? bootstrap.machines.find((machine) => machine.id === projection.machineId); return machine ? [{ ...machine, connected: gatewayConnected && projection.connected && !!projection.freshAt, error: projection.error }] : []; });
   const routeProjection = route.type === 'terminal' ? projections[route.machineId] : undefined;
   const terminalMissing = route.type === 'terminal' && routeMachineSession === route.session
     && routeProjection?.connected === true && !!routeProjection.freshAt && !thread && !standaloneTab;
@@ -125,7 +125,7 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
   const activePanes = page === 'terminal' ? terminalPanes : thread?.panes ?? [];
   const focusedPane = activePanes.some((pane) => pane.id === storedFocus) ? storedFocus! : activePanes[0]?.id ?? '';
   const setFocusedPane = useCallback((paneId: string) => ui.getState().focus(scope, paneId), [ui, scope]);
-  useClearDoneOnVisit(page === 'thread' ? thread : undefined, focusedPane, gatewayConnected && !!machines.find((machine) => machine.id === thread?.machineId)?.writable);
+  useClearDoneOnVisit(page === 'thread' ? thread : undefined, focusedPane, !!machines.find((machine) => machine.id === thread?.machineId)?.connected && !!machines.find((machine) => machine.id === thread?.machineId)?.writable);
   useEffect(() => {
     if (page !== 'thread' || thread?.operation?.state !== 'ready') return;
     clearLaunchDraft(thread.id);
@@ -327,11 +327,11 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
       mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} onNavigate={navigate} paletteShortcut={shortcuts.commandPalette} updateAction={<UpdateButton />} />
     <div className="main-panel">
       {narrow && (page === 'thread' || page === 'terminal') && <MobileTopBar panes={page === 'thread' ? thread?.panes ?? [] : terminalPanes} focusedPane={focusedPane} onFocusPane={setFocusedPane} onOpenSidebar={toggleSidebar} onOpenPalette={() => setPaletteOpen(true)} keepTerminalFocus={keepTerminalFocus} />}
-      {page === 'thread' && thread && <ThreadView thread={thread} connected={gatewayConnected && !!projections[thread.machineId]?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} />}
+      {page === 'thread' && thread && <ThreadView thread={thread} connected={!!machines.find((machine) => machine.id === thread.machineId)?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} />}
       {page === 'thread' && !thread && threadIsAuthoritativelyMissing && <main className="not-found"><h1>Thread not found</h1><a href="/">Open a thread</a></main>}
       {page === 'thread' && !thread && !threadIsAuthoritativelyMissing && <main className="native-thread-layout" aria-label="Thread"><p className="runtime-notice" role="status">Waiting for this thread to appear…</p></main>}
       {page === 'terminal' && route.type === 'terminal' && routeMachineSession !== route.session && <main className="native-thread-layout" aria-label="Terminal tab"><p className="runtime-notice" role="status">Waiting for this terminal tab to appear…</p></main>}
-      {page === 'terminal' && route.type === 'terminal' && routeMachineSession === route.session && machineId && tabId && <TerminalTabView machineId={machineId} tabId={tabId} panes={terminalPanes} connected={gatewayConnected && !!projections[machineId]?.connected} canControl={!!machines.find((machine) => machine.id === machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} pending={terminalPending} missing={terminalMissing} startupPreset={pendingTerminalStartup} onStartupComplete={completeTerminalStartup} />}
+      {page === 'terminal' && route.type === 'terminal' && routeMachineSession === route.session && machineId && tabId && <TerminalTabView machineId={machineId} tabId={tabId} panes={terminalPanes} connected={!!machines.find((machine) => machine.id === machineId)?.connected} canControl={!!machines.find((machine) => machine.id === machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} pending={terminalPending} missing={terminalMissing} startupPreset={pendingTerminalStartup} onStartupComplete={completeTerminalStartup} />}
       {page === 'new' && <NewThreadView key={projectId} projects={projects} machines={machines} selectedProjectId={projectId} onOpenSidebar={toggleSidebar} onNavigate={navigate} />}
       {page === 'settings' && <SettingsView onOpenSidebar={toggleSidebar} />}
       {page === 'missing' && <main className="not-found"><h1>Page not available</h1><a href="/">Open Webr</a></main>}

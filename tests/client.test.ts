@@ -1,6 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Terminal } from '@xterm/xterm';
 import { BrowserTerminalManager } from '../src/client/terminal-manager';
+import { createRuntimeStore } from '../src/client/store';
+import type { Projection } from '../src/shared/runtime';
 import { TerminalRenderer } from '../src/client/terminal-renderer';
 import { encodeFrame } from '../src/shared/frame';
 import { frame } from './fixtures/target';
@@ -24,11 +26,49 @@ function setup() {
   const terminal = { resize: vi.fn(), write: (bytes: Uint8Array, finish: () => void) => writes.push({ bytes, finish }) } as unknown as Terminal;
   const manager = new BrowserTerminalManager(() => {}, () => {}); manager.start();
   const [metadata, binary] = BrowserSocket.instances; metadata.open(); binary.open();
+  metadata.onmessage!({ data: JSON.stringify({ type: 'projection', projection: { machineId: 'fixture', generation: 'g1', revision: 1, connected: true, freshAt: new Date().toISOString(), threads: [{ id: '00000000-0000-4000-8000-000000000001', bindingState: 'attached', panes: [{ terminalId: 'term_fixture' }] }], availableTabs: [] } }) });
   const onState = vi.fn();
   const pane = manager.mount({ machineId: 'fixture', threadId: '00000000-0000-4000-8000-000000000001', terminalId: 'term_fixture', terminal, mode: 'observe', cols: 80, rows: 24, onState });
   const open = JSON.parse(binary.sent[0]);
   return { manager, pane, metadata, binary, writes, terminal, open, onState };
 }
+it('does not accept a projection rejected by the shared runtime store', () => {
+  vi.useFakeTimers(); BrowserSocket.instances = [];
+  vi.spyOn(Math, 'random').mockReturnValue(0.5);
+  vi.stubGlobal('WebSocket', BrowserSocket); vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:4321' });
+  const threadId = '00000000-0000-4000-8000-000000000001';
+  const projection = (generation: string, revision: number): Projection => ({ machineId: 'fixture', generation, revision, connected: true, freshAt: new Date().toISOString(), threads: [{ id: threadId, bindingState: 'attached', panes: [{ terminalId: 'term_fixture' }] }], projects: [], layouts: [], availableTabs: [] } as unknown as Projection);
+  const runtime = createRuntimeStore({ projections: [], machines: [], threads: [], projects: [], recoveryScope: 'fixture' });
+  runtime.getState().install(projection('g1', 1)); runtime.getState().install(projection('g2', 1));
+  const manager = new BrowserTerminalManager((value) => runtime.getState().install(value), () => {}); manager.start();
+  const [metadata, binary] = BrowserSocket.instances; metadata.open(); binary.open();
+  metadata.onmessage!({ data: JSON.stringify({ type: 'projection', projection: projection('g1', 99) }) });
+  const terminal = { resize: vi.fn(), write: vi.fn() } as unknown as Terminal;
+  const pane = manager.mount({ machineId: 'fixture', threadId, terminalId: 'term_fixture', terminal, mode: 'observe', cols: 80, rows: 24, onState: vi.fn() });
+  const beforeAcceptedProjection = binary.sent.length;
+  pane.control(); expect(binary.sent).toHaveLength(beforeAcceptedProjection);
+  metadata.onmessage!({ data: JSON.stringify({ type: 'projection', projection: projection('g2', 2) }) });
+  pane.control(); expect(JSON.parse(binary.sent.at(-1)!).mode).toBe('control');
+  manager.stop();
+});
+
+it('revalidates an equal-revision bootstrap before enabling terminal control', () => {
+  vi.useFakeTimers(); BrowserSocket.instances = [];
+  vi.spyOn(Math, 'random').mockReturnValue(0.5);
+  vi.stubGlobal('WebSocket', BrowserSocket); vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:4321' });
+  const threadId = '00000000-0000-4000-8000-000000000001';
+  const projection: Projection = { machineId: 'fixture', generation: 'g1', revision: 1, connected: true, freshAt: new Date().toISOString(), threads: [{ id: threadId, bindingState: 'attached', panes: [{ terminalId: 'term_fixture' }] }], projects: [], layouts: [], availableTabs: [] } as unknown as Projection;
+  const runtime = createRuntimeStore({ projections: [projection], machines: [], threads: [], projects: [], recoveryScope: 'fixture' });
+  runtime.getState().connection(false);
+  const manager = new BrowserTerminalManager((value) => runtime.getState().install(value), () => {}); manager.start();
+  const [metadata, binary] = BrowserSocket.instances; metadata.open(); binary.open();
+  metadata.onmessage!({ data: JSON.stringify({ type: 'projection', projection }) });
+  const terminal = { resize: vi.fn(), write: vi.fn() } as unknown as Terminal;
+  const pane = manager.mount({ machineId: 'fixture', threadId, terminalId: 'term_fixture', terminal, mode: 'observe', cols: 80, rows: 24, onState: vi.fn() });
+  pane.control(); expect(JSON.parse(binary.sent.at(-1)!).mode).toBe('control');
+  manager.stop();
+});
+
 it('opens only two app sockets and ACKs binary output only after xterm finishes it', () => {
   const { manager, binary, writes, open, pane } = setup();
   expect(BrowserSocket.instances).toHaveLength(2);
@@ -37,6 +77,37 @@ it('opens only two app sockets and ACKs binary output only after xterm finishes 
   writes[0].finish(); expect(JSON.parse(binary.sent[1]).type).toBe('ack');
   pane.close(); expect(JSON.parse(binary.sent.at(-1)!).type).toBe('release'); manager.stop();
 });
+it('revokes control on machine-only loss and recovers only as an observer after fresh binding evidence', () => {
+  const { manager, pane, metadata, binary, open } = setup();
+  pane.control(); const control = JSON.parse(binary.sent.at(-1)!);
+  binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: control.generation, writable: true }) });
+  metadata.onmessage!({ data: JSON.stringify({ type: 'projection', projection: { machineId: 'fixture', generation: 'g1', revision: 2, connected: false, freshAt: null, threads: [{ id: '00000000-0000-4000-8000-000000000001', bindingState: 'attached', panes: [{ terminalId: 'term_fixture' }] }], availableTabs: [] } }) });
+  const disconnectedCount = binary.sent.length; pane.input('during machine loss'); pane.control();
+  metadata.onmessage!({ data: JSON.stringify({ type: 'projection', projection: { machineId: 'fixture', generation: 'g1', revision: 1, connected: true, freshAt: new Date().toISOString(), threads: [{ id: '00000000-0000-4000-8000-000000000001', bindingState: 'attached', panes: [{ terminalId: 'term_fixture' }] }], availableTabs: [] } }) });
+  expect(binary.sent).toHaveLength(disconnectedCount);
+  metadata.onmessage!({ data: JSON.stringify({ type: 'projection', projection: { machineId: 'fixture', generation: 'g2', revision: 1, connected: true, freshAt: new Date().toISOString(), threads: [{ id: '00000000-0000-4000-8000-000000000001', bindingState: 'attached', panes: [{ terminalId: 'term_fixture' }] }], availableTabs: [] } }) });
+  const observer = JSON.parse(binary.sent.at(-1)!);
+  expect(observer).toMatchObject({ type: 'open', mode: 'observe' });
+  expect(observer.generation).toBeGreaterThan(control.generation);
+  const recoveredCount = binary.sent.length;
+  metadata.onmessage!({ data: JSON.stringify({ type: 'projection', projection: { machineId: 'fixture', generation: 'g1', revision: 99, connected: true, freshAt: new Date().toISOString(), threads: [{ id: '00000000-0000-4000-8000-000000000001', bindingState: 'attached', panes: [{ terminalId: 'term_fixture' }] }], availableTabs: [] } }) });
+  expect(binary.sent).toHaveLength(recoveredCount);
+  pane.input('after recovery'); expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false);
+  pane.control(); expect(JSON.parse(binary.sent.at(-1)!).mode).toBe('control'); manager.stop();
+});
+
+it('revokes an existing controller when a fresh projection confirms the pane is absent', () => {
+  const { manager, pane, metadata, binary, open, writes } = setup();
+  pane.control(); const control = JSON.parse(binary.sent.at(-1)!);
+  binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: control.generation, writable: true }) });
+  binary.onmessage!({ data: encodeFrame({ ...frame(), streamId: open.streamId, generation: control.generation }).buffer as ArrayBuffer }); writes[0].finish();
+  const beforeProjection = binary.sent.length;
+  metadata.onmessage!({ data: JSON.stringify({ type: 'projection', projection: { machineId: 'fixture', generation: 'g1', revision: 2, connected: true, freshAt: new Date().toISOString(), threads: [{ id: '00000000-0000-4000-8000-000000000001', bindingState: 'detached', panes: [] }], availableTabs: [] } }) });
+  expect(binary.sent.slice(beforeProjection).map((value) => JSON.parse(value).type)).toContain('release');
+  const sent = binary.sent.length; pane.input('after confirmed absence'); pane.control(); expect(binary.sent).toHaveLength(sent);
+  expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false); manager.stop();
+});
+
 it('ignores stale stream generations and never replays input after reconnect', () => {
   const { manager, binary, open, pane, writes } = setup();
   pane.control(); const writable = JSON.parse(binary.sent.at(-1)!);

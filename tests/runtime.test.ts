@@ -76,6 +76,66 @@ it('keeps machine-scoped identical native IDs separate and handles deletion and 
   store.getState().install(projection(first.id, 'a', 50));
   expect(store.getState().threads[row.id]).toBeUndefined(); expect(store.getState().threads[b.threads[0].id]).toBeDefined();
 });
+it('permits an equal-revision reconnect baseline but never regresses revisions or retired generations', () => {
+  const store = createRuntimeStore({ projections: [], machines: [], threads: [], projects: [], recoveryScope: 'fixture' });
+  const projection = (generation: string, revision: number): Projection => ({ machineId: 'fixture', generation, revision, freshAt: new Date().toISOString(), connected: true, threads: [], projects: [], layouts: [] });
+  const current = projection('g1', 5);
+  store.getState().install(current); store.getState().connection(false);
+  expect(store.getState().install(projection('g1', 4))).toBe(false);
+  expect(store.getState().install(current)).toBe(true);
+  expect(store.getState().install(projection('g1', 4))).toBe(false);
+  expect(store.getState().install(projection('g2', 1))).toBe(true);
+  expect(store.getState().install(projection('g1', 99))).toBe(false);
+});
+
+it('retains the last confirmed thread, tabs, panes, and layout on machine-only loss', async () => {
+  const target = new FakeTarget(); const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().projections[0]?.connected).toBe(true);
+  const before = manager.bootstrap().projections[0];
+  expect(before.threads[0].bindingState).toBe('attached');
+  target.state.tabs = []; target.state.panes = []; target.state.layouts = [];
+  target.lost!('events_lost');
+  await expect.poll(() => manager.bootstrap().projections[0]?.connected).toBe(false);
+  const stale = manager.bootstrap().projections[0];
+  expect(stale).toMatchObject({ generation: before.generation, connected: false, freshAt: null });
+  expect(stale.revision).toBeGreaterThan(before.revision);
+  expect(stale.threads[0]).toMatchObject({ bindingState: 'attached', status: 'unknown', panes: before.threads[0].panes });
+  expect(stale.availableTabs).toEqual(before.availableTabs);
+  expect(stale.layouts).toEqual(before.layouts);
+  expect(() => manager.binding(target.id, before.threads[0].id, before.threads[0].panes[0].terminalId!)).toThrow('machine_disconnected');
+  expect(() => manager.terminalBinding(target.id, before.threads[0].panes[0].terminalId!, { tabId: before.threads[0].tabId })).toThrow('machine_disconnected');
+  await expect(manager.openTerminal(target.id, before.threads[0].id, before.threads[0].panes[0].id)).rejects.toThrow('machine_disconnected');
+});
+
+it('detaches a missing resource only after a fresh machine snapshot confirms absence', async () => {
+  const target = new FakeTarget(); const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().projections[0]?.connected).toBe(true);
+  target.state.tabs = []; target.state.panes = []; target.state.layouts = []; target.event!();
+  await expect.poll(() => manager.bootstrap().projections[0]?.threads[0]?.bindingState).toBe('detached');
+  const projection = manager.bootstrap().projections[0];
+  expect(projection.connected).toBe(true); expect(projection.freshAt).toBeTruthy();
+  expect(projection.threads[0]).toMatchObject({ bindingState: 'detached', status: 'unknown', panes: [] });
+  expect(projection.availableTabs).toEqual([]); expect(projection.layouts).toEqual([]);
+  manager.archive(target.id, projection.threads[0].id, true);
+  expect(await manager.deleteArchived()).toEqual({ deleted: 1, orphanTabsDeleted: 0, failed: [], skippedMachines: [] });
+  expect(target.effects).not.toContain('discard:w1:t1');
+  expect(manager.database.threadRows(target.id)).toEqual([]);
+});
+
+it('does not delete stale detached metadata or clean tabs after machine loss', async () => {
+  const target = new FakeTarget(); const db = database(); const manager = new RuntimeManager(db, [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0]; manager.archive(target.id, thread.id, true);
+  target.lost!('events_lost');
+  await expect.poll(() => manager.bootstrap().projections[0]?.connected).toBe(false);
+  await expect(manager.deleteThread(target.id, thread.id)).rejects.toThrow('machine_disconnected');
+  await expect(manager.closeTab(target.id, thread.tabId, true)).rejects.toThrow('machine_disconnected');
+  const result = await manager.deleteArchived();
+  expect(result.deleted).toBe(0); expect(result.failed).toEqual([thread.id]); expect(result.skippedMachines).toContain(target.id);
+  expect(db.threadRows(target.id).some((row) => row.id === thread.id)).toBe(true);
+  expect(target.effects).not.toContain(`discard:${thread.tabId}`);
+});
+
 it('does not use a late snapshot from a previous subscription after disconnect', async () => {
   const target = new FakeTarget(); let finish!: (value: typeof target.state) => void;
   target.readHook = () => new Promise((resolve) => { finish = resolve; });
@@ -84,13 +144,17 @@ it('does not use a late snapshot from a previous subscription after disconnect',
   target.lost!('events_lost'); finish(target.state);
   await new Promise((resolve) => setTimeout(resolve, 10)); expect(supervisor.snapshot).toBeUndefined();
 });
-it('marks runtime stale on gateway loss but keeps the last known threads listed', () => {
+it('marks gateway loss stale without changing machine connectivity or confirmed bindings', () => {
   const db = database(); const target = new FakeTarget(); const records = reconcile(db, target, target.state);
   const projection: Projection = { machineId: target.id, generation: 'one', revision: 1, freshAt: new Date().toISOString(), connected: true, ...records, layouts: [] };
   const store = createRuntimeStore({ projections: [projection], machines: [], threads: [], projects: [], recoveryScope: 'fixture' });
-  store.getState().connection(true); store.getState().connection(false); store.getState().connection(true);
-  expect(store.getState().projections[target.id].connected).toBe(false); expect(store.getState().threads[records.threads[0].id]).toMatchObject({ bindingState: 'detached', status: 'unknown', panes: records.threads[0].panes });
-  store.getState().install(projection); expect(store.getState().projections[target.id].connected).toBe(true); expect(store.getState().threads[records.threads[0].id].bindingState).toBe('attached');
+  store.getState().connection(true); store.getState().connection(false);
+  expect(store.getState().connected).toBe(false);
+  expect(store.getState().projections[target.id]).toMatchObject({ connected: true, freshAt: null });
+  expect(store.getState().threads[records.threads[0].id]).toMatchObject({ bindingState: 'attached', status: 'unknown', panes: records.threads[0].panes });
+  store.getState().connection(true); expect(store.getState().install(projection)).toBe(true);
+  expect(store.getState().projections[target.id].freshAt).toBe(projection.freshAt);
+  expect(store.getState().threads[records.threads[0].id].bindingState).toBe('attached');
 });
 it('archives a thread out of the list and deletes archived threads together with their Herdr tab', async () => {
   const target = new FakeTarget(); const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
@@ -146,6 +210,23 @@ it('opens terminals after the focused pane and keeps that order in the thread', 
   expect(manager.bootstrap().threads[0].panes.map((pane) => pane.id)).toEqual(['w1:p1', 'w1:p1s2', 'w1:p1s1']);
   expect(target.effects).toEqual(['split:right', 'split:right']);
 });
+it('serializes pane splits against terminal-pane close', async () => {
+  const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0]; const { paneId } = await manager.openTerminal('fixture', thread.id, 'w1:p1');
+  let finishSplit!: () => void; let started!: () => void;
+  const splitStarted = new Promise<void>((resolve) => { started = resolve; });
+  const split = target.splitTerminal.bind(target);
+  target.splitTerminal = async (afterPaneId, direction) => { started(); await new Promise<void>((resolve) => { finishSplit = resolve; }); return split(afterPaneId, direction); };
+  const opening = manager.openTerminal('fixture', thread.id, paneId);
+  await splitStarted;
+  const closing = manager.closePane('fixture', thread.id, paneId, true);
+  await Promise.resolve(); expect(target.effects).not.toContain(`close:${paneId}`);
+  finishSplit();
+  await expect(opening).resolves.toMatchObject({ paneId: expect.stringContaining(paneId) });
+  await expect(closing).resolves.toEqual({ closed: true, busy: false });
+  expect(target.effects.slice(-2)).toEqual(['split:right', `close:${paneId}`]);
+});
 it('closes only terminal panes and asks the client to confirm while a process runs', async () => {
   const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
   await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
@@ -156,6 +237,104 @@ it('closes only terminal panes and asks the client to confirm while a process ru
   expect(await manager.closePane('fixture', thread.id, paneId, false)).toEqual({ closed: false, busy: true });
   expect(await manager.closePane('fixture', thread.id, paneId, true)).toEqual({ closed: true, busy: false });
   expect(target.effects).toEqual(['split:right', `close:${paneId}`]); expect(manager.bootstrap().threads[0].panes.map((pane) => pane.kind)).toEqual(['agent']);
+});
+it('rechecks pane busy state inside the destructive mutation queue', async () => {
+  const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0]; const { paneId } = await manager.openTerminal('fixture', thread.id, 'w1:p1');
+  let probes = 0; target.paneBusy = async () => ++probes > 1;
+  expect(await manager.closePane('fixture', thread.id, paneId, false)).toEqual({ closed: false, busy: true });
+  expect(probes).toBe(2); expect(target.effects).not.toContain(`close:${paneId}`);
+});
+it('does not close a pane after a fresh projection detaches its thread during the busy probe', async () => {
+  const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0]; const { paneId } = await manager.openTerminal('fixture', thread.id, 'w1:p1');
+  let finishProbe!: (busy: boolean) => void; let started!: () => void;
+  const probeStarted = new Promise<void>((resolve) => { started = resolve; });
+  target.paneBusy = async () => { started(); return new Promise<boolean>((resolve) => { finishProbe = resolve; }); };
+  const closing = manager.closePane('fixture', thread.id, paneId, false);
+  await probeStarted;
+  const row = manager.database.threadRows('fixture').find((item) => item.id === thread.id)!;
+  manager.database.saveThread({ ...row.metadata, bindingFingerprint: 'retired-fingerprint' }, row.anchors, row.alias);
+  target.event!();
+  finishProbe(false);
+  await expect(closing).rejects.toThrow('machine_disconnected');
+  await expect.poll(() => manager.bootstrap().threads.find((item) => item.id === thread.id)?.bindingState).toBe('detached');
+  expect(target.effects).not.toContain(`close:${paneId}`);
+});
+it('does not close a terminal tab adopted by a thread during the busy probe', async () => {
+  const target = new FakeTarget(); const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0];
+  target.state.tabs.push({ tab_id: 'w1:t2', workspace_id: 'w1', label: 'Shell' });
+  target.state.panes.push({ ...target.state.panes[0], pane_id: 'w1:p2', terminal_id: 'term_shell', tab_id: 'w1:t2', agent: null, focused: false });
+  target.event!();
+  await expect.poll(() => manager.bootstrap().projections[0]?.availableTabs?.some((tab) => tab.tabId === 'w1:t2')).toBe(true);
+  let finishProbe!: (busy: boolean) => void; let started!: () => void;
+  const probeStarted = new Promise<void>((resolve) => { started = resolve; });
+  target.paneBusy = async () => { started(); return new Promise<boolean>((resolve) => { finishProbe = resolve; }); };
+  const closing = manager.closeTab('fixture', 'w1:t2', false);
+  await probeStarted;
+  await manager.adopt('fixture', thread.id, ['term_shell']);
+  await expect.poll(() => manager.bootstrap().threads.find((item) => item.id === thread.id)?.tabId).toBe('w1:t2');
+  finishProbe(false);
+  await expect(closing).rejects.toThrow('binding_conflict');
+  expect(target.effects).not.toContain('discard:w1:t2');
+});
+it('rechecks tab pane busy state inside the destructive mutation queue', async () => {
+  const target = new FakeTarget(); target.state.tabs.push({ tab_id: 'w1:t2', workspace_id: 'w1', label: 'Shell' });
+  target.state.panes.push({ ...target.state.panes[0], pane_id: 'w1:p2', terminal_id: 'term_shell', tab_id: 'w1:t2', agent: null, focused: false });
+  target.state.layouts.push({ workspace_id: 'w1', tab_id: 'w1:t2', area: { x: 0, y: 0, width: 80, height: 24 }, panes: [{ pane_id: 'w1:p2', rect: { x: 0, y: 0, width: 80, height: 24 } }] });
+  const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().projections[0]?.availableTabs?.some((tab) => tab.tabId === 'w1:t2')).toBe(true);
+  let probes = 0; target.paneBusy = async () => ++probes > 1;
+  expect(await manager.closeTab('fixture', 'w1:t2', false)).toEqual({ closed: false, busy: true });
+  expect(probes).toBe(2); expect(target.effects).not.toContain('discard:w1:t2');
+});
+it('serializes adoption behind destructive tab close and rejects the closed snapshot', async () => {
+  const target = new FakeTarget(); const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0];
+  target.state.tabs.push({ tab_id: 'w1:t2', workspace_id: 'w1', label: 'Shell' });
+  target.state.panes.push({ ...target.state.panes[0], pane_id: 'w1:p2', terminal_id: 'term_shell', tab_id: 'w1:t2', agent: null, focused: false });
+  target.event!();
+  await expect.poll(() => manager.bootstrap().projections[0]?.availableTabs?.some((tab) => tab.tabId === 'w1:t2')).toBe(true);
+  let finishDiscard!: () => void; let started!: () => void;
+  const discardStarted = new Promise<void>((resolve) => { started = resolve; });
+  const discard = target.discardTab.bind(target);
+  target.discardTab = async (snapshot, tabId, removeWorktree) => {
+    started();
+    await new Promise<void>((resolve) => { finishDiscard = resolve; });
+    await discard(snapshot, tabId, removeWorktree);
+  };
+  const closing = manager.closeTab('fixture', 'w1:t2', true);
+  await discardStarted;
+  let adoptionFinished = false;
+  const adoption = manager.adopt('fixture', thread.id, ['term_shell']).finally(() => { adoptionFinished = true; });
+  await Promise.resolve(); expect(adoptionFinished).toBe(false);
+  finishDiscard();
+  await expect(closing).resolves.toEqual({ closed: true, busy: false });
+  await expect(adoption).rejects.toThrow('invalid_adoption');
+  expect(target.effects).toContain('discard:w1:t2');
+});
+it('prevents unarchiving a thread while its archived-tab deletion is in flight', async () => {
+  const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0]; manager.archive('fixture', thread.id, true);
+  let finishDiscard!: () => void; let started!: () => void;
+  const discardStarted = new Promise<void>((resolve) => { started = resolve; });
+  const discard = target.discardTab.bind(target);
+  target.discardTab = async (snapshot, tabId, removeWorktree) => {
+    started();
+    await new Promise<void>((resolve) => { finishDiscard = resolve; });
+    await discard(snapshot, tabId, removeWorktree);
+  };
+  const deleting = manager.deleteArchived();
+  await discardStarted;
+  expect(() => manager.archive('fixture', thread.id, false)).toThrow('delete_in_progress');
+  finishDiscard();
+  await expect(deleting).resolves.toEqual({ deleted: 1, orphanTabsDeleted: 0, failed: [], skippedMachines: [] });
 });
 it('adds a machine found after start and connects it at once', async () => {
   const manager = new RuntimeManager(database(), []); cleanup.push(() => manager.close()); manager.start();

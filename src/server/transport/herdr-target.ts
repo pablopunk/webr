@@ -210,7 +210,7 @@ export class HerdrTarget implements TargetAdapter {
   async splitTerminal(paneId: string, direction: TerminalDirection) { return this.actions().splitTerminal(await this.snapshot(), paneId, direction); }
   async closePane(paneId: string) { return this.actions().closePane(paneId); }
   async paneBusy(paneId: string) { return this.actions().paneBusy(paneId); }
-  async discardTab(tabId: string, removeWorktree: boolean) { return this.actions().discardTab(await this.snapshot(), tabId, removeWorktree); }
+  async discardTab(snapshot: NativeSnapshot, tabId: string, removeWorktree: boolean) { return this.actions().discardTab(snapshot, tabId, removeWorktree); }
   private actions() {
     return new HerdrActions({ request: async (method, params, options) => {
       const api = await this.connect(); const ping = await api.request('ping');

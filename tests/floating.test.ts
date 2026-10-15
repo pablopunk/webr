@@ -17,7 +17,7 @@ it('keys sidebar items by machine and tab', () => {
 
 it('derives floating tabs from unbound projections with panes', () => {
   const projection = {
-    machineId: 'fixture', generation: 'a', revision: 1, freshAt: null, connected: true, threads: [], projects: [], layouts: [],
+    machineId: 'fixture', generation: 'a', revision: 1, freshAt: new Date().toISOString(), connected: true, threads: [], projects: [], layouts: [],
     machine: { id: 'fixture', name: 'Fixture', connected: true, session: 'fixture', projectPaths: {}, harnesses: [] },
     availableTabs: [
       { tabId: 'w1:t1', workspaceId: 'w1', label: 'Shell', bound: false, panes: [{ id: 'w1:p1', terminalId: 'term_1', title: 'Shell' }] },
@@ -27,7 +27,25 @@ it('derives floating tabs from unbound projections with panes', () => {
   } as unknown as Projection;
   const floating = floatingTabsFromProjections([projection]);
   expect(floating.map((tab) => tab.tabId)).toEqual(['w1:t1']);
-  expect(floating[0]).toMatchObject({ machineId: 'fixture', session: 'fixture', paneCount: 1 });
+  expect(floating[0]).toMatchObject({ machineId: 'fixture', session: 'fixture', paneCount: 1, stale: false });
+});
+
+it('marks last-known unbound tabs stale when the machine projection is disconnected', () => {
+  const projection = {
+    machineId: 'fixture', generation: 'g1', revision: 2, freshAt: null, connected: false, threads: [], projects: [], layouts: [],
+    machine: { id: 'fixture', name: 'Fixture', connected: false, session: 'fixture', projectPaths: {}, harnesses: [] },
+    availableTabs: [{ tabId: 'w1:t1', workspaceId: 'w1', label: 'Shell', bound: false, panes: [{ id: 'w1:p1', terminalId: 'term_1', title: 'Shell' }] }],
+  } as unknown as Projection;
+  expect(floatingTabsFromProjections([projection])[0].stale).toBe(true);
+});
+
+it('does not let a stale terminal claim a detached thread or trigger flip navigation', () => {
+  const stale = { machineId: 'm', session: 's', tabId: 't', workspaceId: 'w', label: 'Shell', paneCount: 1, panes: [], stale: true };
+  const detached = { id: 'thread-1', machineId: 'm', tabId: 't', bindingState: 'detached', panes: [{ id: 'p', title: 'Agent', kind: 'agent' as const }] } as unknown as Thread;
+  const partition = partitionSidebar([detached], [stale]);
+  expect(partition.ownedTabs.has(detached.id)).toBe(false);
+  expect(partition.terminals).toEqual([stale]);
+  expect(decideFlipNavigation({ page: 'thread', viewedThreadId: detached.id, threads: [detached], floating: [stale], launchingOrRestoring: false })).toEqual({ to: null });
 });
 
 it('navigates from terminal to thread on promotion and back on demotion', () => {

@@ -14,7 +14,7 @@ export function RuntimeProvider({ bootstrap, children }: { bootstrap: Bootstrap;
   const [value] = useState(() => {
     const runtime = createRuntimeStore(bootstrap);
     const ui = createUiStore();
-    return { runtime, ui, terminals: new BrowserTerminalManager((projection) => { const done = span('projectionInstallMs'); runtime.getState().install(projection); done(); }, (connected) => runtime.getState().connection(connected)) };
+    return { runtime, ui, terminals: new BrowserTerminalManager((projection) => { const done = span('projectionInstallMs'); const accepted = runtime.getState().install(projection); done(); return accepted; }, (connected) => runtime.getState().connection(connected)) };
   });
   const [query] = useState(() => new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, retry: false } } }));
   const cacheScope = useRef(bootstrap.recoveryScope);
@@ -26,7 +26,7 @@ export function RuntimeProvider({ bootstrap, children }: { bootstrap: Bootstrap;
   useEffect(() => query.getQueryCache().subscribe((event) => {
     if (event.type === 'updated' && event.action.type === 'error' && isAccessLossError(event.query.state.error)) query.clear();
   }), [query]);
-  useEffect(() => { value.terminals.start(); return () => value.terminals.stop(); }, [value]);
+  useEffect(() => { value.runtime.getState().connection(false); value.terminals.start(); return () => value.terminals.stop(); }, [value]);
   const contextValue = useMemo(() => ({ ...value, cacheScope: bootstrap.recoveryScope }), [value, bootstrap.recoveryScope]);
   return <Context.Provider value={contextValue}><QueryClientProvider client={query}>{children}</QueryClientProvider></Context.Provider>;
 }

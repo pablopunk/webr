@@ -52,7 +52,7 @@ function loadGlyphRenderer(terminal: Terminal, create: () => { onContextLoss(lis
   try { const renderer = create(); renderer.onContextLoss(() => renderer.dispose()); terminal.loadAddon(renderer as never); } catch { /* DOM renderer stays active */ }
 }
 
-export function TerminalPane({ pane, machineId, threadId, tabId, active, canControl, onFocus, startupPreset, onStartupComplete }: { pane: Pane; machineId: string; threadId?: string; tabId?: string; active: boolean; canControl: boolean; onFocus: () => void; startupPreset?: TerminalStartupPreset; onStartupComplete?: () => void }) {
+export function TerminalPane({ pane, machineId, threadId, tabId, active, canControl, connected = true, onFocus, startupPreset, onStartupComplete }: { pane: Pane; machineId: string; threadId?: string; tabId?: string; active: boolean; canControl: boolean; connected?: boolean; onFocus: () => void; startupPreset?: TerminalStartupPreset; onStartupComplete?: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const section = useRef<HTMLElement>(null);
   const term = useRef<Terminal | null>(null);
@@ -61,6 +61,8 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
   const [message, setMessage] = useState('Connecting…');
   const [writable, setWritable] = useState(false);
   const writableRef = useRef(false);
+  const canControlRef = useRef(canControl); canControlRef.current = canControl;
+  const connectedRef = useRef(connected); connectedRef.current = connected;
   const startupSent = useRef(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [ctrl, setCtrl] = useState(false);
@@ -73,11 +75,13 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
   const showCopyResult = useRef((outcome: CopyOutcome) => {}); showCopyResult.current = (outcome) => outcome === 'copied' ? show('Copied to clipboard', 'info', 1200) : outcome === 'waiting-for-click' ? show('Click or press a key to finish copying.', 'info', 6000) : show('The browser blocked clipboard access.', 'error', 4000);
 
   useEffect(() => {
-    if (!startupPreset || !writable || startupSent.current) return;
+    if (!startupPreset || startupSent.current) return;
+    if (!connected) { startupSent.current = true; onStartupComplete?.(); return; }
+    if (!writable) return;
     startupSent.current = true;
     control.current?.input(`${terminalStartupCommands[startupPreset]}\r`);
     onStartupComplete?.();
-  }, [startupPreset, writable, onStartupComplete]);
+  }, [startupPreset, writable, connected, onStartupComplete]);
 
   useEffect(() => {
     if (!host.current) return;
@@ -115,7 +119,7 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     const measuredViewport = () => { try { return finiteSize(fit.proposeDimensions()); } catch { return undefined; } };
     const hostIsLaidOut = () => !!host.current?.isConnected && host.current.clientWidth > 0 && host.current.clientHeight > 0;
     const viewport = () => { const { cols, rows } = measuredViewport() ?? estimatedViewport(); return { cols: Math.max(2, Math.min(500, cols)), rows: Math.max(1, Math.min(300, rows)) }; };
-    control.current = terminals.mount({ machineId, ...(threadId ? { threadId } : { tabId }), terminalId: pane.terminalId, terminal, mode: canControl ? 'control' : 'observe', ...viewport(), onState: (message, writable) => { setMessage(message); setWritable(writable); writableRef.current = writable; } });
+    control.current = terminals.mount({ machineId, ...(threadId ? { threadId } : { tabId }), terminalId: pane.terminalId, terminal, mode: canControlRef.current && connectedRef.current ? 'control' : 'observe', ...viewport(), onState: (message, writable) => { setMessage(message); setWritable(writable); writableRef.current = writable; } });
     const gestures = bindTerminalGestures(host.current, () => ({ element: terminal.element?.querySelector<HTMLElement>('.xterm-screen') ?? undefined, cols: terminal.cols, rows: terminal.rows }), () => control.current, () => writableRef.current);
     let timer: ReturnType<typeof setTimeout>;
     const resize = new ResizeObserver(() => {
@@ -137,7 +141,7 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     };
     }).catch(() => setMessage('The terminal could not load.'));
     return () => { disposed = true; cleanup(); };
-  }, [pane.id, pane.terminalId, machineId, threadId, tabId, terminals, canControl]);
+  }, [pane.id, pane.terminalId, machineId, threadId, tabId, terminals]);
 
 
   const sendInput = (text: string, paste?: boolean) => {
@@ -180,14 +184,14 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
   }, [active, writable, images.attach]);
   useEffect(() => { const refocus = () => { if (active) focusInput(); }; window.addEventListener('focus', refocus); return () => window.removeEventListener('focus', refocus); }, [active, writable]);
 
-  return <section ref={section} className={`terminal-pane ${active ? 'is-active' : ''}`} aria-label={`${pane.title} terminal`} onPointerDownCapture={() => { if (!active) onFocus(); }} onFocusCapture={() => { if (!active) onFocus(); }} onClick={() => { if (canControl && !writableRef.current) control.current?.control(); focusInput(); }}>
+  return <section ref={section} className={`terminal-pane ${active ? 'is-active' : ''}`} aria-label={`${pane.title} terminal`} onPointerDownCapture={() => { if (!active) onFocus(); }} onFocusCapture={() => { if (!active) onFocus(); }} onClick={() => { if (canControlRef.current && connectedRef.current && !writableRef.current) control.current?.control(); focusInput(); }}>
     <span className="terminal-status" role="status">{message}</span>
     {message === conflictMessage && <div className="terminal-control-conflict">Another Herdr client controls this terminal.<button type="button" onClick={(event) => { event.stopPropagation(); void confirmDialog('Replace the other Herdr client that controls this terminal? Its input stops working.', { confirmLabel: 'Take over' }).then((accepted) => { if (accepted) control.current?.control(true); }); }}>Take over</button></div>}
     <div ref={host} className="terminal-host" />
     {images.dragging && <div className="terminal-drop-overlay" aria-hidden="true"><ImagePlus size={22} strokeWidth={1.6} /><span>Drop image to attach</span></div>}
     {selectedUrl && <TerminalUrlActions selected={selectedUrl} onDone={() => { setSelectedUrl(null); term.current?.clearSelection(); }} onCopied={(copied) => showCopyResult.current(copied ? 'copied' : 'blocked')} />}
     {notice && <div className={`terminal-attach-notice is-${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.text}</div>}
-    {(canControl || writable) && <TerminalInput onInput={sendInput} onFocusChange={(focused) => { setInputFocused(focused); if (term.current?.modes.sendFocusMode) control.current?.input(focused ? FOCUS_IN : FOCUS_OUT); }} />}
-    {canControl && active && touch && inputFocused && <TerminalKeyBar ctrl={ctrl} onToggleCtrl={() => setCtrl((armed) => !armed)} onBytes={(bytes) => control.current?.input(bytes)} voice={voice} />}
+    {writable && <TerminalInput onInput={sendInput} onFocusChange={(focused) => { setInputFocused(focused); if (term.current?.modes.sendFocusMode) control.current?.input(focused ? FOCUS_IN : FOCUS_OUT); }} />}
+    {writable && active && touch && inputFocused && <TerminalKeyBar ctrl={ctrl} onToggleCtrl={() => setCtrl((armed) => !armed)} onBytes={(bytes) => control.current?.input(bytes)} voice={voice} />}
   </section>;
 }

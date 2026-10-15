@@ -6,6 +6,9 @@ import App from '../../src/components/App';
 import { handleRouteClick, RouteNavigationProvider, useRouteNavigation } from '../../src/client/app-navigation';
 import { RuntimeProvider, useRuntime } from '../../src/client/provider';
 import type { Bootstrap } from '../../src/shared/runtime';
+import { ThreadView } from '../../src/components/ThreadView';
+import { TerminalTabView } from '../../src/components/TerminalTabView';
+import { exampleThreads, type Pane, type Thread } from '../../src/lib/models';
 
 vi.mock('../../src/client/terminal-manager', () => ({
   BrowserTerminalManager: class {
@@ -16,6 +19,10 @@ vi.mock('../../src/client/terminal-manager', () => ({
 vi.mock('../../src/components/PairingPrompt', () => ({ PairingPrompt: () => null }));
 vi.mock('../../src/components/UpdateButton', () => ({ UpdateButton: () => null }));
 vi.mock('../../src/components/SidebarMetrics', () => ({ SidebarMetrics: () => null }));
+vi.mock('../../src/components/TerminalPane', async () => {
+  const { createElement } = await import('react');
+  return { TerminalPane: ({ pane }: { pane: { terminalId?: string; title: string } }) => createElement('div', { 'data-testid': 'retained-terminal', 'data-terminal-id': pane.terminalId }, pane.title) };
+});
 vi.mock('../../src/components/PerfOverlay', () => ({ PerfOverlay: () => null }));
 vi.mock('../../src/client/perf', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/client/perf')>();
@@ -58,6 +65,46 @@ function NavigationProbe() {
     <button type="button" onClick={() => navigate('/settings')}>Open settings</button>
   </div>;
 }
+
+it('keeps the attached thread layout and terminal DOM mounted while disconnected', () => {
+  const pane = { id: 'w1:p1', terminalId: 'term_fixture', title: 'Agent', kind: 'agent' } as Pane;
+  const thread = { id: 'thread-fixture', machineId: 'machine-fixture', title: 'Retained thread', bindingState: 'attached', panes: [pane] } as Thread;
+  const props = { thread, canControl: true, onFocusPane: vi.fn(), focusedPane: pane.id, windowStart: 0, narrow: true };
+  const view = render(<ThreadView {...props} connected />);
+  const terminal = screen.getByTestId('retained-terminal'); const layout = view.container.querySelector('.pane-tabbed');
+  view.rerender(<ThreadView {...props} connected={false} />);
+  expect(screen.getByTestId('retained-terminal')).toBe(terminal);
+  expect(view.container.querySelector('.pane-tabbed')).toBe(layout);
+  expect(screen.getByRole('status').textContent).toContain('input is disabled');
+});
+
+it('keeps a standalone terminal tab mounted through connectivity loss', () => {
+  const pane: Pane = { id: 'w1:p1', terminalId: 'term_fixture', title: 'Shell', kind: 'shell' };
+  const props = { machineId: 'local', tabId: 'w1:t1', panes: [pane], canControl: true, focusedPane: pane.id, onFocusPane: vi.fn(), windowStart: 0, narrow: true, pending: false, onStartupComplete: vi.fn() };
+  const view = render(<TerminalTabView {...props} connected />);
+  const terminal = screen.getByTestId('retained-terminal'); const layout = view.container.querySelector('.pane-tabbed');
+  view.rerender(<TerminalTabView {...props} connected={false} />);
+  expect(screen.getByTestId('retained-terminal')).toBe(terminal);
+  expect(view.container.querySelector('.pane-tabbed')).toBe(layout);
+  expect(screen.getByRole('status').textContent).toContain('input is disabled');
+});
+
+it('does not flip a terminal route from stale retained binding data', () => {
+  vi.stubGlobal('fetch', deferredFetch());
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+  const pane: Pane = { id: 'w1:p1', terminalId: 'term_fixture', title: 'Agent', kind: 'agent' };
+  const thread: Thread = { ...exampleThreads()[0], id: 'thread-fixture', machineId: 'local', session: 'default', tabId: 'w1:t1', panes: [pane], bindingState: 'attached' };
+  const staleBootstrap: Bootstrap = {
+    projections: [{ machineId: 'local', generation: 'g1', revision: 4, freshAt: null, connected: false, threads: [thread], projects: [], layouts: [{ workspaceId: 'w1', tabId: 'w1:t1', area: { x: 0, y: 0, width: 80, height: 24 }, panes: [{ paneId: pane.id, rect: { x: 0, y: 0, width: 80, height: 24 } }] }], machine: { id: 'local', name: 'Local', session: 'default', connected: false, projectPaths: {}, harnesses: [], writable: true }, availableTabs: [{ tabId: 'w1:t1', workspaceId: 'w1', label: 'Agent', bound: true, panes: [{ id: pane.id, terminalId: pane.terminalId!, title: pane.title }] }] }],
+    machines: [{ id: 'local', name: 'Local', session: 'default', connected: false, projectPaths: {}, harnesses: [], writable: true }], projects: [], threads: [thread], recoveryScope: 'local',
+  };
+  window.history.replaceState(null, '', '/sessions/default/tabs/w1%3At1?machine=local');
+  const view = render(<App initialUrl={window.location.href} bootstrap={staleBootstrap} />);
+  expect(window.location.pathname).toBe('/sessions/default/tabs/w1%3At1');
+  expect(screen.getByTestId('retained-terminal')).toBeDefined();
+  expect(screen.getByRole('status').textContent).toContain('input is disabled');
+  expect(view.container.querySelector('.pane-tabbed')).toBeTruthy();
+});
 
 it('changes supported links locally, preserves route state and provider identities, and handles popstate', () => {
   const fetchMock = deferredFetch();

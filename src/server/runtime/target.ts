@@ -36,7 +36,7 @@ export type TargetAdapter = {
   prompt(paneId: string, prompt: string, terminalId: string, threadId: string, input: LaunchInput): Promise<void>;
   scrollMode?(terminalId: string): Promise<'scrollback' | 'app'>;
   focusPane?(paneId: string): Promise<void>;
-  discardTab?(tabId: string, removeWorktree: boolean): Promise<void>;
+  discardTab?(snapshot: NativeSnapshot, tabId: string, removeWorktree: boolean): Promise<void>;
   renameTab?(tabId: string, label: string, renameWorkspace: boolean): Promise<void>;
   splitTerminal?(paneId: string, direction: TerminalDirection): Promise<string>;
   closePane?(paneId: string): Promise<void>;

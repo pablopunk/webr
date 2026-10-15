@@ -21,6 +21,17 @@ it('lists threads and terminals in one navigation with a terminals divider', () 
   expect(screen.getByRole('link', { name: /Floating shell/ }).getAttribute('aria-current')).toBe('page');
 });
 
+it('shows stale thread status as unknown and disables destructive deletion', async () => {
+  const thread = exampleThreads()[0];
+  const machine = { id: thread.machineId, name: 'Local', connected: false, session: 'default', projectPaths: {}, harnesses: [], writable: true };
+  render(<Sidebar projects={[]} threads={[thread]} floating={[]} machines={[machine]} mode="threads" onModeChange={() => {}} collapsed={false} mobileOpen={false} onCollapse={() => {}} onCloseMobile={() => {}} />);
+  const row = screen.getByRole('link', { name: /Unknown/ });
+  expect(row.getAttribute('aria-label')).toContain('Unknown');
+  fireEvent.contextMenu(row);
+  const deletion = await screen.findByRole('menuitem', { name: 'Delete permanently' });
+  expect(deletion.getAttribute('aria-disabled')).toBe('true');
+});
+
 it('closes a terminal from its dismiss button', async () => {
   const fetch = vi.fn(async (_path: string, _init: RequestInit) => ({ ok: true, json: async () => ({ closed: true, busy: false }) }));
   vi.stubGlobal('fetch', fetch);
