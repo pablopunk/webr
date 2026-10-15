@@ -57,7 +57,7 @@ it('keeps catalogs and custom model choices isolated to the selected host', asyn
   const { db, target, journal } = setup(); const other = new FakeTarget(); other.id = 'remote';
   const result = journal.submit('owner', randomUUID(), { ...launch, machineId: 'remote', projectId: 'remote:project', model: 'remote/custom-model' }, other);
   await expect.poll(() => db.operation(result.operationId)?.state).toBe('ready');
-  expect(target.effects).toEqual([]); expect(db.operation(result.operationId)?.input.model).toBe('remote/custom-model');
+  expect(target.effects).toEqual([]); expect(db.operations().find((operation) => operation.id === result.operationId)?.input.model).toBe('remote/custom-model');
 });
 it('caps accepted pending launches at 32 per owner and machine before recording more work', async () => {
   const { db, target, journal } = setup();
