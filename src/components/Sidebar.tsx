@@ -13,7 +13,7 @@ import { ProjectIconDialog } from './ProjectIconDialog';
 import { ThreadAvatar } from './ThreadAvatar';
 import { Tooltip } from './Tooltip';
 import { useFlipList } from './useFlipList';
-import { navigate } from 'astro:transitions/client';
+import type { AppNavigate } from '../client/app-navigation';
 import { openTerminalTab } from '../client/terminal-navigation';
 import { groupProjectLocations } from '../client/project-groups';
 import { withTildeHome } from '../client/home-path';
@@ -45,6 +45,7 @@ type Props = {
   mobileOpen: boolean;
   onCollapse: () => void;
   onCloseMobile: () => void;
+  onNavigate?: AppNavigate;
   onOpenPalette?: () => void;
   paletteShortcut?: string;
   updateAction?: ReactNode;
@@ -59,7 +60,7 @@ const statusBadges: Partial<Record<Thread['status'], typeof CircleHelp>> = {
 
 const reportFailure = (error: unknown) => alertDialog(error instanceof Error ? error.message : 'Herdr could not complete this action.');
 const confirmDelete = async (thread: Thread) => { if (await confirmDialog(deleteWarning([thread]), { confirmLabel: 'Delete', danger: true })) await deleteThreadPermanently(thread).catch(reportFailure); };
-function NewTerminalButton({ machine }: { machine?: Machine }) {
+function NewTerminalButton({ machine, onNavigate }: { machine?: Machine; onNavigate?: AppNavigate }) {
   const [busy, setBusy] = useState(false);
   const operation = useRef<{ payload: string; key: string } | null>(null);
   const open = async () => {
@@ -69,7 +70,7 @@ function NewTerminalButton({ machine }: { machine?: Machine }) {
     const key = operation.current?.payload === payload ? operation.current.key : uuid();
     operation.current = { payload, key };
     setBusy(true);
-    try { await openTerminalTab(machine, path, key); operation.current = null; }
+    try { await openTerminalTab(machine, path, key, undefined, onNavigate ?? (() => {})); operation.current = null; }
     catch (error) { reportFailure(error); }
     finally { setBusy(false); }
   };
@@ -162,7 +163,7 @@ function ThreadLink({ thread, project, machineName, current, showProject, editor
   </Row></Tooltip>;
 }
 
-function ProjectGroupHeader({ project, closed, onToggle, machine }: { project: Project; closed: boolean; onToggle: () => void; machine?: Machine }) {
+function ProjectGroupHeader({ project, closed, onToggle, machine, onNavigate }: { project: Project; closed: boolean; onToggle: () => void; machine?: Machine; onNavigate?: AppNavigate }) {
   const [renaming, setRenaming] = useState(false);
   const [changingIcon, setChangingIcon] = useState(false);
   const [terminalBusy, setTerminalBusy] = useState(false);
@@ -173,7 +174,7 @@ function ProjectGroupHeader({ project, closed, onToggle, machine }: { project: P
     const key = terminalOperation.current?.payload === payload ? terminalOperation.current.key : uuid();
     terminalOperation.current = { payload, key };
     setTerminalBusy(true);
-    try { await openTerminalTab(machine, project.path, key); terminalOperation.current = null; }
+    try { await openTerminalTab(machine, project.path, key, undefined, onNavigate ?? (() => {})); terminalOperation.current = null; }
     catch (error) { reportFailure(error); }
     finally { setTerminalBusy(false); }
   };
@@ -186,7 +187,7 @@ function ProjectGroupHeader({ project, closed, onToggle, machine }: { project: P
       </Title>
     </ContextMenu.Trigger>
     <ContextMenu.Portal><ContextMenu.Positioner className="thread-menu-positioner"><ContextMenu.Popup className="thread-menu">
-      <ContextMenu.Item className="thread-menu-item" onClick={() => void navigate(`/new?project=${encodeURIComponent(project.id)}`)}><Plus size={14} aria-hidden="true" />New thread</ContextMenu.Item>
+      <ContextMenu.Item className="thread-menu-item" onClick={() => onNavigate?.(`/new?project=${encodeURIComponent(project.id)}`)}><Plus size={14} aria-hidden="true" />New thread</ContextMenu.Item>
       <ContextMenu.Item className="thread-menu-item" disabled={!machine || !machine.connected || !machine.writable || terminalBusy} onClick={() => void openTerminalHere()}><SquareTerminal size={14} aria-hidden="true" />New Terminal</ContextMenu.Item>
       <ContextMenu.Item className="thread-menu-item" onClick={() => setRenaming(true)}><Pencil size={14} aria-hidden="true" />Rename project</ContextMenu.Item>
       <ContextMenu.Item className="thread-menu-item" onClick={() => setChangingIcon(true)}><ImageUp size={14} aria-hidden="true" />Change icon</ContextMenu.Item>
@@ -233,7 +234,7 @@ function DetachedThreads({ threads, renderThread }: { threads: Thread[]; renderT
   </section>;
 }
 
-export function Sidebar({ projects, threads, archived = [], floating = [], detached = [], ownedTabs = new Map(), machines, currentId, currentMachineId, currentTab, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile, onOpenPalette, paletteShortcut = 'meta+k', updateAction }: Props) {
+export function Sidebar({ projects, threads, archived = [], floating = [], detached = [], ownedTabs = new Map(), machines, currentId, currentMachineId, currentTab, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile, onNavigate, onOpenPalette, paletteShortcut = 'meta+k', updateAction }: Props) {
   const [closedProjects, setClosedProjects] = useState<string[]>([]);
   const [collapseMotionVersion, setCollapseMotionVersion] = useState(0);
   useEffect(() => {
@@ -263,7 +264,7 @@ export function Sidebar({ projects, threads, archived = [], floating = [], detac
     monitorOperation.current = { payload, key };
     monitorBusyRef.current = true;
     setMonitorBusy(true);
-    try { await openTerminalTab(machine, path, key, 'resource-monitor'); monitorOperation.current = null; }
+    try { await openTerminalTab(machine, path, key, 'resource-monitor', onNavigate ?? (() => {})); monitorOperation.current = null; }
     catch (error) { reportFailure(error); }
     finally { monitorBusyRef.current = false; setMonitorBusy(false); }
   };
@@ -299,8 +300,8 @@ export function Sidebar({ projects, threads, archived = [], floating = [], detac
         <Tooltip label="New thread"><a className="sidebar-new-thread" href={`/new${currentProjectId ? `?project=${encodeURIComponent(currentProjectId)}` : ''}`} aria-label="New thread">
           <SquarePen size={16} aria-hidden="true" />
         </a></Tooltip>
-        <NewTerminalButton machine={terminalMachine} />
-        <OpenWorktree projects={projects} />
+        <NewTerminalButton machine={terminalMachine} onNavigate={onNavigate} />
+        <OpenWorktree projects={projects} onNavigate={onNavigate} />
         {!collapsed && <div className="sidebar-view-switch" role="group" aria-label="Sidebar layout">
           <Tooltip label="Show threads"><button type="button" aria-label="Show threads" aria-pressed={mode === 'threads'} onClick={() => onModeChange('threads')}><LayoutList size={16} aria-hidden="true" /></button></Tooltip>
           <Tooltip label="Group by project"><button type="button" aria-label="Group by project" aria-pressed={mode === 'projects'} onClick={() => onModeChange('projects')}><FolderTree size={16} aria-hidden="true" /></button></Tooltip>
@@ -309,7 +310,7 @@ export function Sidebar({ projects, threads, archived = [], floating = [], detac
       {!collapsed && <>
         <nav ref={navigation} className="thread-navigation" aria-label="Agent threads">
           {mode === 'projects' ? <>{projectGroups.filter((group) => threads.some((thread) => group.locations.includes(thread.projectId))).sort((a, b) => (threads.find((thread) => b.locations.includes(thread.projectId))?.updatedAt ?? '').localeCompare(threads.find((thread) => a.locations.includes(thread.projectId))?.updatedAt ?? '')).map(({ id, project, locations }) => <section key={id} className="thread-group">
-            <ProjectGroupHeader project={project} machine={machines.find((machine) => machine.id === (project.machineId ?? 'local'))} closed={closedProjects.includes(id)} onToggle={() => toggleProject(id)} />
+            <ProjectGroupHeader project={project} machine={machines.find((machine) => machine.id === (project.machineId ?? 'local'))} closed={closedProjects.includes(id)} onToggle={() => toggleProject(id)} onNavigate={onNavigate} />
             {!closedProjects.includes(id) && threads.filter((thread) => locations.includes(thread.projectId)).map((thread) => threadLink(thread, false))}
           </section>)}{terminalsDivider}{floating.map(terminalLink)}</> : <>{threads.map((thread) => threadLink(thread, true))}{terminalsDivider}{floating.map(terminalLink)}</>}
           {!threads.length && !floating.length && !archived.length && !detached.length && <p className="sidebar-empty">No agents or terminals yet. Press {formatShortcut(paletteShortcut)} to start one.</p>}

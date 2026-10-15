@@ -6,11 +6,9 @@ const manager = Astro.locals.runtime;
 const machineId = Astro.url.searchParams.get('machine');
 const session = Astro.params.session ?? '';
 const tabId = decodeSessionTabId(Astro.params.tab);
-const route = await resolveSessionTab(manager, session, machineId, tabId, Astro.locals.accountId);
-const { bootstrap, thread, machine, terminalTab, page, terminalPending } = route;
-const terminalStartup = page === 'terminal' && Astro.url.searchParams.get('startup') === 'resource-monitor' ? 'resource-monitor' as const : undefined;
-if (page === 'missing') Astro.response.status = 404;
+const route = resolveSessionTab(manager, session, machineId, tabId, Astro.locals.accountId);
+const { bootstrap, thread, terminalTab } = route;
 ---
-<Base title={thread?.title ?? terminalTab?.label ?? (terminalPending ? 'Opening terminal…' : 'Tab not found')}>
-  <App page={page} threadId={thread?.id} machineId={page === 'terminal' ? machine?.id : undefined} tabId={page === 'terminal' ? tabId : undefined} terminalPending={terminalPending} terminalStartup={terminalStartup} bootstrap={bootstrap} client:load transition:persist="webr-app" />
+<Base title={thread?.title ?? terminalTab?.label ?? 'Opening terminal…'}>
+  <App bootstrap={bootstrap} initialUrl={Astro.url.href} client:load transition:persist="webr-app" />
 </Base>

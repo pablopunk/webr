@@ -1,13 +1,12 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { navigate } from 'astro:transitions/client';
 import { Sidebar } from '../../src/components/Sidebar';
 import { exampleThreads, projects } from '../../src/lib/models';
 import type { Machine } from '../../src/lib/machines';
 import { terminalStartupStorageKey } from '../../src/client/terminal-presets';
 
-vi.mock('astro:transitions/client', () => ({ navigate: vi.fn() }));
+const navigate = vi.fn();
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); sessionStorage.clear(); });
 const machine: Machine = { id: 'local', name: 'Local', connected: true, writable: true, session: 'default', projectPaths: {}, harnesses: [] };
@@ -15,7 +14,7 @@ const project = { ...projects[0], machineId: machine.id };
 const fetch = vi.fn(async (url: string, _request: RequestInit) => ({ ok: true, json: async () => url === '/api/terminals' ? { tabId: 'w2:t1' } : [] }));
 const renderSidebar = (mode: 'threads' | 'projects' = 'threads', machines: Machine[] = [machine]) => render(
   <QueryClientProvider client={new QueryClient()}>
-    <Sidebar projects={mode === 'projects' ? [project] : []} threads={exampleThreads().slice(0, 1)} machines={machines} currentMachineId={machines[0]?.id} mode={mode} onModeChange={() => {}} collapsed={false} mobileOpen={false} onCollapse={() => {}} onCloseMobile={() => {}} />
+    <Sidebar projects={mode === 'projects' ? [project] : []} threads={exampleThreads().slice(0, 1)} machines={machines} currentMachineId={machines[0]?.id} mode={mode} onModeChange={() => {}} collapsed={false} mobileOpen={false} onCollapse={() => {}} onCloseMobile={() => {}} onNavigate={navigate} />
   </QueryClientProvider>,
 );
 

@@ -8,7 +8,7 @@ import type { FloatingTab } from '../lib/floating';
 import { defaultShortcuts, formatShortcut, loadShortcuts, type ShortcutAction } from './shortcuts';
 import type { SidebarMode } from './Sidebar';
 import { applyTheme } from './ThemeControl';
-import { navigate } from 'astro:transitions/client';
+import type { AppNavigate } from '../client/app-navigation';
 import { requestThreadRename } from '../client/keyboard';
 import { setThreadArchived } from '../client/thread-actions';
 import { canClosePane } from '../lib/pane-strip';
@@ -18,8 +18,8 @@ const reportFailure = (error: unknown) => alertDialog(error instanceof Error ? e
 
 type Command = { label: string; icon: ReactNode; detail?: string; shortcut?: ShortcutAction; keywords?: string; run: () => void };
 
-export function CommandPalette({ open, onClose, projects, threads, floating = [], machines = [], thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onNewTerminal, onOpenResourceMonitor, onClosePane }: {
-  open: boolean; onClose: () => void; projects: Project[]; threads: Thread[]; floating?: FloatingTab[]; machines?: { id: string; name: string; session: string }[]; thread?: Thread;
+export function CommandPalette({ open, onClose, onNavigate, projects, threads, floating = [], machines = [], thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onNewTerminal, onOpenResourceMonitor, onClosePane }: {
+  open: boolean; onClose: () => void; onNavigate?: AppNavigate; projects: Project[]; threads: Thread[]; floating?: FloatingTab[]; machines?: { id: string; name: string; session: string }[]; thread?: Thread;
   focusedPane: string; mode: SidebarMode; onModeChange: (mode: SidebarMode) => void;
   onToggleSidebar: () => void; onFocusPane: (paneId: string) => void;
   onTerminalAction: (action: 'control' | 'takeover' | 'release') => void;
@@ -41,17 +41,17 @@ export function CommandPalette({ open, onClose, projects, threads, floating = []
     const index = threads.findIndex((item) => item.id === thread?.id);
     const start = index === -1 && offset < 0 ? 0 : index;
     const target = threads[(start + offset + threads.length) % threads.length];
-    if (target) void navigate(`/threads/${encodeURIComponent(target.id)}`);
+    if (target) onNavigate?.(`/threads/${encodeURIComponent(target.id)}`);
   };
   const focusPane = (offset: number) => {
     if (thread?.panes.length) onFocusPane(thread.panes[(thread.panes.findIndex((pane) => pane.id === focusedPane) + offset + thread.panes.length) % thread.panes.length].id);
   };
 
   const commands = useMemo<Command[]>(() => [
-    { label: 'New thread', icon: <SquarePen size={16} />, shortcut: 'newThread', run: () => { void navigate(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`); } },
+    { label: 'New thread', icon: <SquarePen size={16} />, shortcut: 'newThread', run: () => { onNavigate?.(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`); } },
     ...(onNewTerminal ? [{ label: 'New Terminal', icon: <SquareTerminal size={16} />, keywords: 'new shell', run: () => { void onNewTerminal(); } }] : []),
     ...(onOpenResourceMonitor ? [{ label: 'Open Resource Monitor', icon: <Gauge size={16} />, keywords: 'cpu ram memory', run: () => { void onOpenResourceMonitor(); } }] : []),
-    { label: 'Settings', icon: <Settings2 size={16} />, run: () => { void navigate('/settings'); } },
+    { label: 'Settings', icon: <Settings2 size={16} />, run: () => { onNavigate?.('/settings'); } },
     ...(perfAvailable ? [{ label: 'Toggle performance overlay', icon: <Gauge size={16} />, detail: 'Dev only', run: () => setPerfVisible(!perfVisible()) }] : []),
     { label: 'Toggle sidebar', icon: <PanelLeft size={16} />, shortcut: 'toggleSidebar', keywords: 'panel', run: onToggleSidebar },
     ...(threads.length ? [
@@ -83,14 +83,14 @@ export function CommandPalette({ open, onClose, projects, threads, floating = []
        ...thread.panes.map((pane, index) => ({ label: `Focus ${pane.title}`, icon: <TerminalSquare size={16} />, detail: `Pane ${index + 1}`, run: () => onFocusPane(pane.id) })),
     ] : []),
     ...threads.map((item) => ({ label: item.title, icon: <ThreadAvatar thread={item} working={item.status === 'working'} size={22} />, detail: projects.find((project) => project.id === item.projectId)?.name,
-      run: () => { void navigate(`/threads/${encodeURIComponent(item.id)}`); } })),
+      run: () => { onNavigate?.(`/threads/${encodeURIComponent(item.id)}`); } })),
     ...floating.map((item) => {
       const machine = machines.find((entry) => entry.id === item.machineId);
       const session = item.session || machine?.session || 'default';
       return { label: item.label, icon: <SquareTerminal size={16} />, detail: `${machine?.name ?? item.machineId} · Terminal`,
-        run: () => { void navigate(`/sessions/${encodeURIComponent(session)}/tabs/${encodeURIComponent(item.tabId)}?machine=${encodeURIComponent(item.machineId)}`); } };
+        run: () => { onNavigate?.(`/sessions/${encodeURIComponent(session)}/tabs/${encodeURIComponent(item.tabId)}?machine=${encodeURIComponent(item.machineId)}`); } };
     }),
-  ], [projects, threads, floating, machines, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onNewTerminal, onOpenResourceMonitor, onClosePane]);
+  ], [projects, threads, floating, machines, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onNewTerminal, onOpenResourceMonitor, onClosePane, onNavigate]);
 
   const matching = commands.filter((command) => `${command.label} ${command.detail ?? ''} ${command.keywords ?? ''}`.toLowerCase().includes(query.toLowerCase().trim()));
   if (!open) return null;
