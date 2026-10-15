@@ -49,6 +49,20 @@ function renderRoute(initialUrl = '/new?project=local%3Afirst') {
   return render(<RuntimeProvider bootstrap={bootstrap}><RouteNavigationProvider initialUrl={window.location.href}><RouteHarness /></RouteNavigationProvider></RuntimeProvider>);
 }
 
+function denySessionStorageWrites() {
+  const storage = window.sessionStorage;
+  const setItem = vi.fn((_key: string, _value: string) => { throw new Error('storage denied'); });
+  vi.stubGlobal('sessionStorage', {
+    get length() { return storage.length; },
+    clear: () => storage.clear(),
+    getItem: (key: string) => storage.getItem(key),
+    key: (index: number) => storage.key(index),
+    removeItem: (key: string) => storage.removeItem(key),
+    setItem,
+  } satisfies Storage);
+  return setItem;
+}
+
 afterEach(() => {
   cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers();
   Reflect.deleteProperty(document, 'visibilityState');
@@ -77,7 +91,7 @@ it('leaves the composer for a local pending view before the acceptance response 
 });
 
 it('warns visibly when storage is denied while retaining the in-memory ticket and draft', async () => {
-  vi.spyOn(sessionStorage, 'setItem').mockImplementation(() => { throw new Error('storage denied'); });
+  const deniedSetItem = denySessionStorageWrites();
   const fetcher = vi.fn((_request: RequestInfo | URL, _init?: RequestInit) => new Promise<Response>(() => {}));
   vi.stubGlobal('fetch', fetcher);
   renderRoute();
@@ -86,6 +100,9 @@ it('warns visibly when storage is denied while retaining the in-memory ticket an
   await user.type(screen.getByRole('textbox', { name: 'Thread prompt' }), 'Keep this draft');
   await user.click(screen.getByRole('button', { name: 'Create thread' }));
 
+  const key = new URL(window.location.href).searchParams.get('pending')!;
+  expect(deniedSetItem).toHaveBeenCalled();
+  expect(currentTickets?.get(key)?.reloadRecoveryUnavailable).toBe(true);
   expect(await screen.findByText(/held in memory only; reloading will lose recovery/i)).toBeDefined();
   expect(screen.getByText('Keep this draft')).toBeDefined();
   expect(fetcher).toHaveBeenCalledOnce();
@@ -106,7 +123,7 @@ it('does not restore a stale recovery URL from another recovery scope', async ()
 });
 
 it('recovers an in-memory draft and attachments through Edit draft when storage is denied', async () => {
-  vi.spyOn(sessionStorage, 'setItem').mockImplementation(() => { throw new Error('storage denied'); });
+  denySessionStorageWrites();
   vi.stubGlobal('fetch', vi.fn(async () => response('failed')));
   renderRoute();
   await waitFor(() => expect(currentTickets).toBeDefined());
