@@ -326,8 +326,8 @@ it('scopes accountless remote creates and recovery to the authenticated device s
   const secondBootstrap = (await app.inject({ url: '/api/runtime', headers: remoteHeaders(tokens[1]!) })).json();
   expect(new Set([localBootstrap.recoveryScope, firstBootstrap.recoveryScope, secondBootstrap.recoveryScope]).size).toBe(1);
   expect(new Set([localBootstrap.resourceRecoveryScope, firstBootstrap.resourceRecoveryScope, secondBootstrap.resourceRecoveryScope]).size).toBe(3);
-  const ssr = await app.inject({ url: '/new', headers: remoteHeaders(tokens[0]!) });
-  expect(ssr.json()).toEqual({ owner: 'local', resourceOwner: 'device:' + sessions[0], recoveryScope: localBootstrap.recoveryScope, resourceRecoveryScope: firstBootstrap.resourceRecoveryScope });
+  const pageResponse = await app.inject({ url: '/new', headers: remoteHeaders(tokens[0]!) });
+  expect(pageResponse.json()).toEqual({ owner: 'local', resourceOwner: 'device:' + sessions[0], recoveryScope: localBootstrap.recoveryScope, resourceRecoveryScope: firstBootstrap.resourceRecoveryScope });
 });
 
 it('decodes encoded standalone tab route IDs before resolving them', () => {

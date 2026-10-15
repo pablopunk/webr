@@ -199,7 +199,8 @@ export class RuntimeManager extends EventEmitter {
       const input = operation.kind === 'workspace' ? workspaceCreateInput.parse(operation.input) : terminalCreateInput.parse(operation.input);
       this.database.updateCreateOperation(operationId, 'running', 'create', {});
       effectStarted = true;
-      const created = createOperationResult.parse(await identity.target.createWorkspace(input.path, operation.kind === 'workspace' ? input.label : 'Terminal', operation.nativeRequestId));
+      const label = 'label' in input ? input.label : 'Terminal';
+      const created = createOperationResult.parse(await identity.target.createWorkspace(input.path, label, operation.nativeRequestId));
       if (!this.hasCurrentProjection(identity)) throw new Error('create_target_changed');
       if (operation.kind === 'terminal') this.registerPendingTerminal(supervisor, created);
       this.database.updateCreateOperation(operationId, 'ready', 'ready', created);

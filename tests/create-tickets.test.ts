@@ -76,7 +76,7 @@ it('resumes an accepted resource ticket after rotating into its recovery scope',
   installStorage();
   const resourceOperationId = '22222222-2222-4222-8222-222222222222';
   const statusUrl = `/api/operations/${resourceOperationId}`;
-  const fetcher = vi.fn(async () => json({ operationId: resourceOperationId, kind: 'terminal', state: 'ready', step: 'ready', result: { workspaceId: 'workspace-id', tabId: 'tab-id', paneId: 'pane-id', terminalId: 'terminal-id' }, statusUrl }));
+  const fetcher = vi.fn(async (_request: RequestInfo | URL, _init?: RequestInit) => json({ operationId: resourceOperationId, kind: 'terminal', state: 'ready', step: 'ready', result: { workspaceId: 'workspace-id', tabId: 'tab-id', paneId: 'pane-id', terminalId: 'terminal-id' }, statusUrl }));
   const destination = new ThreadTickets('thread-scope', { fetch: fetcher, sleep: async () => {} }, 'resource-session-two');
   const resource = destination.createResource('terminal', { machineId: 'local', path: '/project' });
   session.setItem(`${recoveryStoragePrefix('resource-session-two')}resource-ticket:${resource.key}`, JSON.stringify({ ...resource, operationId: resourceOperationId, statusUrl, state: 'running', step: 'create', transport: 'accepted' }));
@@ -100,7 +100,7 @@ it('does not let an old in-flight key block recovery after resource-scope rotati
   let resolveOld!: (response: Response) => void;
   let markPostStarted!: () => void;
   const postStarted = new Promise<void>((resolve) => { markPostStarted = resolve; });
-  const fetcher = vi.fn((request: RequestInfo | URL, init?: RequestInit) => {
+  const fetcher = vi.fn((_request: RequestInfo | URL, init?: RequestInit) => {
     if (init?.method === 'POST') {
       markPostStarted();
       return new Promise<Response>((resolve) => { resolveOld = resolve; });

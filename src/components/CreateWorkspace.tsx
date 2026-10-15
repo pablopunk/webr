@@ -15,7 +15,7 @@ export function CreateWorkspace({ machineId, session = '', configVersion = 1, pe
   const [ticket, setTicket] = useState<ResourceTicket | undefined>(() => pendingKey ? tickets.getResource(pendingKey) : undefined);
   const [pendingMissing, setPendingMissing] = useState(() => !!pendingKey && !tickets.getResource(pendingKey));
   const [highlighted, setHighlighted] = useState(0); const [open, setOpen] = useState(false);
-  const completedKey = useRef<string>();
+  const completedKey = useRef<string | undefined>(undefined);
   const suggestionsQuery = useDirectorySuggestions(machineId, path, session, configVersion);
   const suggestions = suggestionsQuery.data ?? [];
   const hasSuggestionData = suggestionsQuery.data !== undefined;
