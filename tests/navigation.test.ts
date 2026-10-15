@@ -21,6 +21,7 @@ function link(href: string, attributes: string[] = [], target = '', download = '
 
 it('parses and builds composer routes with an opaque pending key and unrelated URL state', () => {
   const route = supported(parseRoute('/new?project=proj%2Fone&pending=ticket%252Fone&sidebar=collapsed&key=legacy&keep=a+b#compose'));
+  if (route.type !== 'composer') throw new Error('Expected a composer route');
   expect(route).toMatchObject({
     type: 'composer',
     projectId: 'proj/one',
