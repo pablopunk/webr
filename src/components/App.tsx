@@ -19,9 +19,12 @@ import { useStore } from 'zustand';
 import { RuntimeProvider, useRuntime, useRuntimeSelector } from '../client/provider';
 import type { Bootstrap } from '../shared/runtime';
 import type { Pane } from '../lib/models';
+import { selectTerminalMachine } from '../lib/machines';
+import { uuid } from '../lib/uuid';
 import { appShortcutAction, armLeaderPrefix, paletteToggle, sequenceAction, sequenceStarters, subscribeLeaderPrefix, takeLeaderPrefix, requestThreadRename } from '../client/keyboard';
 import { perfAvailable, startPerf } from '../client/perf';
 import { closeThreadPane, openThreadTerminal } from '../client/thread-actions';
+import { openTerminalTab } from '../client/terminal-navigation';
 import { canClosePane, paneToFocusAfterClosing } from '../lib/pane-strip';
 import { usePaneWindowStart, useNarrowScreen } from '../client/pane-window';
 import { alertDialog, confirmDialog } from './dialogs';
@@ -177,6 +180,7 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
     return () => { media.removeEventListener('change', onChange); window.removeEventListener('popstate', syncCollapsedFromUrl); };
   }, []);
 
+  const terminalMachine = selectTerminalMachine(machines, page === 'terminal' ? machineId : thread?.machineId);
   const reportPaneFailure = (error: unknown) => void alertDialog(error instanceof Error ? error.message : 'Herdr could not change the pane.');
   const paneIds = activePanes.map((pane) => pane.id);
   const windowStart = usePaneWindowStart(ui, scope, paneIds, focusedPane);
@@ -185,6 +189,22 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
     if (!thread || !focusedPane) return;
     void openThreadTerminal(thread, focusedPane).then(({ paneId }) => setFocusedPane(paneId), reportPaneFailure);
   }, [thread, focusedPane, setFocusedPane]);
+  const standaloneTerminalBusy = useRef(false);
+  const standaloneTerminalOperation = useRef<{ payload: string; key: string } | null>(null);
+  const openStandaloneTerminal = useCallback(async (startup?: TerminalStartupPreset) => {
+    const machine = terminalMachine;
+    if (!machine || !machine.connected || !machine.writable || standaloneTerminalBusy.current) return;
+    const path = '~/';
+    const payload = JSON.stringify({ machineId: machine.id, path, startup });
+    const key = standaloneTerminalOperation.current?.payload === payload ? standaloneTerminalOperation.current.key : uuid();
+    standaloneTerminalOperation.current = { payload, key };
+    standaloneTerminalBusy.current = true;
+    try {
+      await openTerminalTab(machine, path, key, startup);
+      standaloneTerminalOperation.current = null;
+    } catch (error) { void alertDialog(error instanceof Error ? error.message : 'Herdr could not create a terminal.'); }
+    finally { standaloneTerminalBusy.current = false; }
+  }, [terminalMachine]);
   const closePane = useCallback(async (paneId = focusedPane) => {
     if (!thread || !canClosePane(thread, paneId)) return;
     const pane = thread.panes.find((pane) => pane.id === paneId)!;
@@ -298,7 +318,7 @@ function RuntimeApp({ page, bootstrap, threadId, machineId, tabId, projectId, te
     </div>
     {perfAvailable && <PerfOverlay />}
     <PairingPrompt />
-    <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projects={projects} threads={threads} floating={floating} machines={machines} thread={thread} focusedPane={focusedPane}
+    <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} projects={projects} threads={threads} floating={floating} machines={machines} thread={thread} focusedPane={focusedPane} onNewTerminal={terminalMachine ? openStandaloneTerminal : undefined} onOpenResourceMonitor={terminalMachine ? () => openStandaloneTerminal('resource-monitor') : undefined}
       mode={mode} onModeChange={changeMode} onToggleSidebar={toggleSidebar} onFocusPane={setFocusedPane} onTerminalAction={(action) => { const pane = thread?.panes.find((pane) => pane.id === focusedPane); if (thread && pane?.terminalId) terminals.command(thread.machineId, thread.id, pane.terminalId, action); }}
       onOpenTerminal={openTerminal} onClosePane={() => void closePane()} />
     {armedPrefix && !paletteOpen && <PrefixOverlay prefix={armedPrefix} shortcuts={{ ...shortcuts, ...getShortcuts() }} />}

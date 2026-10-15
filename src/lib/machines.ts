@@ -45,3 +45,10 @@ export const machines: Machine[] = [
 export function findMachine(id: string): Machine | undefined {
   return machines.find((machine) => machine.id === id);
 }
+
+export function selectTerminalMachine(available: readonly Machine[], preferredId?: string): Machine | undefined {
+  const writable = (machine: Machine) => machine.connected && machine.writable;
+  return preferredId
+    ? available.find((machine) => machine.id === preferredId && writable(machine))
+    : available.find((machine) => machine.id === 'local' && writable(machine)) ?? available.find(writable);
+}

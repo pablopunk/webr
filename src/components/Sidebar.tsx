@@ -3,7 +3,7 @@ import { ContextMenu } from '@base-ui/react/context-menu';
 import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, Command, FolderTree, GitBranch, LayoutList, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Settings2, SquarePen, SquareTerminal, ImageUp, Pencil, Plus, Trash2, Unplug, X } from 'lucide-react';
 import { type Project, type Thread, harnessName, hasUnseenDone, relativeTime } from '../lib/models';
 import { isLaunching, launchFailed, launchLabel } from '../lib/launch';
-import type { Machine } from '../lib/machines';
+import { selectTerminalMachine, type Machine } from '../lib/machines';
 import { HarnessIcon } from './HarnessIcon';
 import { ProjectIcon } from './ProjectIcon';
 import { OpenWorktree } from './OpenWorktree';
@@ -14,16 +14,16 @@ import { ThreadAvatar } from './ThreadAvatar';
 import { Tooltip } from './Tooltip';
 import { useFlipList } from './useFlipList';
 import { navigate } from 'astro:transitions/client';
+import { openTerminalTab } from '../client/terminal-navigation';
 import { groupProjectLocations } from '../client/project-groups';
 import { withTildeHome } from '../client/home-path';
 import { uuid } from '../lib/uuid';
 import { alertDialog, confirmDialog } from './dialogs';
 import { RENAME_THREAD_EVENT } from '../client/keyboard';
 import { formatShortcut } from './shortcuts';
-import { createTerminalTab, closeTerminalTab, deleteArchivedThreads, deleteArchivedWarning, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
+import { closeTerminalTab, deleteArchivedThreads, deleteArchivedWarning, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
 import { sidebarTabKey, type FloatingTab } from '../lib/floating';
 import { SidebarMetrics } from './SidebarMetrics';
-import { terminalStartupStorageKey, type TerminalStartupPreset } from '../client/terminal-presets';
 
 export type SidebarMode = 'projects' | 'threads';
 const closedProjectsStorageKey = 'webr-sidebar-closed-projects';
@@ -59,16 +59,6 @@ const statusBadges: Partial<Record<Thread['status'], typeof CircleHelp>> = {
 
 const reportFailure = (error: unknown) => alertDialog(error instanceof Error ? error.message : 'Herdr could not complete this action.');
 const confirmDelete = async (thread: Thread) => { if (await confirmDialog(deleteWarning([thread]), { confirmLabel: 'Delete', danger: true })) await deleteThreadPermanently(thread).catch(reportFailure); };
-const openTerminalAt = async (machine: Machine, path: string, key: string, startup?: TerminalStartupPreset) => {
-  const { tabId } = await createTerminalTab(machine.id, path, key);
-  const query = new URLSearchParams({ machine: machine.id });
-  if (startup) {
-    try { sessionStorage.setItem(terminalStartupStorageKey(machine.id, tabId), startup); } catch { /* The startup query is still a usable fallback. */ }
-    query.set('startup', startup);
-  }
-  await navigate(`/sessions/${encodeURIComponent(machine.session)}/tabs/${encodeURIComponent(tabId)}?${query}`);
-};
-
 function NewTerminalButton({ machine }: { machine?: Machine }) {
   const [busy, setBusy] = useState(false);
   const operation = useRef<{ payload: string; key: string } | null>(null);
@@ -79,7 +69,7 @@ function NewTerminalButton({ machine }: { machine?: Machine }) {
     const key = operation.current?.payload === payload ? operation.current.key : uuid();
     operation.current = { payload, key };
     setBusy(true);
-    try { await openTerminalAt(machine, path, key); operation.current = null; }
+    try { await openTerminalTab(machine, path, key); operation.current = null; }
     catch (error) { reportFailure(error); }
     finally { setBusy(false); }
   };
@@ -183,7 +173,7 @@ function ProjectGroupHeader({ project, closed, onToggle, machine }: { project: P
     const key = terminalOperation.current?.payload === payload ? terminalOperation.current.key : uuid();
     terminalOperation.current = { payload, key };
     setTerminalBusy(true);
-    try { await openTerminalAt(machine, project.path, key); terminalOperation.current = null; }
+    try { await openTerminalTab(machine, project.path, key); terminalOperation.current = null; }
     catch (error) { reportFailure(error); }
     finally { setTerminalBusy(false); }
   };
@@ -260,9 +250,7 @@ export function Sidebar({ projects, threads, archived = [], floating = [], detac
   };
   const currentProjectId = threads.find((thread) => thread.id === currentId)?.projectId;
   const projectGroups = groupProjectLocations(projects, currentProjectId);
-  const terminalMachine = currentMachineId
-    ? machines.find((machine) => machine.id === currentMachineId && machine.connected && machine.writable)
-    : machines.find((machine) => machine.id === 'local' && machine.connected && machine.writable) ?? machines.find((machine) => machine.connected && machine.writable);
+  const terminalMachine = selectTerminalMachine(machines, currentMachineId);
   const [monitorBusy, setMonitorBusy] = useState(false);
   const monitorBusyRef = useRef(false);
   const monitorOperation = useRef<{ payload: string; key: string } | null>(null);
@@ -275,7 +263,7 @@ export function Sidebar({ projects, threads, archived = [], floating = [], detac
     monitorOperation.current = { payload, key };
     monitorBusyRef.current = true;
     setMonitorBusy(true);
-    try { await openTerminalAt(machine, path, key, 'resource-monitor'); monitorOperation.current = null; }
+    try { await openTerminalTab(machine, path, key, 'resource-monitor'); monitorOperation.current = null; }
     catch (error) { reportFailure(error); }
     finally { monitorBusyRef.current = false; setMonitorBusy(false); }
   };

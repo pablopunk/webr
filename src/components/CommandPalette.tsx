@@ -18,12 +18,12 @@ const reportFailure = (error: unknown) => alertDialog(error instanceof Error ? e
 
 type Command = { label: string; icon: ReactNode; detail?: string; shortcut?: ShortcutAction; keywords?: string; run: () => void };
 
-export function CommandPalette({ open, onClose, projects, threads, floating = [], machines = [], thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onClosePane }: {
+export function CommandPalette({ open, onClose, projects, threads, floating = [], machines = [], thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onNewTerminal, onOpenResourceMonitor, onClosePane }: {
   open: boolean; onClose: () => void; projects: Project[]; threads: Thread[]; floating?: FloatingTab[]; machines?: { id: string; name: string; session: string }[]; thread?: Thread;
   focusedPane: string; mode: SidebarMode; onModeChange: (mode: SidebarMode) => void;
   onToggleSidebar: () => void; onFocusPane: (paneId: string) => void;
   onTerminalAction: (action: 'control' | 'takeover' | 'release') => void;
-  onOpenTerminal: () => void; onClosePane: () => void;
+  onOpenTerminal: () => void; onNewTerminal?: () => void | Promise<void>; onOpenResourceMonitor?: () => void | Promise<void>; onClosePane: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
@@ -49,6 +49,8 @@ export function CommandPalette({ open, onClose, projects, threads, floating = []
 
   const commands = useMemo<Command[]>(() => [
     { label: 'New thread', icon: <SquarePen size={16} />, shortcut: 'newThread', run: () => { void navigate(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`); } },
+    ...(onNewTerminal ? [{ label: 'New Terminal', icon: <SquareTerminal size={16} />, keywords: 'new shell', run: () => { void onNewTerminal(); } }] : []),
+    ...(onOpenResourceMonitor ? [{ label: 'Open Resource Monitor', icon: <Gauge size={16} />, keywords: 'cpu ram memory', run: () => { void onOpenResourceMonitor(); } }] : []),
     { label: 'Settings', icon: <Settings2 size={16} />, run: () => { void navigate('/settings'); } },
     ...(perfAvailable ? [{ label: 'Toggle performance overlay', icon: <Gauge size={16} />, detail: 'Dev only', run: () => setPerfVisible(!perfVisible()) }] : []),
     { label: 'Toggle sidebar', icon: <PanelLeft size={16} />, shortcut: 'toggleSidebar', keywords: 'panel', run: onToggleSidebar },
@@ -88,7 +90,7 @@ export function CommandPalette({ open, onClose, projects, threads, floating = []
       return { label: item.label, icon: <SquareTerminal size={16} />, detail: `${machine?.name ?? item.machineId} · Terminal`,
         run: () => { void navigate(`/sessions/${encodeURIComponent(session)}/tabs/${encodeURIComponent(item.tabId)}?machine=${encodeURIComponent(item.machineId)}`); } };
     }),
-  ], [projects, threads, floating, machines, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onClosePane]);
+  ], [projects, threads, floating, machines, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onNewTerminal, onOpenResourceMonitor, onClosePane]);
 
   const matching = commands.filter((command) => `${command.label} ${command.detail ?? ''} ${command.keywords ?? ''}`.toLowerCase().includes(query.toLowerCase().trim()));
   if (!open) return null;
