@@ -50,6 +50,7 @@ export function createRuntimeStore(bootstrap: Bootstrap) {
     },
   }));
   for (const projection of bootstrap.projections) store.getState().install(projection);
+  for (const projection of bootstrap.projections) awaiting.add(projection.machineId);
   return store;
 }
 export const createUiStore = () => createStore<{ focusedPanes: Record<string, string>; paneWindows: Record<string, number>; focus(scope: string, paneId: string): void; showWindow(scope: string, start: number): void }>((set) => ({

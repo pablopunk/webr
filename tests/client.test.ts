@@ -59,7 +59,7 @@ it('revalidates an equal-revision bootstrap before enabling terminal control', (
   const threadId = '00000000-0000-4000-8000-000000000001';
   const projection: Projection = { machineId: 'fixture', generation: 'g1', revision: 1, connected: true, freshAt: new Date().toISOString(), threads: [{ id: threadId, bindingState: 'attached', panes: [{ terminalId: 'term_fixture' }] }], projects: [], layouts: [], availableTabs: [] } as unknown as Projection;
   const runtime = createRuntimeStore({ projections: [projection], machines: [], threads: [], projects: [], recoveryScope: 'fixture' });
-  runtime.getState().connection(false);
+  expect(runtime.getState().projections.fixture.freshAt).toBe(projection.freshAt);
   const manager = new BrowserTerminalManager((value) => runtime.getState().install(value), () => {}); manager.start();
   const [metadata, binary] = BrowserSocket.instances; metadata.open(); binary.open();
   metadata.onmessage!({ data: JSON.stringify({ type: 'projection', projection }) });

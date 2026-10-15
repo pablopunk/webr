@@ -448,7 +448,7 @@ export class RuntimeManager extends EventEmitter {
     const initial = await supervisor.readFresh();
     this.requireCurrentProjection(identity);
     if (!initial.tabs.some((item) => item.tab_id === tabId)) throw new Error('tab_not_found');
-    if (this.threadOwnsTab(machineId, tabId)) throw new Error('binding_conflict');
+    if (this.listedThreadOwnsTab(machineId, tabId)) throw new Error('binding_conflict');
     const probedPanes = initial.panes.filter((pane) => pane.tab_id === tabId);
     if (!force && target.paneBusy) {
       for (const pane of probedPanes) if (await target.paneBusy(pane.pane_id)) return { closed: false, busy: true };

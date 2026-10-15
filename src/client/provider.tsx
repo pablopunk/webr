@@ -26,7 +26,7 @@ export function RuntimeProvider({ bootstrap, children }: { bootstrap: Bootstrap;
   useEffect(() => query.getQueryCache().subscribe((event) => {
     if (event.type === 'updated' && event.action.type === 'error' && isAccessLossError(event.query.state.error)) query.clear();
   }), [query]);
-  useEffect(() => { value.runtime.getState().connection(false); value.terminals.start(); return () => value.terminals.stop(); }, [value]);
+  useEffect(() => { value.terminals.start(); return () => value.terminals.stop(); }, [value]);
   const contextValue = useMemo(() => ({ ...value, cacheScope: bootstrap.recoveryScope }), [value, bootstrap.recoveryScope]);
   return <Context.Provider value={contextValue}><QueryClientProvider client={query}>{children}</QueryClientProvider></Context.Provider>;
 }
