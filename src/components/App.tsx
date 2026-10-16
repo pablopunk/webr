@@ -255,9 +255,10 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
         requestAnimationFrame(() => requestThreadRename(id));
       }
       if (action === 'newThread') void navigate(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`);
-      if ((action === 'nextPane' || action === 'previousPane') && thread?.panes.length) {
-        const index = thread.panes.findIndex((pane) => pane.id === focusedPane);
-        setFocusedPane(thread.panes[(index + (action === 'nextPane' ? 1 : -1) + thread.panes.length) % thread.panes.length].id);
+      if ((action === 'nextPane' || action === 'previousPane') && displayPanes.length) {
+        const selected = ui.getState().focusedPanes[scope] ?? focusedPane;
+        const index = displayPanes.findIndex((pane) => pane.id === selected);
+        setFocusedPane(displayPanes[(index + (action === 'nextPane' ? 1 : -1) + displayPanes.length) % displayPanes.length].id);
       }
       if ((action === 'nextThread' || action === 'previousThread') && (threads.length || floating.length)) {
         const direction = action === 'nextThread' ? 1 : -1;
@@ -316,7 +317,7 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [thread, threads, floating, page, machineId, tabId, machines, bootstrap.machines, paletteOpen, toggleSidebar, openTerminal, closePane, focusedPane, setFocusedPane, shortcuts, collapsed, navigate]);
+  }, [thread, threads, floating, page, machineId, tabId, machines, bootstrap.machines, paletteOpen, toggleSidebar, openTerminal, closePane, focusedPane, setFocusedPane, shortcuts, collapsed, navigate, displayPanes, ui, scope]);
 
   const handleAppLinkClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => handleRouteClick(event, navigate), [navigate]);
 

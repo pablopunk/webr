@@ -1,5 +1,5 @@
 import { confirmDialog } from './dialogs';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import type { Pane } from '../lib/models';
@@ -61,10 +61,11 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
   const [message, setMessage] = useState('Connecting…');
   const [writable, setWritable] = useState(false);
   const writableRef = useRef(false);
-  const canControlRef = useRef(canControl); canControlRef.current = canControl;
-  const connectedRef = useRef(connected); connectedRef.current = connected;
-  const activeRef = useRef(active); activeRef.current = active;
-  const pendingFocus = useRef(active);
+  const canControlRef = useRef(canControl);
+  const connectedRef = useRef(connected);
+  const activeRef = useRef(active);
+  // Event handlers must see the committed owner, never a speculative render.
+  useLayoutEffect(() => { canControlRef.current = canControl; connectedRef.current = connected; activeRef.current = active; });
   const startupSent = useRef(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [ctrl, setCtrl] = useState(false);
@@ -101,8 +102,9 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     loadGlyphRenderer(terminal, () => new WebglAddon());
     terminal.attachCustomWheelEventHandler(() => false);
     term.current = terminal;
-    const redirectFocus = () => { if (activeRef.current && writableRef.current) section.current?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus({ preventScroll: true }); };
-    terminal.textarea?.addEventListener('focus', redirectFocus);
+    // disableStdin stops xterm input, not its native focus() calls (including
+    // mouse handling). The renderer must never become a second input owner.
+    if (terminal.textarea) terminal.textarea.disabled = true;
     const clipboard = bindTerminalClipboard(host.current, terminal, () => writableRef.current, (outcome) => showCopyResult.current(outcome));
     const links = terminal.parser.registerOscHandler(8, () => true);
     if (!pane.terminalId) { clipboard(); terminal.dispose(); return; }
@@ -137,7 +139,6 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
       clearTimeout(timer); control.current?.close(); control.current = null;
       writableRef.current = false; gestures();
       window.removeEventListener('focus', claimSize); document.removeEventListener('visibilitychange', claimSize);
-      terminal.textarea?.removeEventListener('focus', redirectFocus);
       clipboard(); hostElement.removeEventListener('mouseup', openLink); hostElement.removeEventListener('mouseup', offerSelectedUrl); selection.dispose(); setSelectedUrl(null); links.dispose(); resize.disconnect(); colorObserver.disconnect();
       terminal.dispose(); term.current = null;
     };
@@ -155,19 +156,20 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
   // xterm is a renderer, not our input owner. Focusing its helper first creates
   // a second focus/blur cycle and can reactivate the pane we just left.
   const focusInput = (preserveSelection = true) => {
-    if (!activeRef.current || !connectedRef.current || !writableRef.current || preserveSelection && term.current?.hasSelection()) return;
+    if (!activeRef.current || preserveSelection && term.current?.hasSelection()) return;
     if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
     const input = section.current?.querySelector<HTMLTextAreaElement>('.terminal-input-capture');
     input?.focus({ preventScroll: true });
-    if (input && document.activeElement === input) pendingFocus.current = false;
   };
-  useEffect(() => { pendingFocus.current = active; if (active) focusInput(false); }, [active]);
+  // Navigation owns DOM focus, independently of asynchronous control/baseline
+  // readiness. A read-only textarea can keep focus without accepting bytes.
+  // Readiness changes must not replay an old navigation request over an editor.
+  useLayoutEffect(() => { if (active) focusInput(false); }, [active]);
   useEffect(() => {
-    const focused = document.activeElement;
-    // Readiness is not a navigation request: don't steal focus from a search,
-    // palette, or editor when a resized baseline arrives.
-    if (active && writable && (pendingFocus.current || focused === document.body || section.current?.contains(focused))) focusInput(false);
-  }, [active, writable]);
+    // The input may already own focus before the first baseline enables writes.
+    // Report that focus to the application without moving browser focus again.
+    if (activeRef.current && writable && term.current?.modes.sendFocusMode && document.activeElement === section.current?.querySelector('.terminal-input-capture')) control.current?.input(FOCUS_IN);
+  }, [writable]);
   useEffect(() => { if (term.current) term.current.options.cursorInactiveStyle = active ? 'block' : 'outline'; }, [active, writable]);
   useEffect(() => {
     if (!active || !writable) return;
@@ -212,7 +214,7 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     return () => window.removeEventListener('focus', refocus);
   }, [active, writable]);
 
-  return <section ref={section} className={`terminal-pane ${active ? 'is-active' : ''}`} aria-label={`${pane.title} terminal`} onPointerDownCapture={() => { if (!active) onFocus(); }} onFocusCapture={() => { if (!active) onFocus(); }} onClick={() => { if (canControlRef.current && connectedRef.current && !writableRef.current) control.current?.control(); focusInput(); }}>
+  return <section ref={section} className={`terminal-pane ${active ? 'is-active' : ''}`} aria-label={`${pane.title} terminal`} onPointerDownCapture={() => { if (!activeRef.current) onFocus(); }} onClick={() => { if (canControlRef.current && connectedRef.current && !writableRef.current) control.current?.control(); focusInput(); }}>
     <span className="terminal-status" role="status">{message}</span>
     {message === conflictMessage && <div className="terminal-control-conflict">Another Herdr client controls this terminal.<button type="button" onClick={(event) => { event.stopPropagation(); void confirmDialog('Replace the other Herdr client that controls this terminal? Its input stops working.', { confirmLabel: 'Take over' }).then((accepted) => { if (accepted) control.current?.control(true); }); }}>Take over</button></div>}
     <div ref={host} className="terminal-host" />

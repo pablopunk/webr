@@ -1,4 +1,4 @@
-import { useDeferredValue, ViewTransition, type ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { Bot, TerminalSquare } from 'lucide-react';
 import type { PendingPaneSplit } from '../client/pending-pane-actions';
 import type { Pane } from '../lib/models';
@@ -37,16 +37,6 @@ function PendingSplitSlot({ pending, onDismiss }: { pending: PendingPaneSplit; o
   </div>;
 }
 
-const itemKey = (item: StripItem) => item.key;
-const stripShape = (items: StripItem[], windowStart: number) => JSON.stringify([windowStart, items.map(itemKey)]);
-const itemsInShape = (shape: string, items: StripItem[]) => {
-  const [start, keys] = JSON.parse(shape) as [number, string[]];
-  const byKey = new Map(items.map((item) => [item.key, item]));
-  return { start, items: keys.flatMap((key) => { const item = byKey.get(key); return item ? [item] : []; }) };
-};
-
-/** Only a change of order or window runs as a transition, because a view transition covers the live terminals with snapshots while it animates. */
-const useAnimatedItems = (items: StripItem[], windowStart: number) => itemsInShape(useDeferredValue(stripShape(items, windowStart)), items);
 function displayItems(panes: Pane[], pendingSplits: PendingPaneSplit[]): StripItem[] {
   const bySource = new Map<string, PendingPaneSplit[]>();
   for (const pending of pendingSplits) bySource.set(pending.afterPaneId, [...(bySource.get(pending.afterPaneId) ?? []), pending]);
@@ -60,28 +50,29 @@ function displayItems(panes: Pane[], pendingSplits: PendingPaneSplit[]): StripIt
   return result;
 }
 
-export function PaneStrip({ panes: livePanes, windowStart: liveStart, onFocusPane, renderPane, pendingSplits = [], onDismissPendingSplit }: StripProps) {
-  const { items, start } = useAnimatedItems(displayItems(livePanes, pendingSplits), liveStart);
+// Live input owners cannot lag behind navigation or sit inside snapshot view
+// transitions. Commit the window, its DOM, and its active pane together.
+export function PaneStrip({ panes, windowStart, onFocusPane, renderPane, pendingSplits = [], onDismissPendingSplit }: StripProps) {
+  const items = displayItems(panes, pendingSplits);
   let paneIndex = -1;
   return <div className={`pane-strip ${items.length > 1 ? 'is-split' : ''}`}>
     {items.map((item) => {
-      if (item.kind === 'pending') return <ViewTransition key={item.key} default="pane-move" enter="pane-enter" exit="pane-exit"><PendingSplitSlot pending={item.pending} onDismiss={onDismissPendingSplit} /></ViewTransition>;
+      if (item.kind === 'pending') return <PendingSplitSlot key={item.key} pending={item.pending} onDismiss={onDismissPendingSplit} />;
       const index = ++paneIndex;
-      const isVisible = index >= start && index < start + VISIBLE_PANES;
-      return <ViewTransition key={item.key} default="pane-move" enter="pane-enter" exit="pane-exit">
+      const isVisible = index >= windowStart && index < windowStart + VISIBLE_PANES;
+      return <Fragment key={item.key}>
         {isVisible
           ? <div className="pane-slot">{renderPane(item.pane)}</div>
-          : <CollapsedPane pane={item.pane} side={index < start ? 'left' : 'right'} onOpen={() => onFocusPane(item.pane.id)} />}
-      </ViewTransition>;
+          : <CollapsedPane pane={item.pane} side={index < windowStart ? 'left' : 'right'} onOpen={() => onFocusPane(item.pane.id)} />}
+      </Fragment>;
     })}
   </div>;
 }
 
 export function PaneTabs({ panes, focusedPane, renderPane, pendingSplits = [], onDismissPendingSplit }: Omit<StripProps, 'windowStart' | 'onFocusPane'>) {
-  const shownId = useDeferredValue(focusedPane);
-  const shown = panes.find((pane) => pane.id === shownId) ?? panes[0];
+  const shown = panes.find((pane) => pane.id === focusedPane) ?? panes[0];
   return <div className="pane-tabbed">
-    {shown && <ViewTransition key={shown.id} enter="pane-enter" exit="pane-exit"><div className="pane-slot" role="tabpanel">{renderPane(shown)}</div></ViewTransition>}
+    {shown && <div key={shown.id} className="pane-slot" role="tabpanel">{renderPane(shown)}</div>}
     {pendingSplits.map((pending) => <PendingSplitSlot key={pending.key} pending={pending} onDismiss={onDismissPendingSplit} />)}
   </div>;
 }
