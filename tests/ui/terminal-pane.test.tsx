@@ -84,8 +84,6 @@ it('autofocuses a newly writable terminal but does not steal focus back from an 
 });
 
 it('moves real keyboard focus between split panes even when the destination has a selection', async () => {
-  // Resolve the lazy module mock before mounting two panes concurrently.
-  await import('@xterm/xterm');
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   const inputs = new Map<string, ReturnType<typeof vi.fn>>();
   fixture.mount.mockImplementation((options) => {
@@ -93,8 +91,12 @@ it('moves real keyboard focus between split panes even when the destination has 
     return { control: fixture.control, observe: fixture.observe, input, close: fixture.close, resize() {}, mouse() {}, scroll() {} };
   });
   const onFocus = vi.fn();
-  const panes = (active: string) => <>{['one', 'two'].map((id) => <TerminalPane key={id} pane={{ id, terminalId: id, title: id, kind: 'shell' }} machineId="fixture" threadId="fixture-thread" active={active === id} canControl onFocus={onFocus} />)}</>;
-  const view = render(panes('one'));
+  const panes = (active: string, ids = ['one', 'two']) => <>{ids.map((id) => <TerminalPane key={id} pane={{ id, terminalId: id, title: id, kind: 'shell' }} machineId="fixture" threadId="fixture-thread" active={active === id} canControl onFocus={onFocus} />)}</>;
+  // Open a split after its first pane has loaded. Concurrent intercepted lazy
+  // imports in Vitest can resolve the second xterm import to the real package.
+  const view = render(panes('one', ['one']));
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
+  view.rerender(panes('one'));
   await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(2));
   await act(async () => { for (const [options] of fixture.mount.mock.calls) options.onState('Input control is active.', true); });
   const [first, second] = screen.getAllByLabelText('Terminal input');
