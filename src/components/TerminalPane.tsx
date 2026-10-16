@@ -173,6 +173,7 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     if (!active || !writable) return;
     const unfocused = (event: Event) => event.target === document.body || event.target === document.documentElement || section.current?.contains(event.target as Node);
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!activeRef.current || !connectedRef.current || !writableRef.current) return;
       const fromInput = (event.target as HTMLElement).classList?.contains('terminal-input-capture');
       const ownInput = fromInput && section.current?.contains(event.target as Node);
       if (event.defaultPrevented || event.metaKey || event.isComposing || !unfocused(event) && !fromInput || ownInput) return;
@@ -190,6 +191,7 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
       }
     };
     const onPaste = (event: ClipboardEvent) => {
+      if (!activeRef.current || !connectedRef.current || !writableRef.current) return;
       const fromInput = (event.target as HTMLElement).classList?.contains('terminal-input-capture');
       if (!unfocused(event) && !fromInput) return;
       const pastedImages = imageFilesFrom(event.clipboardData);
