@@ -111,7 +111,7 @@ it('renames a thread in place after a double click and keeps the old name on Esc
 });
 it('renames the current thread when asked through the rename event', async () => {
   const fetch = answering(); vi.stubGlobal('fetch', fetch);
-  render(<Sidebar projects={[]} threads={exampleThreads().slice(0, 1)} archived={[]} machines={[]} mode="threads" onModeChange={() => {}} collapsed={false} mobileOpen={false} onCollapse={() => {}} onCloseMobile={() => {}} currentId="terminal-web-bridge" />);
+  render(<Sidebar projects={[]} threads={exampleThreads().slice(0, 1)} archived={[]} machines={[]} mode="threads" onModeChange={() => {}} collapsed={false} mobileOpen={false} onCollapse={() => {}} onCloseMobile={() => {}} currentId="terminal-web-bridge" currentMachineId="local" />);
   expect(screen.queryByRole('textbox')).toBeNull();
   window.dispatchEvent(new CustomEvent('webr:rename-thread', { detail: 'no-such-thread' }));
   expect(screen.queryByRole('textbox')).toBeNull();

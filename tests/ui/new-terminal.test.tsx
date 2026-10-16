@@ -64,7 +64,7 @@ it.each(['CPU', 'RAM'] as const)('stores the %s monitor preset on the terminal r
 it('accepts a terminal at the project path from its context menu', async () => {
   vi.stubGlobal('fetch', fetch); renderSidebar('projects');
   fireEvent.contextMenu(screen.getByRole('button', { name: 'herdr' }));
-  expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual(['New thread', 'New Terminal', 'Rename project', 'Change icon']);
+  expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual(['New thread', 'New Terminal', 'Rename project on Local', 'Change icon']);
   fireEvent.click(await screen.findByRole('menuitem', { name: 'New Terminal' }));
   const ticket = await expectPendingCreate();
   expect(navigate).toHaveBeenCalledWith(`/new?resourcePending=${ticket!.key}`);

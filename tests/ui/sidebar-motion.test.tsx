@@ -14,7 +14,7 @@ const positions = new Map<string, number>();
 const animate = vi.fn();
 const originalAnimate = Object.getOwnPropertyDescriptor(Element.prototype, 'animate');
 
-const sidebar = (threads: Thread[], currentId?: string, mode: 'projects' | 'threads' = 'projects') => <Sidebar projects={projects} threads={threads} machines={[]} currentId={currentId} mode={mode} onModeChange={() => {}} collapsed={false} mobileOpen={false} onCollapse={() => {}} onCloseMobile={() => {}} />;
+const sidebar = (threads: Thread[], currentId?: string, mode: 'projects' | 'threads' = 'projects') => <Sidebar projects={projects} threads={threads} machines={[]} currentId={currentId} currentMachineId={threads.find((thread) => thread.id === currentId)?.machineId} mode={mode} onModeChange={() => {}} collapsed={false} mobileOpen={false} onCollapse={() => {}} onCloseMobile={() => {}} />;
 
 it('keeps the same project icon mounted when selecting and deselecting a thread', () => {
   const threads = exampleThreads();
