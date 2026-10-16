@@ -23,7 +23,6 @@ import { terminalStartupCommands, type TerminalStartupPreset } from '../client/t
 import { isNarrowScreen } from '../client/pane-window';
 import { focusRestsNowhere, textIsSelectedOutsideTerminal } from '../client/focus-ownership';
 import { describeNode, trace } from '../client/trace';
-import { followNativeFocus } from '../client/native-focus';
 
 function themeColors() {
   const styles = getComputedStyle(document.documentElement);
@@ -245,15 +244,6 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     window.addEventListener('focus', refocus);
     return () => window.removeEventListener('focus', refocus);
   }, [active, typeable]);
-  useEffect(() => {
-    if (!active || !typeable || !threadId) return;
-    let followed = false;
-    const followWhenVisible = () => { if (document.visibilityState !== 'visible' || followed) return; followed = true; void followNativeFocus(machineId, threadId, pane.id); };
-    const followAgainWhenShown = () => { if (document.visibilityState === 'visible') { followed = false; followWhenVisible(); } };
-    followWhenVisible();
-    document.addEventListener('visibilitychange', followAgainWhenShown);
-    return () => document.removeEventListener('visibilitychange', followAgainWhenShown);
-  }, [active, typeable, machineId, threadId, pane.id]);
   const inputPaused = active && connected && canControl && !typeable;
   const [showInputPaused, setShowInputPaused] = useState(false);
   useEffect(() => {
@@ -261,9 +251,13 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     const timer = setTimeout(() => setShowInputPaused(true), 400);
     return () => clearTimeout(timer);
   }, [inputPaused]);
+  // Herdr's baseline never replays the focus-reporting mode, so xterm cannot
+  // know an agent asked for it; agents (Ink, crossterm, Bubble Tea) parse
+  // CSI I / CSI O regardless, while a shell would echo them, hence the gate.
+  const appWantsFocusReports = () => !!term.current?.modes.sendFocusMode || pane.kind === 'agent';
   const reportInputFocus = (focused: boolean) => {
     setInputFocused(focused);
-    const reported = !!term.current?.modes.sendFocusMode;
+    const reported = appWantsFocusReports();
     trace('pane.input.focus', { pane: pane.id, focused, reported, typeable: typeableRef.current });
     if (reported) control.current?.input(focused ? FOCUS_IN : FOCUS_OUT);
   };

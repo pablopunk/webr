@@ -87,21 +87,25 @@ it('keeps accepting keystrokes while a resized baseline is pending and shows why
   vi.useRealTimers();
 });
 
-it('asks Herdr to focus the pane shown here once it is active and typeable, so the agent draws its cursor', async () => {
-  const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({ ok: true, status: 200 })); vi.stubGlobal('fetch', fetchMock);
+it('reports focus to an agent pane even when the baseline hid the focus-reporting mode, but not to a shell', async () => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
-  fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
-  const props = { pane: { id: 'w1:p2', terminalId: 'term_shell', title: 'Shell', kind: 'shell' as const }, machineId: 'local', threadId: 'fixture-thread', canControl: true, onFocus: () => {} };
-  const view = render(<TerminalPane {...props} active={false} />);
+  const inputs = new Map<string, ReturnType<typeof vi.fn>>();
+  fixture.mount.mockImplementation((options) => { options.terminal.modes.sendFocusMode = false; const input = vi.fn(); inputs.set(options.terminalId, input); return { control: fixture.control, observe: fixture.observe, input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }; });
+  const panes = (withShell: boolean) => <>
+    <TerminalPane key="agent" pane={{ id: 'a', terminalId: 'agent', title: 'Claude', kind: 'agent' }} machineId="fixture" threadId="fixture-thread" active canControl onFocus={() => {}} />
+    {withShell && <TerminalPane key="shell" pane={{ id: 's', terminalId: 'shell', title: 'Shell', kind: 'shell' }} machineId="fixture" threadId="fixture-thread" active={false} canControl onFocus={() => {}} />}
+  </>;
+  // Mount the split after the first pane loaded: concurrent lazy xterm imports can resolve to the real package in Vitest.
+  const view = render(panes(false));
   await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
-  await act(async () => fixture.mount.mock.calls[0][0].onState('Input control is active.', true));
-  const focusCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/focus'));
-  expect(focusCalls()).toHaveLength(0);
-  view.rerender(<TerminalPane {...props} active />);
-  await waitFor(() => expect(focusCalls()).toHaveLength(1));
-  expect(focusCalls()[0]).toEqual(['/api/threads/fixture-thread/focus', expect.objectContaining({ method: 'POST', body: JSON.stringify({ machineId: 'local', paneId: 'w1:p2' }) })]);
-  view.rerender(<TerminalPane {...props} active />);
-  expect(focusCalls()).toHaveLength(1);
+  view.rerender(panes(true));
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(2));
+  await act(async () => { for (const [options] of fixture.mount.mock.calls) options.onState('Input control is active.', true); });
+  const [agentInput, shellInput] = screen.getAllByLabelText('Terminal input');
+  expect(document.activeElement).toBe(agentInput);
+  expect(inputs.get('agent')!.mock.calls).toEqual([['\x1b[I']]);
+  agentInput.blur(); expect(inputs.get('agent')!.mock.calls.at(-1)).toEqual(['\x1b[O']);
+  shellInput.focus(); shellInput.blur(); expect(inputs.get('shell')).not.toHaveBeenCalled();
 });
 
 it('autofocuses a newly writable terminal but does not steal focus back from an editor on resize', async () => {
