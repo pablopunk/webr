@@ -8,6 +8,7 @@ import { LaunchStepList } from './LaunchProgress';
 import type { ResourceTicket, ThreadTicket } from '../client/create-tickets';
 import { terminalStartupStorageKey } from '../client/terminal-presets';
 import type { NewThreadDraft } from '../client/new-thread-draft';
+import { LoadingOrb } from './LoadingOrb';
 
 function editDraftUrl(key: string) {
   const url = new URL(window.location.href);
@@ -59,6 +60,7 @@ export function PendingOperation({ ticketKey }: { ticketKey: string }) {
   const ready = ticket.state === 'ready';
   const failed = ticket.state === 'failed';
   const unknown = ticket.state === 'unknown';
+  const loading = !ready && !failed && !unknown;
   const step = ticket.step ?? 'validate';
   const worktree = ticket.normalizedPayload.worktree;
   const retry = () => {
@@ -69,8 +71,11 @@ export function PendingOperation({ ticketKey }: { ticketKey: string }) {
   };
   const leaveUrl = `/new${ticket.normalizedPayload.projectId ? `?project=${encodeURIComponent(ticket.normalizedPayload.projectId)}` : ''}`;
 
-  return <main className="pending-operation" aria-label="Pending thread">
-    <h1>{ready ? 'Your thread is ready' : unknown ? 'Launch outcome uncertain' : failed ? 'The launch stopped' : ticket.transport === 'checking' ? 'Checking launch acceptance' : 'Starting your thread'}</h1>
+  const title = ready ? 'Your thread is ready' : unknown ? 'Launch outcome uncertain' : failed ? 'The launch stopped' : ticket.transport === 'checking' ? 'Checking launch acceptance' : 'Starting your thread';
+  return <main className={`pending-operation ${loading ? 'is-loading' : ''}`} aria-label="Pending thread">
+    {loading
+      ? <LoadingOrb title={title} />
+      : <h1>{title}</h1>}
     {draft && <>
       <blockquote className="launch-prompt">{draft.prompt}</blockquote>
       {!!draft.images.length && <ul className="pending-attachments" aria-label="Attached files">{draft.images.map((image) => <li key={image.id}>{image.name}</li>)}</ul>}
@@ -159,17 +164,20 @@ export function PendingResourceOperation({ ticketKey }: { ticketKey: string }) {
   const ready = ticket.state === 'ready';
   const failed = ticket.state === 'failed';
   const unknown = ticket.state === 'unknown';
+  const loading = !ready && !failed && !unknown;
   const title = ticket.kind === 'workspace' ? 'workspace' : ticket.kind === 'terminal' ? 'terminal' : 'worktree';
+  const heading = ready ? (ticket.kind === 'workspace' ? 'Project created' : ticket.kind === 'terminal' ? 'Terminal ready' : 'Worktree opened') : unknown ? (ticket.kind === 'worktree' ? 'Worktree outcome uncertain' : 'Create outcome uncertain') : failed ? (ticket.kind === 'worktree' ? 'Could not open worktree' : `Could not create ${title}`) : ticket.transport === 'checking' ? `Checking ${title} acceptance` : ticket.kind === 'worktree' ? 'Opening worktree' : `Creating ${title}`;
+  const detail = ticket.kind === 'workspace' ? ticket.normalizedPayload.label : ticket.kind === 'worktree' ? ticket.normalizedPayload.path : undefined;
   const retry = () => {
     const next = tickets.retryResource(ticketKey);
     if (!next) return;
     navigate(buildPendingThreadUrl(next.key, window.location.href, 'resource'));
     void tickets.startResource(next.key);
   };
-  return <main className="pending-operation" aria-label={`Pending ${title}`}>
-    <h1>{ready ? (ticket.kind === 'workspace' ? 'Project created' : ticket.kind === 'terminal' ? 'Terminal ready' : 'Worktree opened') : unknown ? (ticket.kind === 'worktree' ? 'Worktree outcome uncertain' : 'Create outcome uncertain') : failed ? (ticket.kind === 'worktree' ? 'Could not open worktree' : `Could not create ${title}`) : ticket.transport === 'checking' ? `Checking ${title} acceptance` : ticket.kind === 'worktree' ? 'Opening worktree' : `Creating ${title}`}</h1>
-    {ticket.kind === 'workspace' && <p>{ticket.normalizedPayload.label}</p>}
-    {ticket.kind === 'worktree' && <p>{ticket.normalizedPayload.path}</p>}
+  return <main className={`pending-operation ${loading ? 'is-loading' : ''}`} aria-label={`Pending ${title}`}>
+    {loading ? <LoadingOrb title={heading} detail={detail} /> : <h1>{heading}</h1>}
+    {!loading && ticket.kind === 'workspace' && <p>{ticket.normalizedPayload.label}</p>}
+    {!loading && ticket.kind === 'worktree' && <p>{ticket.normalizedPayload.path}</p>}
     {unknown && <p className="pending-warning" role="alert">{ticket.kind === 'worktree' ? 'The worktree may have been opened in Herdr. Webr will not replay it. Check the Herdr session before trying again.' : 'The native create may have reached Herdr. Webr will not replay it. Check the Herdr session before creating another resource.'}</p>}
     {failed && <div className="launch-failure" role="alert"><p>{ticket.error ?? (ticket.kind === 'worktree' ? 'Could not open worktree.' : `Could not create ${title}.`)}</p><button type="button" className="launch-retry" onClick={retry}>Try again with a new request</button></div>}
     {ticket.transport === 'checking' && ticket.notice && <p className="pending-warning" role="status">{ticket.notice}</p>}

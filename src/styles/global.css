@@ -1,6 +1,7 @@
 @import './fonts.css';
 @import './tokens.css';
 @import './base.css';
+@import './loading.css';
 @import './sidebar.css';
 @import './pages.css';
 @import './new-thread.css';

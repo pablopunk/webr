@@ -18,6 +18,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useStore } from 'zustand';
 import { RuntimeProvider, useRuntime, useRuntimeSelector } from '../client/provider';
 import { threadDisplayTitle, threadIsArchived } from '../client/pending-metadata';
+import { LoadingOrb } from './LoadingOrb';
 import { handleRouteClick, RouteNavigationProvider, useRouteNavigation } from '../client/app-navigation';
 import { isListedThread } from '../lib/launch';
 import type { Bootstrap } from '../shared/runtime';
@@ -322,8 +323,8 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
       {page === 'thread' && thread && <ThreadView thread={thread} connected={!!machines.find((machine) => machine.id === thread.machineId)?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow}
         pendingSplits={paneActions.pendingSplits} pendingCloses={paneActions.pendingCloses} paneActionNotice={paneActions.notice} onDismissPendingSplit={paneActions.dismissSplit} onDismissPendingClose={paneActions.dismissClose} onDismissPaneActionNotice={paneActions.dismissNotice} />}
       {page === 'thread' && !thread && threadIsAuthoritativelyMissing && <main className="not-found"><h1>Thread not found</h1><a href="/">Open a thread</a></main>}
-      {page === 'thread' && !thread && !threadIsAuthoritativelyMissing && <main className="native-thread-layout" aria-label="Thread"><p className="runtime-notice" role="status">Waiting for this thread to appear…</p></main>}
-      {page === 'terminal' && route.type === 'terminal' && routeMachineSession !== route.session && <main className="native-thread-layout" aria-label="Terminal tab"><p className="runtime-notice" role="status">Waiting for this terminal tab to appear…</p></main>}
+      {page === 'thread' && !thread && !threadIsAuthoritativelyMissing && <main className="native-thread-layout is-loading" aria-label="Thread"><LoadingOrb title="Opening thread" detail="Waiting for this thread to appear…" /></main>}
+      {page === 'terminal' && route.type === 'terminal' && routeMachineSession !== route.session && <main className="native-thread-layout is-loading" aria-label="Terminal tab"><LoadingOrb title="Opening terminal" detail="Waiting for this terminal tab to appear…" /></main>}
       {page === 'terminal' && route.type === 'terminal' && routeMachineSession === route.session && machineId && tabId && <TerminalTabView machineId={machineId} tabId={tabId} panes={terminalPanes} connected={!!machines.find((machine) => machine.id === machineId)?.connected} canControl={!!machines.find((machine) => machine.id === machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} pending={terminalPending} missing={terminalMissing} startupPreset={pendingTerminalStartup} onStartupComplete={completeTerminalStartup} />}
       {page === 'new' && route.type === 'composer' && (route.resourcePendingKey
         ? <PendingResourceOperation key={`${tickets.resourceRecoveryScope}:${route.resourcePendingKey}`} ticketKey={route.resourcePendingKey} />

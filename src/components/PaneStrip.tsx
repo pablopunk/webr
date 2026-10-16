@@ -4,6 +4,7 @@ import type { PendingPaneSplit } from '../client/pending-pane-actions';
 import type { Pane } from '../lib/models';
 import { VISIBLE_PANES } from '../lib/pane-strip';
 import { Tooltip } from './Tooltip';
+import { LoadingOrbVisual } from './LoadingOrb';
 
 type StripProps = {
   panes: Pane[];
@@ -29,7 +30,7 @@ function PendingSplitSlot({ pending, onDismiss }: { pending: PendingPaneSplit; o
   const dismissible = pending.phase === 'awaiting' || pending.phase === 'uncertain';
   return <div className={`pane-slot pending-pane-slot ${pending.phase === 'pending' ? 'is-loading' : ''}`} role="status" aria-live="polite" aria-busy={pending.phase === 'pending' ? true : undefined}>
     <div className="pending-pane-card">
-      <span className="pending-pane-skeleton" aria-hidden="true" />
+      {pending.phase === 'pending' && <LoadingOrbVisual size={48} />}
       <span>{label}</span>
       {dismissible && onDismiss && <button type="button" className="pending-pane-dismiss" aria-label="Dismiss split status" onClick={() => onDismiss(pending.key)}>Dismiss</button>}
     </div>

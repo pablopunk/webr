@@ -13,6 +13,7 @@ import type { Bootstrap, LaunchInput } from '../../src/shared/runtime';
 import { recoveryStoragePrefix, type NewThreadDraft } from '../../src/client/new-thread-draft';
 
 vi.mock('../../src/client/terminal-manager', () => ({ BrowserTerminalManager: class { start() {} stop() {} } }));
+vi.mock('bot-avatars', async (importOriginal) => ({ ...await importOriginal<typeof import('bot-avatars')>(), BotAvatar: () => null }));
 vi.mock('../../src/client/catalog', () => ({ useMachineCatalog: () => ({
   data: { isGitRepo: true, harnesses: [{ id: 'claude', name: 'Claude Code', models: ['Default'], launchEnabled: true }] },
   isError: false, isLoading: false, isRefetchError: false,
@@ -298,6 +299,9 @@ it('opens a terminal only after its create result is ready, then consumes the st
   act(() => fireEvent.click(screen.getByRole('button', { name: 'Start standalone terminal' })));
   const key = new URL(window.location.href).searchParams.get('resourcePending')!;
   expect(screen.getByRole('main', { name: 'Pending terminal' })).toBeDefined();
+  expect(screen.getByRole('heading', { name: 'Creating terminal' })).toBeDefined();
+  expect(screen.getByRole('status').getAttribute('aria-busy')).toBe('true');
+  expect(document.querySelector('.loading-orb-visual')).not.toBeNull();
   expect(sessionStorage.getItem(terminalStartupStorageKey('local', resourceResult.tabId))).toBeNull();
   await act(async () => { await vi.runAllTimersAsync(); });
   expect(window.location.pathname).toBe(`/sessions/default/tabs/${encodeURIComponent(resourceResult.tabId)}`);

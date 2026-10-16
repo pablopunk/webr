@@ -2,6 +2,7 @@ import { CircleAlert, CircleCheck, Circle, LoaderCircle } from 'lucide-react';
 import type { Thread } from '../lib/models';
 import { launchFailureMessage, launchStepIndex, launchStepLabel, launchSteps } from '../lib/launch';
 import { threadDisplayTitle } from '../client/pending-metadata';
+import { LoadingOrb } from './LoadingOrb';
 
 export type LaunchProgressOutcome = 'active' | 'failed' | 'unknown';
 
@@ -19,10 +20,11 @@ export function LaunchStepList({ step, worktree, outcome = 'active' }: { step: s
 export function LaunchProgress({ thread }: { thread: Thread }) {
   const failed = thread.operation?.state === 'failed';
   const unknown = thread.operation?.state === 'unknown';
+  const loading = !failed && !unknown;
   const step = thread.operation?.step ?? 'validate';
   const outcome = unknown ? 'unknown' : failed ? 'failed' : 'active';
-  return <main className="launch-progress" aria-label="Launch progress" role="status">
-    <h1>{unknown ? 'Launch outcome uncertain' : failed ? 'The launch stopped' : 'Starting your agent'}</h1>
+  return <main className={`launch-progress ${loading ? 'is-loading' : ''}`} aria-label="Launch progress">
+    {loading ? <LoadingOrb title="Starting your agent" detail={launchStepLabel(step, thread.worktree)} /> : <h1>{unknown ? 'Launch outcome uncertain' : 'The launch stopped'}</h1>}
     <blockquote className="launch-prompt">{thread.prompt || threadDisplayTitle(thread)}</blockquote>
     <LaunchStepList step={step} worktree={thread.worktree} outcome={outcome} />
     {(failed || unknown) && <div className="launch-failure" role="alert">

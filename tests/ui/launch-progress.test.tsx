@@ -1,8 +1,10 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { LaunchProgress } from '../../src/components/LaunchProgress';
 import { isListedThread, launchFailureMessage, launchStepLabel } from '../../src/lib/launch';
 import type { Thread } from '../../src/lib/models';
+
+vi.mock('bot-avatars', async (importOriginal) => ({ ...await importOriginal<typeof import('bot-avatars')>(), BotAvatar: () => null }));
 
 const thread = (overrides: Partial<Thread> = {}): Thread => ({ id: 't1', avatarIndex: 0, metadataVersion: 0, titleSync: { version: 0, state: 'unknown' }, projectId: 'local:p', machineId: 'local', title: 'Fix the bug', prompt: 'Fix the bug in the parser', agent: 'claude', model: 'Default', status: 'unknown', updatedAt: new Date().toISOString(), branch: '', worktree: true, session: 'default', tabId: '', panes: [], bindingState: 'pending', operation: { id: 'o1', state: 'running', step: 'checkout' }, ...overrides });
 const agentPane = { id: 'w1:p1', terminalId: 'term_1', title: 'Claude', kind: 'agent' as const };
@@ -25,6 +27,13 @@ it('describes the actual launch resource and whether prompt delivery is uncertai
   expect(launchFailureMessage('checkout', false)).toContain('The tab may already exist');
   expect(launchFailureMessage('checkout', false)).toContain('your prompt was not sent');
   expect(launchFailureMessage('prompt', true)).toContain('Prompt delivery is uncertain');
+});
+
+it('uses the animated orb while an agent launch is in progress', () => {
+  render(<LaunchProgress thread={thread()} />);
+  expect(screen.getByRole('heading', { name: 'Starting your agent' })).toBeDefined();
+  expect(screen.getByRole('status').getAttribute('aria-busy')).toBe('true');
+  expect(document.querySelector('.loading-orb-visual')).not.toBeNull();
 });
 
 it('links a definitively failed launch back to its original draft', () => {

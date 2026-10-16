@@ -12,6 +12,7 @@ vi.mock('../../src/client/thread-actions', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/client/thread-actions')>();
   return { ...actual, openThreadTerminal: vi.fn(), closeThreadPane: vi.fn() };
 });
+vi.mock('bot-avatars', async (importOriginal) => ({ ...await importOriginal<typeof import('bot-avatars')>(), BotAvatar: () => null }));
 vi.mock('../../src/components/TerminalPane', async () => {
   const { createElement } = await import('react');
   return { TerminalPane: ({ pane }: { pane: { terminalId?: string } }) => createElement('section', { 'data-testid': `terminal-${pane.terminalId}` }) };
@@ -58,6 +59,7 @@ it('shows a local split slot immediately, guards duplicate clicks, and never mou
   render(<Harness />);
   fireEvent.click(screen.getByRole('button', { name: 'Split pane' }));
   expect(screen.getByText('Creating terminal pane…')).toBeTruthy();
+  expect(document.querySelector('.pending-pane-slot.is-loading .loading-orb-visual')).not.toBeNull();
   expect(screen.getByTestId('terminal-terminal-agent')).toBeTruthy();
   expect(screen.getByTestId('terminal-terminal-shell')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Split pane' }));

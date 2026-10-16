@@ -17,6 +17,7 @@ vi.mock('../../src/client/terminal-manager', () => ({
     stop() {}
   },
 }));
+vi.mock('bot-avatars', async (importOriginal) => ({ ...await importOriginal<typeof import('bot-avatars')>(), BotAvatar: () => null }));
 vi.mock('../../src/components/PairingPrompt', () => ({ PairingPrompt: () => null }));
 vi.mock('../../src/components/UpdateButton', () => ({ UpdateButton: () => null }));
 vi.mock('../../src/components/SidebarMetrics', () => ({ SidebarMetrics: () => null }));

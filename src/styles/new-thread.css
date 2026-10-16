@@ -29,6 +29,8 @@
 .composer-send:disabled { background: var(--surface-active); color: var(--ink-muted); cursor: not-allowed; }
 .new-thread-page .form-error { margin: 12px 4px; }
 .pending-operation { display: grid; align-content: center; justify-items: start; gap: 16px; width: min(560px, 100%); min-height: 100dvh; margin: 0 auto; padding: 60px 20px; }
+.pending-operation.is-loading { justify-items: stretch; }
+.pending-operation.is-loading > .pending-leave { justify-self: center; }
 .pending-operation h1 { margin: 0; color: var(--ink); font-size: 23px; font-weight: 600; letter-spacing: -.03em; }
 .pending-operation .launch-prompt { width: 100%; }
 .pending-attachments { display: flex; flex-wrap: wrap; gap: 7px; margin: 0; padding: 0; list-style: none; }
