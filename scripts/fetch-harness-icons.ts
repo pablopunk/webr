@@ -12,7 +12,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import sharp from 'sharp';
-import { detectedAgentKinds } from '../src/shared/agent-kinds';
+import { herdrAgentKinds } from '../src/shared/agent-kinds';
 
 const root = resolve(import.meta.dirname, '..');
 const out = resolve(root, 'public', 'harness-icons');
@@ -124,11 +124,11 @@ async function resolveHarness(id: string, source: HarnessSource) {
   return undefined;
 }
 
-const missing = detectedAgentKinds.filter((id) => !sources[id]);
-const stale = Object.keys(sources).filter((id) => !detectedAgentKinds.includes(id));
+const missing = herdrAgentKinds.filter((id) => !sources[id]);
+const stale = Object.keys(sources).filter((id) => !herdrAgentKinds.includes(id));
 const requested = process.argv.slice(2);
-const selected = requested.length ? requested : detectedAgentKinds;
-const unknown = selected.filter((id) => !detectedAgentKinds.includes(id));
+const selected = requested.length ? requested : herdrAgentKinds;
+const unknown = selected.filter((id) => !herdrAgentKinds.includes(id));
 if (missing.length || stale.length || unknown.length) {
   if (missing.length) console.error(`Missing manifest entries: ${missing.join(', ')}`);
   if (stale.length) console.error(`Stale manifest entries: ${stale.join(', ')}`);

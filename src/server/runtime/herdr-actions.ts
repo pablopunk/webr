@@ -43,6 +43,10 @@ export class HerdrActions {
   }
   async start(input: LaunchInput, paneId: string, threadId: string, ownerToken?: string): Promise<LaunchCapture> {
     this.requireCapability(input);
+    // Herdr 0.9.3 rejects agent.start for fx (unsupported_agent_kind) even though
+    // the fx binary runs and reports idle/done state. Launch it through pane
+    // input instead of the agent lifecycle API.
+    if (input.agent === 'fx') return this.startFx(input, paneId, threadId, ownerToken);
     const args = modelArguments(input.agent, input.model);
     await this.untilShellReady(paneId);
     // Display metadata is isolated from the official provider lifecycle source.
@@ -67,6 +71,33 @@ export class HerdrActions {
     for (;;) {
       try { return await this.api.request('agent.start', params, { timeoutMs: requestDeadline('agent.start', params) }); }
       catch (error) { if (!(error instanceof Error) || error.message !== 'agent_pane_busy' || Date.now() >= end) throw error; await pause(500); }
+    }
+  }
+  private async startFx(input: LaunchInput, paneId: string, threadId: string, ownerToken?: string): Promise<LaunchCapture> {
+    await this.untilShellReady(paneId);
+    if (ownerToken) await this.api.request('pane.report_metadata', { pane_id: paneId, source: 'webr', tokens: { webr_owner: ownerToken } });
+    const args = modelArguments(input.agent, input.model);
+    await this.api.request('pane.send_text', { pane_id: paneId, text: ['fx', ...args].join(' ') });
+    await this.api.request('pane.send_keys', { pane_id: paneId, keys: ['enter'] });
+    const name = agentName(threadId);
+    const started = await this.untilFxReady(paneId);
+    await this.api.request('agent.rename', { target: paneId, name });
+    const providerSession = started.agent_session ?? undefined;
+    if (providerSession && providerSession.agent !== input.agent) throw new Error('agent_session_mismatch');
+    const observedCwd = started.foreground_cwd ?? started.cwd ?? undefined;
+    return { ...(providerSession ? { providerSession } : {}), ...(observedCwd ? { observedCwd } : {}) };
+  }
+  private async untilFxReady(paneId: string) {
+    const end = Date.now() + AGENT_READY_TIMEOUT_MS;
+    for (;;) {
+      try {
+        const current = detectingAgent.safeParse((await this.api.request('agent.get', { target: paneId })).agent);
+        if (current.success && current.data.agent === 'fx' && current.data.pane_id === paneId && ['idle', 'done'].includes(current.data.agent_status ?? '')) return current.data;
+      } catch {
+        // The pane has no agent yet; keep polling until the fx process reports.
+      }
+      if (Date.now() >= end) throw new Error('agent_not_ready');
+      await pause(500);
     }
   }
   private async shellOwnsForeground(paneId: string) {
@@ -120,6 +151,17 @@ export class HerdrActions {
   async prompt(paneId: string, prompt: string, terminalId: string, threadId: string, kind: string, input?: LaunchInput) {
     this.requireCapability(input);
     const name = agentName(threadId);
+    // Herdr 0.9.3 rejects agent.prompt for fx even after a manual start and
+    // rename. Deliver through pane input, which fx accepts like typed text.
+    if (kind === 'fx') {
+      const result = await this.api.request('agent.get', { target: name });
+      const agent = startedAgent.parse(result.agent);
+      if (agent.name !== name || agent.terminal_id !== terminalId || agent.pane_id !== paneId || agent.agent !== kind) throw new Error('agent_occupant_changed');
+      if (agent.agent_status === 'blocked') throw new Error('agent_blocked');
+      await this.api.request('pane.send_text', { pane_id: paneId, text: prompt });
+      await this.api.request('pane.send_keys', { pane_id: paneId, keys: ['enter'] });
+      return;
+    }
     const result = await this.api.request('agent.get', { target: name });
     const agent = startedAgent.parse(result.agent);
     if (agent.name !== name || agent.terminal_id !== terminalId || agent.pane_id !== paneId || agent.agent !== kind) throw new Error('agent_occupant_changed');

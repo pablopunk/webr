@@ -10,11 +10,11 @@ vi.mock('../../src/client/catalog', () => ({ useMachineCatalog: (_id: string, _c
   data: { isGitRepo: true, harnesses: projectId === 'local:second' ? [
     { id: 'codex', name: 'Codex', models: ['Default'], launchEnabled: true, integrationState: 'not_installed', recoveryWarning: 'Herdr integration is not installed. Conversation recovery may be unavailable.' },
     { id: 'claude', name: 'Claude Code', models: ['Default'], launchEnabled: true, integrationState: 'current' },
-    { id: 'fx', name: 'FX', models: ['Default'], launchEnabled: false, reason: 'Herdr does not support launching FX yet.' },
+    { id: 'fx', name: 'FX', models: ['Default'], launchEnabled: true },
   ] : [
     { id: 'claude', name: 'Claude Code', models: ['Default'], launchEnabled: true, integrationState: 'current' },
     { id: 'codex', name: 'Codex', models: ['Default'], launchEnabled: true, integrationState: 'not_installed', recoveryWarning: 'Herdr integration is not installed. Conversation recovery may be unavailable.' },
-    { id: 'fx', name: 'FX', models: ['Default'], launchEnabled: false, reason: 'Herdr does not support launching FX yet.' },
+    { id: 'fx', name: 'FX', models: ['Default'], launchEnabled: true },
   ] }, isError: false,
 }) }));
 
@@ -57,10 +57,16 @@ it('restores the last harness independently for each project', async () => {
   expect(localStorage.getItem('webr-last-harness:local:local:second')).toBe('claude');
 });
 
-it('does not restore a saved harness that Herdr cannot launch', async () => {
-  localStorage.setItem('webr-last-harness:local:local:first', 'fx');
+it('does not restore an unknown saved harness', async () => {
+  localStorage.setItem('webr-last-harness:local:local:first', 'nope');
   show();
   await waitFor(() => expect(screen.getByRole('combobox', { name: 'Harness: Claude Code' })).toBeDefined());
+});
+
+it('restores a saved FX harness because it is launchable', async () => {
+  localStorage.setItem('webr-last-harness:local:local:first', 'fx');
+  show();
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Harness: FX' })).toBeDefined());
 });
 
 it('updates the worktree tooltip immediately when the checkout mode changes', async () => {
@@ -96,12 +102,14 @@ it('keeps harness options and composer free of integration and recovery status',
   expect(screen.queryByText(/integration (current|missing|not installed|outdated|unavailable)|recovery/i)).toBeNull();
 });
 
-it('shows FX as unavailable instead of offering a launch Herdr cannot perform', async () => {
+it('offers FX as a launchable harness', async () => {
   show();
   const user = userEvent.setup();
   await user.click(screen.getByRole('combobox', { name: 'Harness: Claude Code' }));
-  const fx = await screen.findByRole('option', { name: 'FX — Herdr does not support launching FX yet.' });
-  expect(fx.getAttribute('aria-disabled')).toBe('true');
+  const fx = await screen.findByRole('option', { name: 'FX' });
+  expect(fx.getAttribute('aria-disabled')).toBeNull();
+  await user.click(fx);
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Harness: FX' })).toBeDefined());
 });
 
 it('restores the submitted prompt, uploaded images, and launch choices after a failed launch', async () => {

@@ -15,13 +15,37 @@ it('creates a tab only in the selected workspace when worktree is off', async ()
 });
 it('validates native model argv and refuses unsupported adapters rather than sending shell strings', () => {
   expect(modelArguments('claude', 'Default')).toEqual([]); expect(modelArguments('opencode', 'Default')).toEqual([]); expect(modelArguments('opencode', 'host/custom')).toEqual(['--model', 'host/custom']);
-  expect(modelArguments('pi', 'Default')).toEqual([]); expect(modelArguments('pi', 'p/x')).toEqual(['--model', 'p/x']); expect(() => modelArguments('fx', 'Default')).toThrow('unsupported_launch_adapter'); expect(() => modelArguments('omp', 'x')).toThrow('unsupported_launch_adapter'); expect(() => modelArguments('nope', 'Default')).toThrow('unsupported_launch_adapter'); expect(() => modelArguments('claude', 'model;unsafe')).toThrow();
+  expect(modelArguments('pi', 'Default')).toEqual([]); expect(modelArguments('pi', 'p/x')).toEqual(['--model', 'p/x']); expect(modelArguments('fx', 'Default')).toEqual([]); expect(modelArguments('fx', 'host/custom')).toEqual(['--model', 'host/custom']); expect(() => modelArguments('omp', 'x')).toThrow('unsupported_launch_adapter'); expect(() => modelArguments('nope', 'Default')).toThrow('unsupported_launch_adapter'); expect(() => modelArguments('claude', 'model;unsafe')).toThrow();
 });
-it('refuses to start FX through Herdr before making any API request', async () => {
-  const calls: string[] = [];
-  const actions = new HerdrActions({ request: async (method) => { calls.push(method); return {}; } }, new FakeTarget().locations, () => {});
-  await expect(actions.start({ ...launch, agent: 'fx' }, 'w1:p1', randomUUID())).rejects.toThrow('unsupported_launch_adapter');
-  expect(calls).toEqual([]);
+it('starts FX through pane input because Herdr agent.start rejects its kind', async () => {
+  const id = randomUUID(); const calls: { method: string; params?: Record<string, unknown> }[] = [];
+  const fxAgent = { name: agentName(id), terminal_id: 'term_1', pane_id: 'w1:p1', agent: 'fx', agent_status: 'idle' as const };
+  const actions = new HerdrActions({ request: async (method, params) => {
+    calls.push({ method, params });
+    if (method === 'pane.process_info') return { process_info: { pane_id: 'w1:p1', shell_pid: 10, foreground_processes: [{ pid: 10, name: 'zsh' }] } };
+    if (method === 'pane.send_text') return { type: 'ok' };
+    if (method === 'pane.send_keys') return { type: 'ok' };
+    if (method === 'agent.get') return { type: 'agent_info', agent: fxAgent };
+    if (method === 'agent.rename') return { type: 'agent_info', agent: fxAgent };
+    throw new Error(`Unexpected request: ${method}`);
+  } }, new FakeTarget().locations, () => {});
+  await actions.start({ ...launch, agent: 'fx' }, 'w1:p1', id);
+  expect(calls.map((call) => call.method)).toEqual(['pane.process_info', 'pane.send_text', 'pane.send_keys', 'agent.get', 'agent.rename']);
+  expect(calls[1].params).toEqual({ pane_id: 'w1:p1', text: 'fx' });
+});
+it('sends the FX prompt through pane input after verifying the named occupant', async () => {
+  const id = randomUUID(); const calls: { method: string; params?: Record<string, unknown> }[] = [];
+  const fxAgent = { name: agentName(id), terminal_id: 'term_1', pane_id: 'w1:p1', agent: 'fx', agent_status: 'idle' as const };
+  const actions = new HerdrActions({ request: async (method, params) => {
+    calls.push({ method, params });
+    if (method === 'agent.get') return { type: 'agent_info', agent: fxAgent };
+    if (method === 'pane.send_text') return { type: 'ok' };
+    if (method === 'pane.send_keys') return { type: 'ok' };
+    throw new Error(`Unexpected request: ${method}`);
+  } }, new FakeTarget().locations, () => {});
+  await actions.prompt('w1:p1', 'hello fx', 'term_1', id, 'fx', { ...launch, agent: 'fx' });
+  expect(calls.map((call) => call.method)).toEqual(['agent.get', 'pane.send_text', 'pane.send_keys']);
+  expect(calls[1].params).toEqual({ pane_id: 'w1:p1', text: 'hello fx' });
 });
 it('uses fresh named-agent identity before the only prompt and rejects a changed occupant', async () => {
   const id = randomUUID(); const calls: string[] = [];
