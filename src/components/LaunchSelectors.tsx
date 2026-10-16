@@ -19,7 +19,7 @@ export function LaunchSelectors({ machine, machines, projects, projectId, harnes
       options={machines.map((choice) => ({ icon: machineIcon(choice), value: choice.id, label: `${choice.name}${choice.connected ? '' : ' · Not connected'}`, shortLabel: choice.name, disabled: !choice.connected }))} />
     <ProjectPicker key={machine.id} projects={projects} projectId={projectId} onChange={onProjectChange} onAddProject={onAddProject} />
     <ComposerCombobox label="Harness" value={harness} onChange={onHarnessChange} icon={<TerminalSquare size={14} />}
-      options={harnesses.map((choice) => ({ value: choice.id, label: choice.name, shortLabel: choice.name === 'Claude Code' ? 'Claude' : choice.name, icon: <HarnessIcon harness={choice.id} /> }))}
+      options={harnesses.map((choice) => ({ value: choice.id, label: choice.reason ? `${choice.name} — ${choice.reason}` : choice.name, shortLabel: choice.name === 'Claude Code' ? 'Claude' : choice.name, icon: <HarnessIcon harness={choice.id} />, disabled: choice.launchEnabled === false }))}
       loading={catalog.isLoading && !catalog.data} refreshError={catalog.isRefetchError && !!catalog.data}
       emptyMessage={catalog.isError && !catalog.data ? 'Could not load harnesses.' : 'No harnesses available.'} />
   </div>;

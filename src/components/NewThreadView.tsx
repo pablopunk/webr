@@ -121,7 +121,7 @@ export function NewThreadView({ projects, machines, selectedProjectId, workspace
   }, [machineId, projectId]);
   useEffect(() => {
     if (!projectId || !catalog.data) return;
-    const choices = catalog.data.harnesses;
+    const choices = catalog.data.harnesses.filter((choice) => choice.launchEnabled);
     const key = `${machineId}:${projectId}`;
     const restored = recoveredHarness.current?.key === key ? recoveredHarness.current.value : undefined;
     const previous = localStorage.getItem(harnessPreference(machineId, projectId));

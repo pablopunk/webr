@@ -15,7 +15,13 @@ it('creates a tab only in the selected workspace when worktree is off', async ()
 });
 it('validates native model argv and refuses unsupported adapters rather than sending shell strings', () => {
   expect(modelArguments('claude', 'Default')).toEqual([]); expect(modelArguments('opencode', 'Default')).toEqual([]); expect(modelArguments('opencode', 'host/custom')).toEqual(['--model', 'host/custom']);
-  expect(modelArguments('pi', 'Default')).toEqual([]); expect(modelArguments('pi', 'p/x')).toEqual(['--model', 'p/x']); expect(() => modelArguments('omp', 'x')).toThrow('unsupported_launch_adapter'); expect(() => modelArguments('nope', 'Default')).toThrow('unsupported_launch_adapter'); expect(() => modelArguments('claude', 'model;unsafe')).toThrow();
+  expect(modelArguments('pi', 'Default')).toEqual([]); expect(modelArguments('pi', 'p/x')).toEqual(['--model', 'p/x']); expect(() => modelArguments('fx', 'Default')).toThrow('unsupported_launch_adapter'); expect(() => modelArguments('omp', 'x')).toThrow('unsupported_launch_adapter'); expect(() => modelArguments('nope', 'Default')).toThrow('unsupported_launch_adapter'); expect(() => modelArguments('claude', 'model;unsafe')).toThrow();
+});
+it('refuses to start FX through Herdr before making any API request', async () => {
+  const calls: string[] = [];
+  const actions = new HerdrActions({ request: async (method) => { calls.push(method); return {}; } }, new FakeTarget().locations, () => {});
+  await expect(actions.start({ ...launch, agent: 'fx' }, 'w1:p1', randomUUID())).rejects.toThrow('unsupported_launch_adapter');
+  expect(calls).toEqual([]);
 });
 it('uses fresh named-agent identity before the only prompt and rejects a changed occupant', async () => {
   const id = randomUUID(); const calls: string[] = [];
@@ -48,12 +54,28 @@ it('retries agent.start only while Herdr says the shell has not reached its prom
   const refused = new HerdrActions({ request: async (method) => { if (method === 'pane.process_info') return shell; throw new Error('agent_not_supported'); } }, new FakeTarget().locations, () => {});
   await expect(refused.start(launch, 'w1:p1', id)).rejects.toThrow('agent_not_supported');
 });
-it('sends the first prompt only after the agent screen stops changing', async () => {
-  const id = randomUUID(); const agent = { name: agentName(id), terminal_id: 'term_1', pane_id: 'w1:p1', agent: 'opencode', agent_status: 'idle' }; const calls: string[] = [];
-  const screens = ['booting', 'loading', 'ready', 'ready', 'ready', 'ready'];
-  const actions = new HerdrActions({ request: async (method) => { calls.push(method); return method === 'pane.read' ? { read: { text: screens.shift() ?? 'ready' } } : { type: 'agent_info', agent }; } }, new FakeTarget().locations, () => {});
-  await actions.prompt('w1:p1', 'hello', 'term_1', id, 'opencode');
-  expect(calls.filter((call) => call === 'pane.read').length).toBeGreaterThanOrEqual(5); expect(calls.at(-1)).toBe('agent.prompt');
+it('submits the first prompt if the agent starts working between startup and prompt submission', async () => {
+  const id = randomUUID(); const calls: string[] = [];
+  const agent = { name: agentName(id), terminal_id: 'term_1', pane_id: 'w1:p1', agent: 'opencode', agent_status: 'idle' };
+  const actions = new HerdrActions({ request: async (method) => {
+    calls.push(method);
+    if (method === 'pane.process_info') return { process_info: { shell_pid: 10, foreground_processes: [{ pid: 10, name: 'zsh' }] } };
+    if (method === 'agent.start') return { type: 'agent_started', agent };
+    if (method === 'agent.get') return { type: 'agent_info', agent: { ...agent, agent_status: 'working' } };
+    if (method === 'agent.prompt') return { type: 'agent_prompted', agent: { ...agent, agent_status: 'working' } };
+    throw new Error(`Unexpected request: ${method}`);
+  } }, new FakeTarget().locations, () => {});
+  const input = { ...launch, agent: 'opencode' };
+  await actions.start(input, 'w1:p1', id);
+  await actions.prompt('w1:p1', 'hello', 'term_1', id, 'opencode', input);
+  expect(calls).toEqual(['pane.process_info', 'agent.start', 'agent.get', 'agent.prompt']);
+});
+it('does not send a prompt to a blocked agent', async () => {
+  const id = randomUUID(); const calls: string[] = [];
+  const agent = { name: agentName(id), terminal_id: 'term_1', pane_id: 'w1:p1', agent: 'opencode', agent_status: 'blocked' };
+  const actions = new HerdrActions({ request: async (method) => { calls.push(method); return { type: 'agent_info', agent }; } }, new FakeTarget().locations, () => {});
+  await expect(actions.prompt('w1:p1', 'hello', 'term_1', id, 'opencode')).rejects.toThrow('agent_blocked');
+  expect(calls).toEqual(['agent.get']);
 });
 it('removes a worktree only when the thread owns it and otherwise only closes the tab', async () => {
   const discard = async (state: ReturnType<typeof snapshot>, removeWorktree: boolean) => { const calls: [string, unknown][] = []; await new HerdrActions({ request: async (method, params) => { calls.push([method, params]); return {}; } }, new FakeTarget().locations, () => {}).discardTab(state, 'w1:t1', removeWorktree); return calls; };

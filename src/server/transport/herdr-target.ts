@@ -11,7 +11,7 @@ import { SshForward, sshOptions, remoteCommand, quoteShell } from './ssh';
 import type { LaunchInput } from '../../shared/runtime';
 import type { Machine, MachineOs } from '../../lib/machines';
 import { harnessName } from '../../lib/models';
-import { acceptsModelFlag, herdrAgentKinds, isHerdrAgentKind } from '../../shared/agent-kinds';
+import { acceptsModelFlag, detectedAgentKinds, isHerdrAgentKind } from '../../shared/agent-kinds';
 import { modelListings, parseModelListing } from './model-discovery';
 import { HerdrActions } from '../runtime/herdr-actions';
 import { listRemoteIconCandidates, readRemoteIcon } from './remote-icons';
@@ -105,11 +105,11 @@ export class HerdrTarget implements TargetAdapter {
     await api.request('ping');
     const run = (command: string, args: string[]) => this.runOnTarget(command, args);
     const isPresent = (kind: string) => run('/bin/sh', ['-c', 'command -v "$1"', 'sh', kind]).then((path) => path.trim().length > 0, () => false);
-    const present = (await Promise.all(herdrAgentKinds.map(async (kind) => (await isPresent(kind)) ? kind : undefined))).filter((kind): kind is string => !!kind);
+    const present = (await Promise.all(detectedAgentKinds.map(async (kind) => (await isPresent(kind)) ? kind : undefined))).filter((kind): kind is string => !!kind);
     present.forEach((kind) => this.discoverModels(kind));
     const modelsPending = present.some((kind) => this.pendingModels.has(kind));
     const isGitRepo = await this.isGitRepo(projectId);
-    return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, modelsPending, isGitRepo, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id) => ({ id, name: harnessName(id), models: ['Default', ...(this.discoveredModels.get(id)?.models ?? [])], customModels: acceptsModelFlag(id), launchEnabled: true })) };
+    return { id: this.id, name: this.name, session: this.session, connected: true, writable: this.writable, configVersion: this.configVersion, modelsPending, isGitRepo, projectPaths: Object.fromEntries(this.locations.map((location) => [location.projectId, location.path])), harnesses: present.map((id) => ({ id, name: harnessName(id), models: ['Default', ...(this.discoveredModels.get(id)?.models ?? [])], customModels: acceptsModelFlag(id), launchEnabled: isHerdrAgentKind(id), ...(!isHerdrAgentKind(id) ? { reason: 'Herdr does not support launching FX yet.' } : {}) })) };
   }
   private async detectRemoteOs() {
     this.remoteOs = await this.runOnTarget('uname', ['-s']).then((output) => osFromPlatform(output.trim()), () => undefined);

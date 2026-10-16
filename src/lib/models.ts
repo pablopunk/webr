@@ -1,6 +1,6 @@
 export type AgentStatus = 'working' | 'blocked' | 'done' | 'idle' | 'unknown';
 export const harnessNames: Record<string, string> = {
-  claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'Pi',
+  claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'Pi', fx: 'FX',
 };
 
 export function harnessName(agent: string | undefined): string {
