@@ -8,12 +8,12 @@ description: Release a new version of @pablopunk/webr to npm. Use when the user 
 Publishing is outward-facing: confirm the version bump with the user before tagging or pushing.
 
 1. Start from a clean `main` that is up to date with `origin/main`: `git status --short` is empty, `git fetch && git status -sb`.
-2. Verify locally: `mise exec -- pnpm check && mise exec -- pnpm test && mise exec -- pnpm smoke:install`. Stop on any failure.
+2. Verify locally: `mise exec -- pnpm check && mise exec -- pnpm test && mise exec -- pnpm smoke:install`. Stop on any failure. Run them unpiped: `pnpm check | grep …` returns grep's exit code and let a type error through to CI once.
 3. Pick the bump (0.x: `minor` for anything breaking or a new feature, `patch` for fixes). Ask the user if unclear.
 4. `npm version <patch|minor> -m "Release %s"` bumps `package.json`, runs the `version` script (which syncs `plugin/herdr-plugin.toml` to the same version and stages it), commits and creates the `v<version>` tag. Never edit the plugin version by hand.
 5. `git push origin main --follow-tags`. Use `rtk proxy git push ...` if a rejection is unclear.
-6. The `Publish` workflow (`.github/workflows/publish.yml`) runs on the `v*` tag: check, test, build, smoke test, then `npm publish --provenance` through npm trusted publishing (OIDC, no token or secret). Watch it with `rtk proxy gh run watch`.
-7. Verify: `npm view @pablopunk/webr version` shows the new version.
+6. The `Publish` workflow (`.github/workflows/publish.yml`) runs on the `v*` tag: check, test, build, smoke test, then `npm publish --provenance` through npm trusted publishing (OIDC, no token or secret). The run appears a few seconds after the push: `rtk proxy gh run list --workflow publish.yml --limit 1 --json databaseId,headBranch`, then `rtk proxy gh run watch <id> --exit-status`.
+7. Verify: the publish step logs `+ @pablopunk/webr@<version>`, but the registry's `latest` tag lags it by one to three minutes, so poll `https://registry.npmjs.org/-/package/@pablopunk/webr/dist-tags` until it flips before telling the user to update.
 
 Never move or re-push a tag that CI already ran on. If the release fails, fix forward with a new patch version. `workflow_dispatch` can re-run the workflow without touching tags, but the version in `package.json` must be unpublished.
 
@@ -23,4 +23,4 @@ Trusted publishing needs npm 11.5+ (the workflow upgrades it, Node 22 ships 10) 
 
 Manual publish (only if CI is unavailable): run `npm publish --access public` in a real terminal so npm can ask for the authenticator code, or pass `--otp=<code>`. It fails with `EOTP` inside Claude Code's `!` prompt, and the auto-mode classifier blocks the agent from publishing, so the user types it.
 
-After a release, remind the user that `webr install` pulls the plugin folder from GitHub `main`, not from npm, so the plugin is live as soon as `main` is pushed.
+After a release, remind the user that `webr install` pulls the plugin folder from GitHub `main`, not from npm, so the plugin is live as soon as `main` is pushed. A running server does not pick up the npm release by itself: the sidebar Update button, or `POST /api/update` with an `Origin` header equal to the server's own origin (anything else gets `invalid_origin`), makes it update and restart; `GET /api/update` shows `current` and `latest`. Herdr and its agents are untouched by that restart.
