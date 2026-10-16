@@ -83,6 +83,28 @@ it('autofocuses a newly writable terminal but does not steal focus back from an 
   fireEvent(window, new Event('focus')); expect(document.activeElement).toBe(editor);
 });
 
+it('takes focus back when the browser drops it on the body, but never from another field', async () => {
+  let tick = () => {}; vi.stubGlobal('requestAnimationFrame', (run: () => void) => { tick = run; return 1; }); vi.stubGlobal('cancelAnimationFrame', () => {});
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
+  const props = { pane: { id: 'w1:p1', terminalId: 'term_fixture', title: 'Agent', kind: 'agent' as const }, machineId: 'fixture', threadId: 'fixture-thread', active: true, canControl: true, onFocus: () => {} };
+  const view = render(<TerminalPane {...props} />);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
+  await act(async () => fixture.mount.mock.calls[0][0].onState('Input control is active.', true));
+  const input = screen.getByLabelText('Terminal input');
+  expect(document.activeElement).toBe(input);
+  // A DOM move or a click on a dead area leaves focus on <body>: take it back next frame.
+  input.blur(); expect(document.activeElement).toBe(document.body);
+  tick(); expect(document.activeElement).toBe(input);
+  // Any re-render of the active pane also notices focus resting nowhere.
+  input.blur(); view.rerender(<TerminalPane {...props} />); expect(document.activeElement).toBe(input);
+  // Typing with no focus anywhere reaches the terminal and reclaims focus, for control keys too.
+  input.blur(); fixture.input.mockClear(); fireEvent.keyDown(document.body, { key: 'Enter' });
+  expect(document.activeElement).toBe(input); expect(fixture.input).toHaveBeenLastCalledWith('\r');
+  const editor = document.createElement('input'); view.container.append(editor); editor.focus();
+  view.rerender(<TerminalPane {...props} />); expect(document.activeElement).toBe(editor);
+});
+
 it('moves real keyboard focus between split panes even when the destination has a selection', async () => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   const inputs = new Map<string, ReturnType<typeof vi.fn>>();

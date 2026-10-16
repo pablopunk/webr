@@ -21,6 +21,7 @@ import { useTerminalNotice } from './useTerminalNotice';
 import { useVoiceInput } from './useVoiceInput';
 import { terminalStartupCommands, type TerminalStartupPreset } from '../client/terminal-presets';
 import { isNarrowScreen } from '../client/pane-window';
+import { focusRestsNowhere } from '../client/focus-ownership';
 
 function themeColors() {
   const styles = getComputedStyle(document.documentElement);
@@ -168,6 +169,18 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     // palette, or editor when a resized baseline arrives.
     if (active && writable && (pendingFocus.current || focused === document.body || section.current?.contains(focused))) focusInput(false);
   }, [active, writable]);
+  useEffect(() => { if (active && writable && focusRestsNowhere()) focusInput(false); });
+  useEffect(() => {
+    if (!active || !writable) return;
+    let frame = 0;
+    const reclaimFocusDroppedOnBody = (event: FocusEvent) => {
+      if (event.relatedTarget) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => { if (focusRestsNowhere()) focusInput(false); });
+    };
+    document.addEventListener('focusout', reclaimFocusDroppedOnBody);
+    return () => { cancelAnimationFrame(frame); document.removeEventListener('focusout', reclaimFocusDroppedOnBody); };
+  }, [active, writable]);
   useEffect(() => { if (term.current) term.current.options.cursorInactiveStyle = active ? 'block' : 'outline'; }, [active, writable]);
   useEffect(() => {
     if (!active || !writable) return;
@@ -186,7 +199,7 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
       if (combo && peekLeaderPrefix() === combo) takeLeaderPrefix();
       else if (shortcutInvolves(combo, getShortcuts())) return;
       const bytes = terminalKeyBytes(event);
-      if (bytes) { event.preventDefault(); event.stopPropagation(); control.current?.input(bytes); } else if (event.key.length === 1 && !event.ctrlKey && !event.altKey) {
+      if (bytes) { event.preventDefault(); event.stopPropagation(); focusInput(false); control.current?.input(bytes); } else if (event.key.length === 1 && !event.ctrlKey && !event.altKey) {
         event.preventDefault(); event.stopPropagation(); focusInput(false); control.current?.input(event.key);
       }
     };

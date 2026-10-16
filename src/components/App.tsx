@@ -38,10 +38,12 @@ import { trackVisualViewport } from '../client/visual-viewport';
 import { terminalStartupStorageKey, type TerminalStartupPreset } from '../client/terminal-presets';
 import { clearLaunchDraft, clearNewThreadDraftForLaunch } from '../client/new-thread-draft';
 import { sidebarNavigationHref } from '../client/sidebar-navigation';
+import { pressesAButtonWhileTerminalOwnsFocus } from '../client/focus-ownership';
 
 type Props = { initialUrl: string; bootstrap: Bootstrap };
 
 const keepTerminalFocus = (event: React.PointerEvent) => event.preventDefault();
+const keepTerminalFocusAcrossButtonPresses = (event: React.PointerEvent) => { if (pressesAButtonWhileTerminalOwnsFocus(event.target)) event.preventDefault(); };
 
 export default function App(props: Props) {
   return <CrashReport><RuntimeProvider bootstrap={props.bootstrap}><RouteNavigationProvider initialUrl={props.initialUrl}><RuntimeApp bootstrap={props.bootstrap} /></RouteNavigationProvider></RuntimeProvider></CrashReport>;
@@ -130,6 +132,8 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
   const activePanes = page === 'terminal' ? terminalPanes : thread?.panes ?? [];
   const focusedPane = activePanes.some((pane) => pane.id === storedFocus) ? storedFocus! : activePanes[0]?.id ?? '';
   const setFocusedPane = useCallback((paneId: string) => ui.getState().focus(scope, paneId), [ui, scope]);
+  const latchInitialFocusedPane = () => { if (!storedFocus && focusedPane) ui.getState().focus(scope, focusedPane); };
+  useEffect(latchInitialFocusedPane, [ui, scope, storedFocus, focusedPane]);
   useClearDoneOnVisit(page === 'thread' ? thread : undefined, focusedPane, !!machines.find((machine) => machine.id === thread?.machineId)?.connected && !!machines.find((machine) => machine.id === thread?.machineId)?.writable);
   useEffect(() => {
     if (page !== 'thread' || thread?.operation?.state !== 'ready') return;
@@ -320,7 +324,7 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
 
   const handleAppLinkClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => handleRouteClick(event, navigate), [navigate]);
 
-  return <div className={`app-shell ${page === 'thread' || page === 'terminal' ? 'is-thread' : ''}`} onClickCapture={handleAppLinkClick}>
+  return <div className={`app-shell ${page === 'thread' || page === 'terminal' ? 'is-thread' : ''}`} onClickCapture={handleAppLinkClick} onPointerDownCapture={keepTerminalFocusAcrossButtonPresses}>
     <Sidebar projects={projects} threads={threads} archived={archived} floating={floating} detached={detached} ownedTabs={ownedTabs} machines={machines} currentId={thread?.id} currentMachineId={page === 'terminal' ? machineId : thread?.machineId} currentTab={route.type === 'terminal' && machineId && tabId ? { machineId, tabId } : undefined} mode={mode} onModeChange={changeMode} collapsed={collapsed}
       mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} onNavigate={navigate} paletteShortcut={shortcuts.commandPalette} updateAction={<UpdateButton />} metadata={metadata} metadataFields={metadataFields} />
     <div className="main-panel">
