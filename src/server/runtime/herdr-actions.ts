@@ -125,6 +125,7 @@ export class HerdrActions {
   async worktrees(workspaceId: string) { return z.array(worktreeEntry).parse((await this.api.request('worktree.list', { workspace_id: workspaceId })).worktrees); }
   async openWorktree(workspaceId: string, path: string) { await this.api.request('worktree.open', { workspace_id: workspaceId, path, focus: false }); }
   async focus(paneId: string) { await this.api.request('pane.focus', { pane_id: paneId }); }
+  async scrollTo(paneId: string, offsetFromBottom: number) { await this.api.request('pane.scroll', { pane_id: paneId, offset_from_bottom: offsetFromBottom }); }
   async splitTerminal(snapshot: NativeSnapshot, paneId: string, direction: TerminalDirection) {
     const pane = snapshot.panes.find((pane) => pane.pane_id === paneId);
     if (!pane) throw new Error('thread_not_found');

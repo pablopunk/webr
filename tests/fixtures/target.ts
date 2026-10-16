@@ -12,7 +12,8 @@ export class FakeTarget implements TargetAdapter {
   sourceIdentity = 'source-v1'; configVersion = 1; projectPath = '/fixture';
   get fingerprint() { return this.id + ':' + this.sourceIdentity; }
   get locations() { return [{ projectId: this.id + ':project', localId: 'project', logicalId: 'project', path: this.projectPath, workspaceId: 'w1' }]; }
-  state = snapshot(); subscriptions = 0; activeSubscriptions = 0; reads = 0; closed = 0;
+  state = snapshot(); subscriptions = 0; activeSubscriptions = 0; reads = 0; closed = 0; scrolledToBottom: string[] = [];
+  async scrollToBottom(terminalId: string) { this.scrolledToBottom.push(terminalId); }
   event?: () => void; lost?: (reason: string) => void;
   readHook?: () => Promise<NativeSnapshot>;
   effects: string[] = [];

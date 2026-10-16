@@ -61,7 +61,13 @@ it('forwards plain clicks to mouse-aware apps while preserving drag selection an
   pointer('pointerdown', { altKey: true }); pointer('pointerup', { altKey: true, buttons: 0 });
   expect(mouse.mock.calls).toEqual([['down', 'left', 12, 5, 0], ['up', 'left', 12, 5, 0]]);
   let tick = () => {}; vi.stubGlobal('requestAnimationFrame', (run: () => void) => { tick = run; return 1; }); vi.stubGlobal('cancelAnimationFrame', () => {});
-  host.dispatchEvent(new WheelEvent('wheel', { deltaY: -25, cancelable: true })); host.dispatchEvent(new WheelEvent('wheel', { deltaY: -20, cancelable: true })); tick(); expect(scroll).toHaveBeenCalledExactlyOnceWith('up', 62, 1, 1);
+  host.dispatchEvent(new WheelEvent('wheel', { deltaY: -25, cancelable: true })); host.dispatchEvent(new WheelEvent('wheel', { deltaY: -20, cancelable: true })); tick(); expect(scroll).toHaveBeenCalledExactlyOnceWith('up', 4, 1, 1);
+  scroll.mockClear();
+  // A trackpad graze under one row scrolls nothing, and its remainder is forgotten after a pause.
+  let clock = performance.now() + 1000; const now = vi.spyOn(performance, 'now').mockImplementation(() => clock);
+  host.dispatchEvent(new WheelEvent('wheel', { deltaY: -6, cancelable: true })); tick(); expect(scroll).not.toHaveBeenCalled();
+  clock += 1000; host.dispatchEvent(new WheelEvent('wheel', { deltaY: -45, cancelable: true })); tick(); expect(scroll).toHaveBeenCalledExactlyOnceWith('up', 4, 1, 1);
+  now.mockRestore();
   writable = false; pointer('pointerdown'); pointer('pointerup', { buttons: 0 }); pointer('pointerdown', { altKey: true }); host.dispatchEvent(new WheelEvent('wheel', { deltaY: 40 })); expect(mouse).toHaveBeenCalledTimes(2); expect(scroll).toHaveBeenCalledTimes(1);
   dispose(); host.remove();
 });

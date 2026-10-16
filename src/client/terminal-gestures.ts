@@ -2,8 +2,7 @@ import { count } from './perf';
 type Actions = { mouse: (action: 'down' | 'up' | 'drag' | 'move', button: 'left' | 'right' | 'middle', column: number, row: number, modifiers: number) => void; scroll: (direction: 'up' | 'down', lines: number, column?: number, row?: number) => void };
 const MAX_LINES_PER_MESSAGE = 100;
 const FALLBACK_CELL_HEIGHT = 20;
-const SCROLL_SPEED = 10;
-const flickGain = (pixels: number) => SCROLL_SPEED * (1 + Math.min(2, Math.abs(pixels) / 60));
+const WHEEL_REMAINDER_TTL_MS = 250;
 export function bindTerminalGestures(host: HTMLElement, screen: () => { element?: HTMLElement; cols: number; rows: number }, control: () => Actions | null, writable: () => boolean) {
   const pointer = (event: PointerEvent) => {
     if (!writable() || !event.altKey || event.shiftKey) return;
@@ -41,7 +40,7 @@ export function bindTerminalGestures(host: HTMLElement, screen: () => { element?
     actions.mouse('down', button, pending.column, pending.row, 0); actions.mouse('up', button, pending.column, pending.row, 0);
   };
   const cancelClick = () => { pendingClick = undefined; };
-  let pendingPixels = 0; let frame = 0; let pointerCell: { column: number; row: number } | undefined;
+  let pendingPixels = 0; let lastWheelAt = 0; let frame = 0; let pointerCell: { column: number; row: number } | undefined;
   const cellUnderPointer = (event: MouseEvent) => {
     const { element, cols, rows } = screen(); const rect = element?.getBoundingClientRect();
     if (!rect?.width || !rect.height) return undefined;
@@ -55,13 +54,15 @@ export function bindTerminalGestures(host: HTMLElement, screen: () => { element?
     pendingPixels -= lines * cell;
     control()?.scroll(lines < 0 ? 'up' : 'down', Math.min(MAX_LINES_PER_MESSAGE, Math.abs(lines)), pointerCell?.column, pointerCell?.row);
   };
+  const wheelPixels = (event: WheelEvent) => event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? event.deltaY * screen().rows * cellHeight() : event.deltaMode === WheelEvent.DOM_DELTA_LINE ? event.deltaY * cellHeight() : event.deltaY;
   const wheel = (event: WheelEvent) => {
     if (!writable() || !event.deltaY) return;
     count('wheelEvents'); pointerCell = cellUnderPointer(event);
     event.preventDefault();
-    const pixels = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? event.deltaY * cellHeight() : event.deltaY;
-    if (pixels * pendingPixels < 0) pendingPixels = 0;
-    pendingPixels += pixels * flickGain(pixels);
+    const pixels = wheelPixels(event); const now = performance.now();
+    const remainderIsStale = now - lastWheelAt > WHEEL_REMAINDER_TTL_MS;
+    if (pixels * pendingPixels < 0 || remainderIsStale) pendingPixels = 0;
+    lastWheelAt = now; pendingPixels += pixels;
     frame ||= requestAnimationFrame(flushScroll);
   };
   for (const type of ['pointerdown', 'pointerup', 'pointermove']) host.addEventListener(type, pointer as EventListener);

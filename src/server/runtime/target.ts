@@ -35,6 +35,7 @@ export type TargetAdapter = {
   start(input: LaunchInput, paneId: string, threadId: string, ownerToken?: string): Promise<LaunchCapture>;
   prompt(paneId: string, prompt: string, terminalId: string, threadId: string, input: LaunchInput): Promise<void>;
   scrollMode?(terminalId: string): Promise<'scrollback' | 'app'>;
+  scrollToBottom?(terminalId: string): Promise<void>;
   focusPane?(paneId: string): Promise<void>;
   discardTab?(snapshot: NativeSnapshot, tabId: string, removeWorktree: boolean): Promise<void>;
   renameTab?(tabId: string, label: string, renameWorkspace: boolean): Promise<void>;

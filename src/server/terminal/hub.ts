@@ -7,8 +7,9 @@ import { encodeUserInput } from './writer';
 import { perfLog } from '../perf-log';
 
 type TerminalRef = { threadId: string } | { tabId: string };
-type Lease = { id: number; generation: number; terminalId: string; machineId: string; ref: TerminalRef; mode: string; stream?: TerminalStream; outstanding: Map<number, number>; bytes: number; sequence: FrameSequence; baselineReady: boolean; outputSeq: number; started: boolean; baselineSeq?: number; expectedSize?: [number, number]; timer?: ReturnType<typeof setTimeout>; scrollAt?: number; scrollMode?: { value: 'scrollback' | 'app'; checkedAt: number }; pendingInput: string[]; pendingBytes: number };
+type Lease = { id: number; generation: number; terminalId: string; machineId: string; ref: TerminalRef; mode: string; stream?: TerminalStream; outstanding: Map<number, number>; bytes: number; sequence: FrameSequence; baselineReady: boolean; outputSeq: number; started: boolean; baselineSeq?: number; expectedSize?: [number, number]; timer?: ReturnType<typeof setTimeout>; scrollAt?: number; scrollMode?: { value: 'scrollback' | 'app'; checkedAt: number }; scrolledUp?: boolean; pendingInput: string[]; pendingBytes: number };
 const MAX_WHEEL_TICKS = 30;
+const isFocusReport = (text: string) => text === '\x1b[I' || text === '\x1b[O';
 const SCROLL_MODE_CHECK_MS = 1000;
 // First keystrokes (including monitor startup commands) can legitimately arrive
 // before the baseline is acknowledged, especially over slower links where a
@@ -73,6 +74,7 @@ export class TerminalHub {
         if (lease.pendingBytes + Buffer.byteLength(text) > MAX_PENDING_INPUT_BYTES) throw new Error('baseline_not_acknowledged');
         lease.pendingInput.push(text); lease.pendingBytes += Buffer.byteLength(text);
       } else lease.stream?.send({ type: 'terminal.input', text });
+      if (lease.scrolledUp && !isFocusReport(action.text)) { lease.scrolledUp = false; void target.scrollToBottom?.(lease.terminalId).catch(() => undefined); }
     }
     if (action.type === 'resize') { lease.baselineReady = false; lease.baselineSeq = undefined; lease.expectedSize = [action.cols, action.rows]; lease.stream?.send({ type: 'terminal.resize', cols: action.cols, rows: action.rows }); }
     if (action.type === 'scroll') lease.scrollAt ??= performance.now();
@@ -130,7 +132,10 @@ export class TerminalHub {
   /** Herdr always puts wheel ticks of full-screen apps at the top-left cell, so those get SGR wheel reports at the pointer instead. */
   private scroll(lease: Lease, target: ReturnType<RuntimeManager['binding']>, action: { direction: 'up' | 'down'; lines: number; column?: number; row?: number }) {
     this.refreshScrollMode(lease, target);
-    if (lease.scrollMode?.value !== 'app') { lease.stream?.send({ type: 'terminal.scroll', direction: action.direction, lines: action.lines }); return; }
+    if (lease.scrollMode?.value !== 'app') {
+      if (action.direction === 'up') lease.scrolledUp = true;
+      lease.stream?.send({ type: 'terminal.scroll', direction: action.direction, lines: action.lines }); return;
+    }
     const report = `\x1b[<${action.direction === 'up' ? 64 : 65};${action.column ?? 1};${action.row ?? 1}M`;
     lease.stream?.send({ type: 'terminal.input', text: report.repeat(Math.min(action.lines, MAX_WHEEL_TICKS)) });
   }

@@ -206,6 +206,10 @@ export class HerdrTarget implements TargetAdapter {
     const info = (await (await this.connect()).request('pane.process_info', { pane_id: pane.pane_id })).process_info as { foreground_process_group_id?: number; shell_pid?: number } | undefined;
     return info?.foreground_process_group_id !== undefined && info.foreground_process_group_id !== info.shell_pid ? 'app' : 'scrollback';
   }
+  async scrollToBottom(terminalId: string) {
+    const pane = (await this.snapshot()).panes.find((candidate) => candidate.terminal_id === terminalId);
+    if (pane && (pane.scroll?.offset_from_bottom ?? 0) > 0) await this.actions().scrollTo(pane.pane_id, 0);
+  }
   async focusPane(paneId: string) { return this.actions().focus(paneId); }
   async renameTab(tabId: string, label: string, renameWorkspace: boolean) { return this.actions().renameTab(await this.snapshot(), tabId, label, renameWorkspace); }
   async splitTerminal(paneId: string, direction: TerminalDirection) { return this.actions().splitTerminal(await this.snapshot(), paneId, direction); }

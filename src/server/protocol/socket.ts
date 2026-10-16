@@ -6,7 +6,7 @@ import { lifecycleSubscriptions } from './native';
 import { requestDeadline, type RpcOptions } from './deadlines';
 
 const envelope = z.object({ id: z.string(), result: z.record(z.string(), z.unknown()).optional(), error: z.object({ code: z.string(), message: z.string() }).optional() });
-const allowed: Readonly<Record<string, true>> = Object.fromEntries(['ping', 'session.snapshot', 'events.subscribe', 'server.agent_manifests', 'workspace.create', 'worktree.create', 'worktree.list', 'worktree.open', 'tab.create', 'agent.start', 'agent.get', 'agent.prompt', 'agent.rename', 'pane.report_metadata', 'pane.process_info', 'pane.read', 'pane.send_text', 'pane.send_keys', 'pane.focus', 'tab.close', 'workspace.close', 'worktree.remove', 'tab.rename', 'workspace.rename', 'pane.split', 'pane.close'].map((method) => [method, true as const]));
+const allowed: Readonly<Record<string, true>> = Object.fromEntries(['ping', 'session.snapshot', 'events.subscribe', 'server.agent_manifests', 'workspace.create', 'worktree.create', 'worktree.list', 'worktree.open', 'tab.create', 'agent.start', 'agent.get', 'agent.prompt', 'agent.rename', 'pane.report_metadata', 'pane.process_info', 'pane.read', 'pane.send_text', 'pane.send_keys', 'pane.focus', 'pane.scroll', 'tab.close', 'workspace.close', 'worktree.remove', 'tab.rename', 'workspace.rename', 'pane.split', 'pane.close'].map((method) => [method, true as const]));
 export class SocketApi {
   private sockets = new Set<Socket>();
   constructor(readonly path: string, readonly deadline = 5000) {}

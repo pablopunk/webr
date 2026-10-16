@@ -78,6 +78,18 @@ it('reports a controller owned by another client to every tab and requires an ex
   expect(hub.stats().controllers).toBe(0);
   hub.action('two', { ...open, streamId: 2, generation: 2, takeover: true }); expect(target.streams).toHaveLength(2);
 });
+it('snaps the view back to the bottom when the user types after scrolling up, but not for focus reports', async () => {
+  const { target, hub, open } = await setup(); hub.action('one', open);
+  target.streams[0].onFrame(frame(1, true)); acknowledge(hub, 'one', 1, 1);
+  const type = (text: string) => hub.action('one', { type: 'input', streamId: 1, generation: 1, text, paste: false });
+  type('a'); expect(target.scrolledToBottom).toEqual([]);
+  hub.action('one', { type: 'scroll', streamId: 1, generation: 1, direction: 'up', lines: 3 });
+  expect(target.streams[0].commands.at(-1)).toEqual({ type: 'terminal.scroll', direction: 'up', lines: 3 });
+  type('\x1b[I'); expect(target.scrolledToBottom).toEqual([]);
+  type('b'); type('c'); expect(target.scrolledToBottom).toEqual(['term_fixture']);
+  hub.action('one', { type: 'scroll', streamId: 1, generation: 1, direction: 'down', lines: 1 });
+  type('d'); expect(target.scrolledToBottom).toEqual(['term_fixture']);
+});
 it('does not give observers scroll, input or resize authority', async () => {
   const { hub, open } = await setup(); hub.action('one', { ...open, mode: 'observe' });
   expect(() => hub.action('one', { type: 'resize', streamId: 1, generation: 1, cols: 100, rows: 30 })).toThrow('observer_read_only');
