@@ -103,6 +103,7 @@ it('moves real keyboard focus between split panes even when the destination has 
     const target = id === 'one' ? first : second;
     expect(document.activeElement).toBe(target);
     expect(onFocus).not.toHaveBeenCalled();
+    inputs.forEach((input) => input.mockClear());
     fireEvent.change(target, { target: { value: id } });
     expect(inputs.get(id)).toHaveBeenCalledWith(id, undefined);
     expect(inputs.get(id === 'one' ? 'two' : 'one')).not.toHaveBeenCalled();

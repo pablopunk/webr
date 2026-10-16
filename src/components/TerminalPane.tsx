@@ -218,6 +218,6 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     {selectedUrl && <TerminalUrlActions selected={selectedUrl} onDone={() => { setSelectedUrl(null); term.current?.clearSelection(); }} onCopied={(copied) => showCopyResult.current(copied ? 'copied' : 'blocked')} />}
     {notice && <div className={`terminal-attach-notice is-${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.text}</div>}
     <TerminalInput active={active} readOnly={!writable || !connected} onInput={sendInput} onFocusChange={(focused) => { setInputFocused(focused); if (term.current?.modes.sendFocusMode) control.current?.input(focused ? FOCUS_IN : FOCUS_OUT); }} />
-    {writable && active && touch && inputFocused && <TerminalKeyBar ctrl={ctrl} onToggleCtrl={() => setCtrl((armed) => !armed)} onBytes={(bytes) => control.current?.input(bytes)} voice={voice} />}
+    {connected && (canControl || writable) && active && touch && inputFocused && <TerminalKeyBar ctrl={ctrl} onToggleCtrl={() => setCtrl((armed) => !armed)} onBytes={(bytes) => control.current?.input(bytes)} voice={voice} />}
   </section>;
 }
