@@ -11,6 +11,8 @@ import { applyTheme } from './ThemeControl';
 import type { AppNavigate } from '../client/app-navigation';
 import { requestThreadRename } from '../client/keyboard';
 import { setThreadArchived } from '../client/thread-actions';
+import { threadDisplayTitle, threadIsArchived, type PendingMetadataController } from '../client/pending-metadata';
+import type { MetadataFieldSnapshot } from '../client/store';
 import { canClosePane } from '../lib/pane-strip';
 import { perfAvailable, perfVisible, setPerfVisible } from '../client/perf';
 
@@ -18,8 +20,9 @@ const reportFailure = (error: unknown) => alertDialog(error instanceof Error ? e
 
 type Command = { label: string; icon: ReactNode; detail?: string; shortcut?: ShortcutAction; keywords?: string; run: () => void };
 
-export function CommandPalette({ open, onClose, onNavigate, projects, threads, floating = [], machines = [], thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onNewTerminal, onOpenResourceMonitor, onClosePane }: {
+export function CommandPalette({ open, onClose, onNavigate, projects, threads, floating = [], machines = [], thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onNewTerminal, onOpenResourceMonitor, onClosePane, metadata, metadataFields = {} }: {
   open: boolean; onClose: () => void; onNavigate?: AppNavigate; projects: Project[]; threads: Thread[]; floating?: FloatingTab[]; machines?: { id: string; name: string; session: string }[]; thread?: Thread;
+  metadata?: PendingMetadataController; metadataFields?: Record<string, MetadataFieldSnapshot>;
   focusedPane: string; mode: SidebarMode; onModeChange: (mode: SidebarMode) => void;
   onToggleSidebar: () => void; onFocusPane: (paneId: string) => void;
   onTerminalAction: (action: 'control' | 'takeover' | 'release') => void;
@@ -46,6 +49,7 @@ export function CommandPalette({ open, onClose, onNavigate, projects, threads, f
   const focusPane = (offset: number) => {
     if (thread?.panes.length) onFocusPane(thread.panes[(thread.panes.findIndex((pane) => pane.id === focusedPane) + offset + thread.panes.length) % thread.panes.length].id);
   };
+  const archivedThread = thread ? threadIsArchived(thread, metadataFields) : false;
 
   const commands = useMemo<Command[]>(() => [
     { label: 'New thread', icon: <SquarePen size={16} />, shortcut: 'newThread', run: () => { onNavigate?.(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`); } },
@@ -66,7 +70,7 @@ export function CommandPalette({ open, onClose, onNavigate, projects, threads, f
       run: () => { localStorage.setItem('webr-theme', theme); applyTheme(theme); window.dispatchEvent(new Event('webr-theme-change')); },
     })),
     ...(thread ? [
-      { label: thread.archivedAt ? 'Unarchive thread' : 'Archive thread', icon: thread.archivedAt ? <ArchiveRestore size={16} /> : <Archive size={16} />, run: () => { void setThreadArchived(thread, !thread.archivedAt).catch(reportFailure); } },
+      { label: archivedThread ? 'Unarchive thread' : 'Archive thread', icon: archivedThread ? <ArchiveRestore size={16} /> : <Archive size={16} />, run: () => { void (metadata ? metadata.setThreadArchived(thread, !archivedThread) : setThreadArchived(thread, !archivedThread)).catch(reportFailure); } },
       { label: 'Copy thread link', icon: <Copy size={16} />, keywords: 'url', run: () => { void navigator.clipboard.writeText(location.href); } },
       { label: 'Rename thread', icon: <Pencil size={16} />, shortcut: 'renameThread' as const, keywords: 'tab title', run: () => requestThreadRename(thread.id) },
       ...(thread.bindingState === 'attached' ? [
@@ -82,7 +86,7 @@ export function CommandPalette({ open, onClose, onNavigate, projects, threads, f
       { label: 'Previous pane', icon: <ArrowLeft size={16} />, shortcut: 'previousPane' as const, run: () => focusPane(-1) },
        ...thread.panes.map((pane, index) => ({ label: `Focus ${pane.title}`, icon: <TerminalSquare size={16} />, detail: `Pane ${index + 1}`, run: () => onFocusPane(pane.id) })),
     ] : []),
-    ...threads.map((item) => ({ label: item.title, icon: <ThreadAvatar thread={item} working={item.status === 'working'} size={22} />, detail: projects.find((project) => project.id === item.projectId)?.name,
+    ...threads.map((item) => ({ label: threadDisplayTitle(item), icon: <ThreadAvatar thread={item} working={item.status === 'working'} size={22} />, detail: projects.find((project) => (project.machineId ?? 'local') === item.machineId && project.id === item.projectId)?.name,
       run: () => { onNavigate?.(`/threads/${encodeURIComponent(item.id)}`); } })),
     ...floating.map((item) => {
       const machine = machines.find((entry) => entry.id === item.machineId);
@@ -90,7 +94,7 @@ export function CommandPalette({ open, onClose, onNavigate, projects, threads, f
       return { label: item.label, icon: <SquareTerminal size={16} />, detail: `${machine?.name ?? item.machineId} · Terminal`,
         run: () => { onNavigate?.(`/sessions/${encodeURIComponent(session)}/tabs/${encodeURIComponent(item.tabId)}?machine=${encodeURIComponent(item.machineId)}`); } };
     }),
-  ], [projects, threads, floating, machines, thread, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onNewTerminal, onOpenResourceMonitor, onClosePane, onNavigate]);
+  ], [projects, threads, floating, machines, thread, archivedThread, metadata, metadataFields, focusedPane, mode, onModeChange, onToggleSidebar, onFocusPane, onTerminalAction, onOpenTerminal, onNewTerminal, onOpenResourceMonitor, onClosePane, onNavigate]);
 
   const matching = commands.filter((command) => `${command.label} ${command.detail ?? ''} ${command.keywords ?? ''}`.toLowerCase().includes(query.toLowerCase().trim()));
   if (!open) return null;

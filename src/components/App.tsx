@@ -17,6 +17,7 @@ import { getShortcuts, keyCombo, loadShortcuts, type ShortcutAction } from './sh
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from 'zustand';
 import { RuntimeProvider, useRuntime, useRuntimeSelector } from '../client/provider';
+import { threadDisplayTitle, threadIsArchived } from '../client/pending-metadata';
 import { handleRouteClick, RouteNavigationProvider, useRouteNavigation } from '../client/app-navigation';
 import { isListedThread } from '../lib/launch';
 import type { Bootstrap } from '../shared/runtime';
@@ -46,17 +47,18 @@ export default function App(props: Props) {
 
 function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
   const { route, navigate } = useRouteNavigation();
-  const { ui, terminals, tickets } = useRuntime();
+  const { ui, terminals, tickets, metadata } = useRuntime();
   const projects = useRuntimeSelector(useShallow((state) => state.projectIds.map((id) => state.projects[id])));
-  const activeThreads = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id]).filter((item) => !item.archivedAt)));
-  const archived = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id]).filter((item) => !!item.archivedAt)));
+  const metadataFields = useRuntimeSelector((state) => state.metadataFields);
+  const activeThreads = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id]).filter((item) => !threadIsArchived(item, state.metadataFields))));
+  const archived = useRuntimeSelector(useShallow((state) => state.threadIds.map((id) => state.threads[id]).filter((item) => threadIsArchived(item, state.metadataFields))));
   const projections = useRuntimeSelector((state) => state.projections);
   const gatewayConnected = useRuntimeSelector((state) => state.connected);
   const routeMachineSession = route.type === 'terminal'
     ? projections[route.machineId]?.machine?.session ?? bootstrap.machines.find((machine) => machine.id === route.machineId)?.session
     : undefined;
   const thread = useRuntimeSelector((state) => {
-    if (route.type === 'thread') return state.threads[route.threadId];
+    if (route.type === 'thread') return state.threadIds.map((key) => state.threads[key]).find((item) => item.id === route.threadId);
     if (route.type !== 'terminal' || routeMachineSession !== route.session) return undefined;
     return state.threadIds.map((id) => state.threads[id]).find((item) => item.machineId === route.machineId
       && item.session === route.session && item.tabId === route.tabId && item.bindingState === 'attached' && isListedThread(item));
@@ -103,11 +105,11 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
   useEffect(() => {
     const title = page === 'settings' ? 'Settings'
       : page === 'new' ? route.type === 'composer' && route.resourcePendingKey ? 'Creating resource…' : route.type === 'composer' && route.pendingKey ? 'Starting thread…' : 'New thread'
-        : page === 'thread' ? thread?.title ?? 'Opening thread…'
+        : page === 'thread' ? thread ? threadDisplayTitle(thread) : 'Opening thread…'
           : page === 'terminal' ? standaloneTab?.label ?? (terminalPending ? 'Opening terminal…' : terminalMissing ? 'Terminal tab not found' : 'Terminal')
             : 'Webr';
     document.title = page === 'missing' ? 'Webr' : `${title} · Webr`;
-  }, [page, route, thread?.title, standaloneTab?.label, terminalPending, terminalMissing]);
+  }, [page, route, thread?.title, thread?.titleOverride, standaloneTab?.label, terminalPending, terminalMissing]);
   const completeTerminalStartup = useCallback(() => {
     if (machineId && tabId) {
       try { sessionStorage.removeItem(terminalStartupStorageKey(machineId, tabId)); } catch { /* The startup command has already been sent. */ }
@@ -317,7 +319,7 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
 
   return <div className={`app-shell ${page === 'thread' || page === 'terminal' ? 'is-thread' : ''}`} onClickCapture={handleAppLinkClick}>
     <Sidebar projects={projects} threads={threads} archived={archived} floating={floating} detached={detached} ownedTabs={ownedTabs} machines={machines} currentId={thread?.id} currentMachineId={page === 'terminal' ? machineId : thread?.machineId} currentTab={route.type === 'terminal' && machineId && tabId ? { machineId, tabId } : undefined} mode={mode} onModeChange={changeMode} collapsed={collapsed}
-      mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} onNavigate={navigate} paletteShortcut={shortcuts.commandPalette} updateAction={<UpdateButton />} />
+      mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} onNavigate={navigate} paletteShortcut={shortcuts.commandPalette} updateAction={<UpdateButton />} metadata={metadata} metadataFields={metadataFields} />
     <div className="main-panel">
       {narrow && (page === 'thread' || page === 'terminal') && <MobileTopBar panes={page === 'thread' ? thread?.panes ?? [] : terminalPanes} focusedPane={focusedPane} onFocusPane={setFocusedPane} onOpenSidebar={toggleSidebar} onOpenPalette={() => setPaletteOpen(true)} keepTerminalFocus={keepTerminalFocus} />}
       {page === 'thread' && thread && <ThreadView thread={thread} connected={!!machines.find((machine) => machine.id === thread.machineId)?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} />}
@@ -335,7 +337,7 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
     </div>
     {perfAvailable && <PerfOverlay />}
     <PairingPrompt />
-    <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onNavigate={navigate} projects={projects} threads={threads} floating={floating} machines={machines} thread={thread} focusedPane={focusedPane} onNewTerminal={terminalMachine ? openStandaloneTerminal : undefined} onOpenResourceMonitor={terminalMachine ? () => openStandaloneTerminal('resource-monitor') : undefined}
+    <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onNavigate={navigate} projects={projects} threads={threads} floating={floating} machines={machines} thread={thread} metadata={metadata} metadataFields={metadataFields} focusedPane={focusedPane} onNewTerminal={terminalMachine ? openStandaloneTerminal : undefined} onOpenResourceMonitor={terminalMachine ? () => openStandaloneTerminal('resource-monitor') : undefined}
       mode={mode} onModeChange={changeMode} onToggleSidebar={toggleSidebar} onFocusPane={setFocusedPane} onTerminalAction={(action) => { const pane = thread?.panes.find((pane) => pane.id === focusedPane); if (thread && pane?.terminalId) terminals.command(thread.machineId, thread.id, pane.terminalId, action); }}
       onOpenTerminal={openTerminal} onClosePane={() => void closePane()} />
     {armedPrefix && !paletteOpen && <PrefixOverlay prefix={armedPrefix} shortcuts={{ ...shortcuts, ...getShortcuts() }} />}

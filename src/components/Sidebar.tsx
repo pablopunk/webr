@@ -22,6 +22,8 @@ import { alertDialog, confirmDialog } from './dialogs';
 import { RENAME_THREAD_EVENT } from '../client/keyboard';
 import { formatShortcut } from './shortcuts';
 import { closeTerminalTab, deleteArchivedThreads, deleteArchivedWarning, deleteThreadPermanently, deleteWarning, setThreadArchived } from '../client/thread-actions';
+import { projectNameFieldKey, threadArchiveFieldKey, threadDisplayTitle, threadIsArchived, threadTitleFieldKey, type PendingMetadataController } from '../client/pending-metadata';
+import type { MetadataFieldSnapshot } from '../client/store';
 import { sidebarTabKey, type FloatingTab } from '../lib/floating';
 import { SidebarMetrics } from './SidebarMetrics';
 
@@ -49,6 +51,8 @@ type Props = {
   onOpenPalette?: () => void;
   paletteShortcut?: string;
   updateAction?: ReactNode;
+  metadata?: PendingMetadataController;
+  metadataFields?: Record<string, MetadataFieldSnapshot>;
 };
 
 const statusLabel: Record<Thread['status'], string> = {
@@ -60,6 +64,23 @@ const statusBadges: Partial<Record<Thread['status'], typeof CircleHelp>> = {
 
 const reportFailure = (error: unknown) => alertDialog(error instanceof Error ? error.message : 'Herdr could not complete this action.');
 const confirmDelete = async (thread: Thread, canDelete: boolean) => { if (canDelete && await confirmDialog(deleteWarning([thread]), { confirmLabel: 'Delete', danger: true })) await deleteThreadPermanently(thread).catch(reportFailure); };
+const resaveMetadataWarning = 'The original save may still commit after this re-save. Task 011 has no server fence: whichever metadata write commits last wins, even if it was sent earlier, and the later server version becomes authoritative. Continue with this explicit re-save?';
+function MetadataFeedback({ label, field, onReconcile, onEdit, onEditLabel, onResave }: { label: string; field?: MetadataFieldSnapshot; onReconcile?: () => void; onEdit?: () => void; onEditLabel?: string; onResave?: () => void }) {
+  if (!field || field.status === 'saved' && !field.message) return null;
+  const archiveDraftDescription = label === 'archive' && typeof field.draftValue === 'boolean' ? ` It will ${field.draftValue ? 'archive' : 'unarchive'} this thread.` : '';
+  const message = field.status === 'pending' ? `Saving ${label} in Webr…`
+    : field.status === 'saved' ? `Saved ${label} in Webr.`
+      : field.status === 'failed' ? `Could not save ${label} in Webr. ${field.message ?? ''}`
+        : field.status === 'uncertain' ? `${label[0].toUpperCase()}${label.slice(1)} save outcome is uncertain. ${field.message ?? ''}`
+          : `Unsaved ${label} draft.${archiveDraftDescription} Server state is shown; the draft has not been resubmitted.`;
+  const alert = field.status === 'failed' || field.status === 'uncertain';
+  return <div className={`metadata-feedback is-${field.status}`} role={alert ? 'alert' : 'status'} aria-live={alert ? 'assertive' : 'polite'}>
+    <span>{message}</span>
+    {field.status === 'uncertain' && onReconcile && <button type="button" onClick={onReconcile}>Reconcile</button>}
+    {field.status === 'draft' && onEdit && <button type="button" onClick={onEdit}>{onEditLabel ?? 'Edit draft'}</button>}
+    {field.status === 'draft' && onResave && <button type="button" onClick={onResave}>Re-save</button>}
+  </div>;
+}
 function NewTerminalButton({ machine, onNavigate }: { machine?: Machine; onNavigate?: AppNavigate }) {
   const [busy, setBusy] = useState(false);
   const tickets = useThreadTickets();
@@ -73,10 +94,17 @@ function NewTerminalButton({ machine, onNavigate }: { machine?: Machine; onNavig
   return <Tooltip label="New Terminal"><button type="button" className="sidebar-action-icon" aria-label="New Terminal" disabled={!machine || !machine.connected || !machine.writable || busy} onClick={() => void open()}><SquareTerminal size={16} aria-hidden="true" /></button></Tooltip>;
 }
 
-const ThreadRow = memo(function ThreadRow({ thread, project, machineName, current, showProject, href, connected, canDelete }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean; href: string; connected: boolean; canDelete: boolean }) {
-  const archived = !!thread.archivedAt;
+const ThreadRow = memo(function ThreadRow({ thread, project, machineName, current, showProject, href, connected, canDelete, metadata, metadataFields = {} }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean; href: string; connected: boolean; canDelete: boolean; metadata?: PendingMetadataController; metadataFields?: Record<string, MetadataFieldSnapshot> }) {
+  const archived = threadIsArchived(thread, metadataFields);
   const ArchiveIcon = archived ? ArchiveRestore : Archive;
-  const archiveLabel = archived ? `Unarchive ${thread.title}` : `Archive ${thread.title}`;
+  const displayTitle = threadDisplayTitle(thread);
+  const titleState = metadataFields[threadTitleFieldKey(thread)];
+  const archiveState = metadataFields[threadArchiveFieldKey(thread)];
+  const archiveDraftValue = archiveState?.status === 'draft' && typeof archiveState.draftValue === 'boolean' ? archiveState.draftValue : undefined;
+  const archiveDraft = typeof archiveDraftValue === 'boolean';
+  const archiveLabel = archiveDraft ? `Change archive draft to ${archiveDraftValue ? 'unarchive' : 'archive'} ${displayTitle}` : archived ? `Unarchive ${displayTitle}` : `Archive ${displayTitle}`;
+  const nativeSyncIsCurrent = !titleState || !['pending', 'uncertain', 'draft'].includes(titleState.status)
+    && (titleState.canonical === undefined || thread.titleSync.version >= titleState.canonical.metadataVersion);
   const [renaming, setRenaming] = useState(false);
   useEffect(() => {
     if (!current) return;
@@ -86,13 +114,25 @@ const ThreadRow = memo(function ThreadRow({ thread, project, machineName, curren
     window.addEventListener(RENAME_THREAD_EVENT, onRenameRequest);
     return () => window.removeEventListener(RENAME_THREAD_EVENT, onRenameRequest);
   }, [current, thread.id]);
-  const editor = renaming ? <ThreadTitleEditor thread={thread} onDone={() => setRenaming(false)} onError={reportFailure} /> : undefined;
+  const editor = renaming ? <ThreadTitleEditor thread={thread} onDone={() => setRenaming(false)} onError={reportFailure} metadata={metadata} metadataFields={metadataFields} /> : undefined;
   const flipId = thread.bindingState === 'attached' && thread.tabId ? sidebarTabKey(thread.machineId, thread.tabId) : thread.id;
+  const reconcile = (field: 'titleOverride' | 'archived') => { if (metadata) void metadata.reconcileThread(thread, field).catch(reportFailure); };
+  const changeArchiveDraft = () => {
+    if (!metadata || typeof archiveDraftValue !== 'boolean') return;
+    void metadata.updateThreadArchiveDraft(thread, !archiveDraftValue).catch(reportFailure);
+  };
+  const resaveArchive = async () => {
+    if (!metadata || typeof archiveDraftValue !== 'boolean') return;
+    if (await confirmDialog(resaveMetadataWarning, { confirmLabel: 'Re-save anyway' })) void metadata.setThreadArchived(thread, archiveDraftValue, true).catch(reportFailure);
+  };
   return <ContextMenu.Root>
     <ContextMenu.Trigger className="thread-item" data-flip-id={flipId} onDoubleClick={(event) => { event.preventDefault(); setRenaming(true); }}>
       <ThreadLink thread={thread} project={project} machineName={machineName} current={current} showProject={showProject} editor={editor} href={href} connected={connected} />
-      <Tooltip label={archived ? 'Unarchive' : 'Archive'}><button type="button" className="thread-archive" aria-label={archiveLabel} onClick={() => void setThreadArchived(thread, !archived).catch(reportFailure)}><ArchiveIcon size={15} strokeWidth={1.8} aria-hidden="true" /></button></Tooltip>
+      <Tooltip label={archiveDraft ? archiveLabel : archived ? 'Unarchive' : 'Archive'}><button type="button" className="thread-archive" aria-label={archiveLabel} onClick={() => archiveDraft ? changeArchiveDraft() : void (metadata ? metadata.setThreadArchived(thread, !archived) : setThreadArchived(thread, !archived)).catch(reportFailure)}><ArchiveIcon size={15} strokeWidth={1.8} aria-hidden="true" /></button></Tooltip>
     </ContextMenu.Trigger>
+    <MetadataFeedback label="thread title" field={titleState} onReconcile={titleState?.status === 'uncertain' ? () => reconcile('titleOverride') : undefined} onEdit={titleState?.status === 'draft' ? () => setRenaming(true) : undefined} />
+    <MetadataFeedback label="archive" field={archiveState} onReconcile={archiveState?.status === 'uncertain' ? () => reconcile('archived') : undefined} onEdit={archiveDraft ? changeArchiveDraft : undefined} onEditLabel={archiveDraft ? `Change draft to ${archiveDraftValue ? 'unarchive' : 'archive'}` : undefined} onResave={archiveDraft ? () => void resaveArchive() : undefined} />
+    {nativeSyncIsCurrent && thread.titleSync.state === 'failed' && thread.titleOverride != null && <div className="metadata-feedback native-title-sync-status" role="status">Saved in Webr; native title sync failed.</div>}
     <ContextMenu.Portal><ContextMenu.Positioner className="thread-menu-positioner"><ContextMenu.Popup className="thread-menu">
       <ContextMenu.Item className="thread-menu-item is-danger" disabled={!canDelete} onClick={() => void confirmDelete(thread, canDelete)}><Trash2 size={14} aria-hidden="true" />Delete permanently</ContextMenu.Item>
     </ContextMenu.Popup></ContextMenu.Positioner></ContextMenu.Portal>
@@ -145,6 +185,7 @@ function ThreadLink({ thread, project, machineName, current, showProject, editor
     if (slot.parentElement) observer.observe(slot.parentElement);
     return () => observer.disconnect();
   }, [showProject, canReplaceAvatar, editor]);
+  const displayTitle = threadDisplayTitle(thread);
   const warning = failed;
   const unseen = connected && hasUnseenDone(thread);
   const currentStatus = connected ? thread.status : 'unknown';
@@ -154,17 +195,18 @@ function ThreadLink({ thread, project, machineName, current, showProject, editor
   const context = launching || failed ? status : showProject ? project?.name : harnessName(thread.agent);
   const hasProjectSlot = showProject && canReplaceAvatar;
   const Row = editor ? 'div' : 'a';
-  return <Tooltip label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`} side="right"><Row className={`thread-row ${current ? 'is-current' : ''} ${hasProjectSlot ? 'has-project-slot' : ''} ${needsAttention ? `needs-attention status-${warning || thread.status === 'blocked' ? 'blocked' : 'done'}` : ''}`} href={editor ? undefined : href} aria-current={current ? 'page' : undefined} aria-label={`${thread.title} · ${project?.name ?? ''} · ${machineName} · ${status}`}>
+  return <Tooltip label={`${displayTitle} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`} side="right"><Row className={`thread-row ${current ? 'is-current' : ''} ${hasProjectSlot ? 'has-project-slot' : ''} ${needsAttention ? `needs-attention status-${warning || thread.status === 'blocked' ? 'blocked' : 'done'}` : ''}`} href={editor ? undefined : href} aria-current={current ? 'page' : undefined} aria-label={`${displayTitle} · ${project?.name ?? ''} · ${machineName} · ${status}`}>
     <span ref={avatar} className={`thread-avatar ${canReplaceAvatar ? 'has-project-avatar' : ''}`} aria-hidden="true"><span className="thread-bot-avatar"><ThreadAvatar thread={thread} working={thread.status === 'working' || launching} size={24} /></span>{canReplaceAvatar && !showProject && <span className="thread-selected-project"><ProjectIcon project={project!} /></span>}{StatusIcon && <StatusIcon className={`thread-status status-${warning || thread.status === 'blocked' ? 'blocked' : unseen ? 'done' : thread.status}`} size={14} strokeWidth={2.2} />}<span className="thread-avatar-harness"><HarnessIcon harness={thread.agent} size={14} /></span></span>
-    <span className="thread-copy"><span className="thread-context">{hasProjectSlot && <span ref={projectSlot} className="thread-project-slot"><ProjectIcon project={project!} /></span>}{thread.worktree && !launching && !failed && <GitBranch className="thread-worktree" size={11} aria-label="Worktree" />}<span className="thread-context-text">{context}</span></span>{editor ?? <span className="thread-name">{thread.title}</span>}</span>
+    <span className="thread-copy"><span className="thread-context">{hasProjectSlot && <span ref={projectSlot} className="thread-project-slot"><ProjectIcon project={project!} /></span>}{thread.worktree && !launching && !failed && <GitBranch className="thread-worktree" size={11} aria-label="Worktree" />}<span className="thread-context-text">{context}</span></span>{editor ?? <span className="thread-name">{displayTitle}</span>}</span>
     <span className="thread-time">{relativeTime(thread.updatedAt)}</span>
   </Row></Tooltip>;
 }
 
-function ProjectGroupHeader({ project, closed, onToggle, machine, onNavigate }: { project: Project; closed: boolean; onToggle: () => void; machine?: Machine; onNavigate?: AppNavigate }) {
+function ProjectGroupHeader({ project, closed, onToggle, machine, onNavigate, metadata, metadataFields = {} }: { project: Project; closed: boolean; onToggle: () => void; machine?: Machine; onNavigate?: AppNavigate; metadata?: PendingMetadataController; metadataFields?: Record<string, MetadataFieldSnapshot> }) {
   const [renaming, setRenaming] = useState(false);
   const [changingIcon, setChangingIcon] = useState(false);
   const [terminalBusy, setTerminalBusy] = useState(false);
+  const field = metadataFields[projectNameFieldKey(project)];
   const tickets = useThreadTickets();
   const openTerminalHere = async () => {
     if (!machine || !machine.connected || !machine.writable || terminalBusy) return;
@@ -174,7 +216,12 @@ function ProjectGroupHeader({ project, closed, onToggle, machine, onNavigate }: 
     finally { setTerminalBusy(false); }
   };
   const Title = renaming ? 'div' : 'button';
-  const label = renaming ? <ProjectNameEditor project={project} onDone={() => setRenaming(false)} onError={reportFailure} /> : <span className="group-name">{project.name}</span>;
+  const label = renaming ? <ProjectNameEditor project={project} machineName={machine?.name} onDone={() => setRenaming(false)} onError={reportFailure} metadata={metadata} metadataFields={metadataFields} /> : <span className="group-name">{project.name}</span>;
+  const reconcileName = () => { if (metadata) void metadata.reconcileProject(project).catch(reportFailure); };
+  const resaveName = async () => {
+    if (!metadata || field?.status !== 'draft' || typeof field.draftValue !== 'string') return;
+    if (await confirmDialog(resaveMetadataWarning, { confirmLabel: 'Re-save anyway' })) void metadata.renameProject(project, field.draftValue, true).catch(reportFailure);
+  };
   return <><ContextMenu.Root>
     <ContextMenu.Trigger className="group-header">
       <Title className="group-title" onClick={renaming ? undefined : onToggle} aria-expanded={renaming ? undefined : !closed}>
@@ -184,11 +231,13 @@ function ProjectGroupHeader({ project, closed, onToggle, machine, onNavigate }: 
     <ContextMenu.Portal><ContextMenu.Positioner className="thread-menu-positioner"><ContextMenu.Popup className="thread-menu">
       <ContextMenu.Item className="thread-menu-item" onClick={() => onNavigate?.(`/new?project=${encodeURIComponent(project.id)}`)}><Plus size={14} aria-hidden="true" />New thread</ContextMenu.Item>
       <ContextMenu.Item className="thread-menu-item" disabled={!machine || !machine.connected || !machine.writable || terminalBusy} onClick={() => void openTerminalHere()}><SquareTerminal size={14} aria-hidden="true" />New Terminal</ContextMenu.Item>
-      <ContextMenu.Item className="thread-menu-item" onClick={() => setRenaming(true)}><Pencil size={14} aria-hidden="true" />Rename project</ContextMenu.Item>
+      <ContextMenu.Item className="thread-menu-item" onClick={() => setRenaming(true)}><Pencil size={14} aria-hidden="true" />Rename project on {machine?.name ?? project.machineId ?? 'local'}</ContextMenu.Item>
       <ContextMenu.Item className="thread-menu-item" onClick={() => setChangingIcon(true)}><ImageUp size={14} aria-hidden="true" />Change icon</ContextMenu.Item>
       <div className="thread-menu-path" title={project.path}>{withTildeHome(project.path)}</div>
     </ContextMenu.Popup></ContextMenu.Positioner></ContextMenu.Portal>
-  </ContextMenu.Root><ProjectIconDialog project={project} open={changingIcon} onClose={() => setChangingIcon(false)} onError={reportFailure} /></>;
+  </ContextMenu.Root>
+  <MetadataFeedback label="project name" field={field} onReconcile={field?.status === 'uncertain' ? reconcileName : undefined} onEdit={field?.status === 'draft' ? () => setRenaming(true) : undefined} onResave={field?.status === 'draft' ? () => void resaveName() : undefined} />
+  <ProjectIconDialog project={project} open={changingIcon} onClose={() => setChangingIcon(false)} onError={reportFailure} /></>;
 }
 
 function ArchivedThreads({ threads, renderThread }: { threads: Thread[]; renderThread: (thread: Thread) => ReactNode }) {
@@ -229,7 +278,7 @@ function DetachedThreads({ threads, renderThread }: { threads: Thread[]; renderT
   </section>;
 }
 
-export function Sidebar({ projects, threads, archived = [], floating = [], detached = [], ownedTabs = new Map(), machines, currentId, currentMachineId, currentTab, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile, onNavigate, onOpenPalette, paletteShortcut = 'meta+k', updateAction }: Props) {
+export function Sidebar({ projects, threads, archived = [], floating = [], detached = [], ownedTabs = new Map(), machines, currentId, currentMachineId, currentTab, mode, onModeChange, collapsed, mobileOpen, onCollapse, onCloseMobile, onNavigate, onOpenPalette, paletteShortcut = 'meta+k', updateAction, metadata, metadataFields = {} }: Props) {
   const [closedProjects, setClosedProjects] = useState<string[]>([]);
   const [collapseMotionVersion, setCollapseMotionVersion] = useState(0);
   useEffect(() => {
@@ -244,7 +293,7 @@ export function Sidebar({ projects, threads, archived = [], floating = [], detac
     setCollapseMotionVersion((version) => version + 1);
     try { localStorage.setItem(closedProjectsStorageKey, JSON.stringify(next)); } catch {}
   };
-  const currentProjectId = threads.find((thread) => thread.id === currentId)?.projectId;
+  const currentProjectId = threads.find((thread) => thread.id === currentId && thread.machineId === currentMachineId)?.projectId;
   const projectGroups = groupProjectLocations(projects, currentProjectId);
   const terminalMachine = selectTerminalMachine(machines, currentMachineId);
   const [monitorBusy, setMonitorBusy] = useState(false);
@@ -262,14 +311,14 @@ export function Sidebar({ projects, threads, archived = [], floating = [], detac
   const navigation = useRef<HTMLElement>(null);
   useFlipList(navigation, collapseMotionVersion);
   const threadLink = (thread: Thread, showProject: boolean) => {
-    const project = projects.find((item) => item.id === thread.projectId);
+    const project = projects.find((item) => (item.machineId ?? 'local') === thread.machineId && item.id === thread.projectId);
     const ownedTab = ownedTabs.get(thread.id);
     const machine = machines.find((item) => item.id === thread.machineId);
     const href = ownedTab ? terminalHref(ownedTab.session || machine?.session || 'default', ownedTab) : `/threads/${encodeURIComponent(thread.id)}`;
     const viewingOwnedTab = !!ownedTab && currentTab?.machineId === ownedTab.machineId && currentTab?.tabId === ownedTab.tabId;
     const keyed = ownedTab || thread.bindingState === 'attached' && thread.tabId;
     const connected = machine?.connected === true;
-    return <ThreadRow key={keyed ? sidebarTabKey(thread.machineId, ownedTab?.tabId ?? thread.tabId) : thread.id} thread={thread} project={project} machineName={machine?.name ?? thread.machineId} current={currentId === thread.id || viewingOwnedTab} showProject={showProject} href={href} connected={connected} canDelete={connected} />;
+    return <ThreadRow key={keyed ? sidebarTabKey(thread.machineId, ownedTab?.tabId ?? thread.tabId) : JSON.stringify([thread.machineId, thread.id])} thread={thread} project={project} machineName={machine?.name ?? thread.machineId} current={currentId === thread.id && currentMachineId === thread.machineId || viewingOwnedTab} showProject={showProject} href={href} connected={connected} canDelete={connected} metadata={metadata} metadataFields={metadataFields} />;
   };
   const terminalLink = (tab: FloatingTab) => {
     const machine = machines.find((item) => item.id === tab.machineId);
@@ -302,7 +351,7 @@ export function Sidebar({ projects, threads, archived = [], floating = [], detac
       {!collapsed && <>
         <nav ref={navigation} className="thread-navigation" aria-label="Agent threads">
           {mode === 'projects' ? <>{projectGroups.filter((group) => threads.some((thread) => group.locations.includes(thread.projectId))).sort((a, b) => (threads.find((thread) => b.locations.includes(thread.projectId))?.updatedAt ?? '').localeCompare(threads.find((thread) => a.locations.includes(thread.projectId))?.updatedAt ?? '')).map(({ id, project, locations }) => <section key={id} className="thread-group">
-            <ProjectGroupHeader project={project} machine={machines.find((machine) => machine.id === (project.machineId ?? 'local'))} closed={closedProjects.includes(id)} onToggle={() => toggleProject(id)} onNavigate={onNavigate} />
+            <ProjectGroupHeader project={project} machine={machines.find((machine) => machine.id === (project.machineId ?? 'local'))} closed={closedProjects.includes(id)} onToggle={() => toggleProject(id)} onNavigate={onNavigate} metadata={metadata} metadataFields={metadataFields} />
             {!closedProjects.includes(id) && threads.filter((thread) => locations.includes(thread.projectId)).map((thread) => threadLink(thread, false))}
           </section>)}{terminalsDivider}{floating.map(terminalLink)}</> : <>{threads.map((thread) => threadLink(thread, true))}{terminalsDivider}{floating.map(terminalLink)}</>}
           {!threads.length && !floating.length && !archived.length && !detached.length && <p className="sidebar-empty">No agents or terminals yet. Press {formatShortcut(paletteShortcut)} to start one.</p>}

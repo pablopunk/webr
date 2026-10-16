@@ -2,12 +2,13 @@ import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef,
 import { useStore } from 'zustand';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRuntimeStore, createUiStore } from './store';
+import { createPendingMetadataController } from './pending-metadata';
 import { BrowserTerminalManager } from './terminal-manager';
 import { span } from './perf';
 import type { Bootstrap } from '../shared/runtime';
 import { defaultThreadTickets, ThreadTickets } from './create-tickets';
 
-const Context = createContext<{ runtime: ReturnType<typeof createRuntimeStore>; ui: ReturnType<typeof createUiStore>; terminals: BrowserTerminalManager; tickets: ThreadTickets; cacheScope: string } | null>(null);
+const Context = createContext<{ runtime: ReturnType<typeof createRuntimeStore>; ui: ReturnType<typeof createUiStore>; terminals: BrowserTerminalManager; metadata: ReturnType<typeof createPendingMetadataController>; tickets: ThreadTickets; cacheScope: string } | null>(null);
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 export function isAccessLossError(error: unknown) {
   return typeof error === 'object' && error !== null && 'status' in error && (error.status === 401 || error.status === 403);
@@ -16,7 +17,8 @@ export function RuntimeProvider({ bootstrap, children }: { bootstrap: Bootstrap;
   const [value] = useState(() => {
     const runtime = createRuntimeStore(bootstrap);
     const ui = createUiStore();
-    return { runtime, ui, terminals: new BrowserTerminalManager((projection) => { const done = span('projectionInstallMs'); const accepted = runtime.getState().install(projection); done(); return accepted; }, (connected) => runtime.getState().connection(connected)) };
+    const metadata = createPendingMetadataController(runtime, bootstrap.recoveryScope);
+    return { runtime, ui, metadata, terminals: new BrowserTerminalManager((projection) => { const done = span('projectionInstallMs'); const accepted = runtime.getState().install(projection); done(); return accepted; }, (connected) => runtime.getState().connection(connected)) };
   });
   const [query] = useState(() => new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, retry: false } } }));
   const resourceRecoveryScope = bootstrap.resourceRecoveryScope ?? bootstrap.recoveryScope;
@@ -36,6 +38,12 @@ export function RuntimeProvider({ bootstrap, children }: { bootstrap: Bootstrap;
     if (ticketStore.current !== tickets) ticketStore.current = tickets;
     if (tickets.changeResourceRecoveryScope(resourceRecoveryScope)) setTicketScopeRevision((revision) => revision + 1);
   }, [tickets, bootstrap.recoveryScope, resourceRecoveryScope]);
+  const metadataScope = useRef(bootstrap.recoveryScope);
+  useIsomorphicLayoutEffect(() => {
+    if (metadataScope.current === bootstrap.recoveryScope) return;
+    metadataScope.current = bootstrap.recoveryScope;
+    value.metadata.changeScope(bootstrap.recoveryScope);
+  }, [value.metadata, bootstrap.recoveryScope]);
   const cacheScope = useRef(bootstrap.recoveryScope);
   useEffect(() => {
     if (cacheScope.current === bootstrap.recoveryScope) return;

@@ -88,6 +88,13 @@
 .thread-context { display: flex; align-items: center; gap: 5px; color: var(--ink-soft); font-size: 12px; }
 .thread-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); }
 .thread-name-input { width: 100%; min-width: 0; margin: -2px -4px; padding: 1px 4px; border: 1px solid var(--focus-ring); border-radius: 4px; outline: 0; background: var(--surface); color: var(--ink); font: inherit; }
+.metadata-editor { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.metadata-clear-override, .metadata-feedback button { flex: none; padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-raised); color: var(--ink-soft); font: inherit; font-size: 11px; }
+.metadata-clear-override:hover, .metadata-feedback button:hover { color: var(--ink); background: var(--surface-hover); }
+.metadata-editor-note { color: var(--ink-soft); font-size: 11px; }
+.metadata-feedback { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; padding: 2px 8px 4px 39px; color: var(--ink-soft); font-size: 11px; line-height: 1.35; }
+.metadata-feedback.is-failed, .metadata-feedback.is-uncertain, .native-title-sync-status { color: var(--danger); }
+.metadata-feedback.is-draft { color: var(--accent); }
 .thread-time { grid-column: 3; grid-row: 1; justify-self: end; font: 10px var(--font-mono); color: var(--ink-soft); }
 .thread-status { position: absolute; top: -5px; left: -5px; padding: 1px; border-radius: 50%; background: var(--sidebar); color: var(--ink-soft); }
 .thread-avatar-harness { position: absolute; right: -6px; bottom: -6px; display: grid; padding: 1.5px; border-radius: 5px; background: var(--sidebar); }

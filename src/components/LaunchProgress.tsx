@@ -1,6 +1,7 @@
 import { CircleAlert, CircleCheck, Circle, LoaderCircle } from 'lucide-react';
 import type { Thread } from '../lib/models';
 import { launchFailureMessage, launchStepIndex, launchStepLabel, launchSteps } from '../lib/launch';
+import { threadDisplayTitle } from '../client/pending-metadata';
 
 export type LaunchProgressOutcome = 'active' | 'failed' | 'unknown';
 
@@ -22,7 +23,7 @@ export function LaunchProgress({ thread }: { thread: Thread }) {
   const outcome = unknown ? 'unknown' : failed ? 'failed' : 'active';
   return <main className="launch-progress" aria-label="Launch progress" role="status">
     <h1>{unknown ? 'Launch outcome uncertain' : failed ? 'The launch stopped' : 'Starting your agent'}</h1>
-    <blockquote className="launch-prompt">{thread.prompt || thread.title}</blockquote>
+    <blockquote className="launch-prompt">{thread.prompt || threadDisplayTitle(thread)}</blockquote>
     <LaunchStepList step={step} worktree={thread.worktree} outcome={outcome} />
     {(failed || unknown) && <div className="launch-failure" role="alert">
       <p>{unknown ? 'The launch may have reached the machine. Its outcome is uncertain; check the session in Herdr before starting another prompt.' : `Launch stopped while ${launchStepLabel(step, thread.worktree).toLowerCase()}. ${launchFailureMessage(step, thread.worktree)}`}</p>
