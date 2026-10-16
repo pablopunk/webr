@@ -5,6 +5,7 @@ import { usePendingPaneActions } from '../../src/client/pending-pane-actions';
 import { PaneActionError, closeThreadPane, openThreadTerminal } from '../../src/client/thread-actions';
 import { ThreadView } from '../../src/components/ThreadView';
 import { exampleThreads, type Thread } from '../../src/lib/models';
+import { windowStartShowing } from '../../src/lib/pane-strip';
 import type { Projection } from '../../src/shared/runtime';
 
 vi.mock('../../src/client/thread-actions', async (importOriginal) => {
@@ -36,15 +37,16 @@ function Harness({ observation = projection(), thread: threadOverride, routeKey 
   const thread = threadOverride ?? observation.threads[0]!;
   const [focusedPane, setFocusedPane] = useState('pane-shell');
   const focusPane = (scope: string, paneId: string) => { focus(scope, paneId); setFocusedPane(paneId); };
-  const actions = usePendingPaneActions({ thread, projection: observation, routeKey, scope: 'machine-test:thread-test', focusedPane, windowStart: 0, focusPane, confirmClose });
+  const windowStart = windowStartShowing(thread.panes.length, 0, thread.panes.findIndex((pane) => pane.id === focusedPane));
+  const actions = usePendingPaneActions({ thread, projection: observation, routeKey, scope: 'machine-test:thread-test', focusedPane, windowStart, focusPane, confirmClose });
   return <>
     <button type="button" onClick={() => actions.openTerminal()}>Split pane</button>
     <button type="button" onClick={() => actions.openTerminal('pane-shell-reidentified')}>Split reidentified pane</button>
     <button type="button" onClick={() => actions.openTerminal('pane-other')}>Split unrelated terminal</button>
     <button type="button" onClick={() => actions.closePane()}>Close pane</button>
-    <button type="button" onClick={() => actions.closePane('pane-reidentified')}>Close reidentified pane</button>
+    <button type="button" onClick={() => actions.closePane('pane-shell-reidentified')}>Close reidentified pane</button>
     <output aria-label="Focused pane">{focusedPane}</output>
-    <ThreadView thread={thread} connected={observation.connected} canControl focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={0} narrow={false}
+    <ThreadView thread={thread} connected={observation.connected} canControl focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={false}
       pendingSplits={actions.pendingSplits} pendingCloses={actions.pendingCloses} paneActionNotice={actions.notice}
       onDismissPendingSplit={actions.dismissSplit} onDismissPendingClose={actions.dismissClose} onDismissPaneActionNotice={actions.dismissNotice} />
   </>;
@@ -168,7 +170,7 @@ it('does not treat disconnected stale absence as close confirmation, then reconc
   const view = render(<Harness />);
   fireEvent.click(screen.getByRole('button', { name: 'Close pane' }));
   await screen.findByText(/Close outcome is uncertain/);
-  const reidentified = projection({ ...originalThread, panes: [originalThread.panes[0]!, { ...originalThread.panes[1]!, id: 'pane-reidentified' }] }, 2, true, 'fresh-reidentified');
+  const reidentified = projection({ ...originalThread, panes: [originalThread.panes[0]!, { ...originalThread.panes[1]!, id: 'pane-shell-reidentified' }] }, 2, true, 'fresh-reidentified');
   view.rerender(<Harness observation={reidentified} />);
   expect(screen.getByText(/Close outcome is uncertain/)).toBeTruthy();
   expect(screen.getByTestId('terminal-terminal-shell')).toBeTruthy();
