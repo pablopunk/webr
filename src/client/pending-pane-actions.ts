@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { closeThreadPane, openThreadTerminal, PaneActionError } from './thread-actions';
 import { canClosePane, paneToFocusAfterClosing } from '../lib/pane-strip';
 import type { Pane, Thread } from '../lib/models';
@@ -79,7 +79,9 @@ export function usePendingPaneActions({ thread, projection, routeKey, scope, foc
   const [notice, setNotice] = useState<(PaneActionNotice & { identityKey: string }) | undefined>();
   const locks = useRef(new Set<string>());
   const current = useRef({ projection, routeKey, focusedPane });
-  current.current = { projection, routeKey, focusedPane };
+  // HTTP completion must consult the committed route/owner, not an interrupted
+  // render. Otherwise a speculative navigation can settle a split without focus.
+  useLayoutEffect(() => { current.current = { projection, routeKey, focusedPane }; }, [projection, routeKey, focusedPane]);
   const attemptCounter = useRef(0);
   const settledCloseAttempts = useRef(new Set<string>());
   const closeTimings = useRef(new Map<string, { start: number; httpStart: number }>());

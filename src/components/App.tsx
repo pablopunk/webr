@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CommandPalette } from './CommandPalette';
 import { MobileTopBar } from './MobileTopBar';
 import { PrefixOverlay } from './PrefixOverlay';
@@ -129,7 +129,21 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
   const storedPaneWindow = useStore(ui, (state) => state.paneWindows[scope] ?? 0);
   const activePanes = page === 'terminal' ? terminalPanes : thread?.panes ?? [];
   const focusedPane = activePanes.some((pane) => pane.id === storedFocus) ? storedFocus! : activePanes[0]?.id ?? '';
-  const setFocusedPane = useCallback((paneId: string) => ui.getState().focus(scope, paneId), [ui, scope]);
+  const mainPanel = useRef<HTMLDivElement>(null);
+  const [paneFocusRequest, requestPaneFocus] = useState<{ scope: string; paneId: string }>();
+  const consumedPaneFocus = useRef<typeof paneFocusRequest>(undefined);
+  const setFocusedPane = useCallback((paneId: string) => {
+    ui.getState().focus(scope, paneId);
+    requestPaneFocus({ scope, paneId });
+  }, [ui, scope]);
+  useLayoutEffect(() => {
+    if (!paneFocusRequest || consumedPaneFocus.current === paneFocusRequest) return;
+    // Only explicit pointer/keyboard/palette navigation may leave an editor.
+    // Consume once: a later remount or baseline must not replay this intent.
+    consumedPaneFocus.current = paneFocusRequest;
+    if (paneFocusRequest.scope !== scope || paneFocusRequest.paneId !== focusedPane || document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+    mainPanel.current?.querySelector<HTMLTextAreaElement>('.terminal-pane.is-active .terminal-input-capture')?.focus({ preventScroll: true });
+  }, [paneFocusRequest, scope, focusedPane]);
   useClearDoneOnVisit(page === 'thread' ? thread : undefined, focusedPane, !!machines.find((machine) => machine.id === thread?.machineId)?.connected && !!machines.find((machine) => machine.id === thread?.machineId)?.writable);
   useEffect(() => {
     if (page !== 'thread' || thread?.operation?.state !== 'ready') return;
@@ -324,7 +338,7 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
   return <div className={`app-shell ${page === 'thread' || page === 'terminal' ? 'is-thread' : ''}`} onClickCapture={handleAppLinkClick}>
     <Sidebar projects={projects} threads={threads} archived={archived} floating={floating} detached={detached} ownedTabs={ownedTabs} machines={machines} currentId={thread?.id} currentMachineId={page === 'terminal' ? machineId : thread?.machineId} currentTab={route.type === 'terminal' && machineId && tabId ? { machineId, tabId } : undefined} mode={mode} onModeChange={changeMode} collapsed={collapsed}
       mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} onNavigate={navigate} paletteShortcut={shortcuts.commandPalette} updateAction={<UpdateButton />} metadata={metadata} metadataFields={metadataFields} />
-    <div className="main-panel">
+    <div ref={mainPanel} className="main-panel">
       {narrow && (page === 'thread' || page === 'terminal') && <MobileTopBar panes={page === 'thread' ? visibleThreadPanes : terminalPanes} focusedPane={focusedPane} onFocusPane={setFocusedPane} onOpenSidebar={toggleSidebar} onOpenPalette={() => setPaletteOpen(true)} keepTerminalFocus={keepTerminalFocus} />}
       {page === 'thread' && thread && <ThreadView thread={thread} connected={!!machines.find((machine) => machine.id === thread.machineId)?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow}
         pendingSplits={paneActions.pendingSplits} pendingCloses={paneActions.pendingCloses} paneActionNotice={paneActions.notice} onDismissPendingSplit={paneActions.dismissSplit} onDismissPendingClose={paneActions.dismissClose} onDismissPaneActionNotice={paneActions.dismissNotice} />}

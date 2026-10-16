@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { useState } from 'react';
+import { startTransition, Suspense, useState } from 'react';
 import { usePendingPaneActions } from '../../src/client/pending-pane-actions';
 import { PaneActionError, closeThreadPane, openThreadTerminal } from '../../src/client/thread-actions';
 import { ThreadView } from '../../src/components/ThreadView';
@@ -313,4 +313,33 @@ it('never steals focus when a pending close settles after navigation away', asyn
   expect(focus).not.toHaveBeenCalled();
   await act(async () => { release({ closed: true, busy: false }); });
   expect(focus).not.toHaveBeenCalled();
+});
+
+it('uses the committed route when a late split response races an interrupted route render', async () => {
+  let release!: (value: { paneId: string }) => void;
+  vi.mocked(openThreadTerminal).mockReturnValueOnce(new Promise((resolve) => { release = resolve; }));
+  const added = { id: 'pane-native', title: 'New shell', kind: 'shell' as const, terminalId: 'terminal-native' };
+  const observation = projection({ ...originalThread, panes: [...originalThread.panes, added] }, 2);
+  const attempted = vi.fn(); const never = new Promise<void>(() => {});
+  function PendingRoute({ route }: { route: string }) { if (route === 'other-route') { attempted(); throw never; } return null; }
+  function ConcurrentRoute() {
+    const [route, setRoute] = useState('thread-route');
+    return <>
+      <button onClick={() => startTransition(() => setRoute('other-route'))}>Deferred route</button>
+      <Suspense fallback={<span>Uncommitted route</span>}>
+        <Harness observation={observation} routeKey={route} />
+        <PendingRoute route={route} />
+      </Suspense>
+    </>;
+  }
+  render(<ConcurrentRoute />);
+  fireEvent.click(screen.getByRole('button', { name: 'Split pane' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Deferred route' }));
+  await waitFor(() => expect(attempted).toHaveBeenCalled());
+  expect(screen.queryByText('Uncommitted route')).toBeNull();
+  await act(async () => { release({ paneId: added.id }); });
+  expect(focus).toHaveBeenCalledExactlyOnceWith('machine-test:thread-test', added.id);
+  expect(screen.getByLabelText('Focused pane').textContent).toBe(added.id);
+  expect(screen.queryByText('Creating terminal pane…')).toBeNull();
+  expect(openThreadTerminal).toHaveBeenCalledTimes(1);
 });

@@ -54,7 +54,7 @@ afterEach(() => {
 });
 const agent = { id: 'agent', terminalId: 'native-agent', title: 'Agent', kind: 'agent' as const };
 const shell = { id: 'shell', terminalId: 'native-shell', title: 'Shell', kind: 'shell' as const };
-const thread: Thread = { ...exampleThreads()[0], id: 'focus-thread', machineId: 'local', session: 'default', tabId: 'w1:t1', bindingState: 'attached', status: 'running', panes: [agent] };
+const thread: Thread = { ...exampleThreads()[0], id: 'focus-thread', machineId: 'local', session: 'default', tabId: 'w1:t1', bindingState: 'attached', status: 'working', panes: [agent] };
 const machine = { id: 'local', name: 'Local', session: 'default', connected: true, writable: true, projectPaths: {}, harnesses: [] };
 const projection = (panes = [agent] as Thread['panes'], revision = 1): Projection => ({ machineId: 'local', generation: 'focus', revision, connected: true, freshAt: 'fresh', machine, projects: [], layouts: [], threads: [{ ...thread, panes }] });
 async function start(initial: Projection, path = '/threads/focus-thread', narrow = false) {
@@ -64,16 +64,22 @@ async function start(initial: Projection, path = '/threads/focus-thread', narrow
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(600);
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
   vi.spyOn(document, 'hasFocus').mockReturnValue(true);
-  vi.stubGlobal('matchMedia', (query: string) => ({ matches: narrow && query.includes('max-width'), addEventListener() {}, removeEventListener() {} }));
+  let screenNarrow = narrow;
+  const mediaListeners = new Set<() => void>();
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    get matches() { return screenNarrow && query.includes('max-width'); },
+    addEventListener(_type: string, listener: () => void) { if (query.includes('max-width')) mediaListeners.add(listener); },
+    removeEventListener(_type: string, listener: () => void) { mediaListeners.delete(listener); },
+  }));
   vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})));
-  localStorage.setItem('webr-shortcuts', JSON.stringify({ nextPane: 'ctrl+j', previousPane: 'ctrl+k', openTerminal: 'ctrl+o' }));
+  localStorage.setItem('webr-shortcuts', JSON.stringify({ nextPane: 'ctrl+j', previousPane: 'ctrl+k', openTerminal: 'ctrl+o', renameThread: 'ctrl+r', commandPalette: 'meta+p' }));
   window.history.replaceState(null, '', path);
   const bootstrap: Bootstrap = { projections: [{ ...initial, revision: 0 }], machines: [machine], projects: [], threads: [], recoveryScope: 'focus' };
   const view = render(<App initialUrl={window.location.href} bootstrap={bootstrap} />);
   const [metadata, binary] = Socket.instances;
   await act(async () => { metadata.open(); binary.open(); metadata.receive({ type: 'projection', projection: initial }); });
   await waitFor(() => expect(binary.actions().filter((action) => action.type === 'open')).toHaveLength(1));
-  return { view, metadata, binary };
+  return { view, metadata, binary, setNarrow: (next: boolean) => { screenNarrow = next; for (const listener of [...mediaListeners]) listener(); } };
 }
 type Open = { streamId: number; generation: number; terminalId: string; cols: number; rows: number };
 function baseline(binary: Socket, open: Open, seq = 1, width = open.cols) {
@@ -164,4 +170,60 @@ it('switches panes in a standalone tab on narrow screens without a deferred old 
   const open = binary.actions().find((action) => action.type === 'open' && action.terminalId === shell.terminalId);
   await ready(binary, open); binary.sent = []; await type('standalone');
   expect(binary.actions().filter((action) => action.type === 'input')).toEqual(expectedInput(open, 'standalone'));
+});
+
+it('preserves a real rename editor through late split focus and responsive remount, but honors explicit keyboard and palette navigation', async () => {
+  const { metadata, binary, setNarrow } = await start(projection());
+  const firstOpen = binary.actions().find((action) => action.type === 'open') as Open;
+  await ready(binary, firstOpen);
+  let release!: (value: { paneId: string }) => void;
+  vi.mocked(openThreadTerminal).mockReturnValueOnce(new Promise((resolve) => { release = resolve; }));
+  fireEvent.keyDown(document.activeElement!, { key: 'o', ctrlKey: true });
+  fireEvent.keyDown(document.activeElement!, { key: 'r', ctrlKey: true });
+  const editor = await screen.findByRole('textbox', { name: /^Rename / });
+  await waitFor(() => expect(document.activeElement).toBe(editor));
+  await userEvent.keyboard('kept editor');
+  await act(async () => { release({ paneId: shell.id }); });
+  await act(async () => metadata.receive({ type: 'projection', projection: projection([agent, shell], 2) }));
+  await waitFor(() => expect(binary.actions().filter((action) => action.type === 'open')).toHaveLength(2));
+  const shellOpen = binary.actions().find((action) => action.type === 'open' && action.terminalId === shell.terminalId) as Open;
+  await ready(binary, shellOpen);
+  expect(document.activeElement).toBe(editor);
+  binary.sent = []; await userEvent.keyboard(' still editing');
+  expect(screen.getByRole('textbox', { name: /^Rename / })).toBe(editor);
+  expect((editor as HTMLInputElement).value).toBe('kept editor still editing');
+  expect(binary.actions().filter((action) => action.type === 'input')).toEqual([]);
+  // A deliberate leader-key navigation may leave the editor. The final key
+  // must remain an app shortcut, never become terminal text.
+  const shortcuts = JSON.parse(localStorage.getItem('webr-shortcuts')!);
+  localStorage.setItem('webr-shortcuts', JSON.stringify({ ...shortcuts, previousPane: 'ctrl+b k' }));
+  await userEvent.keyboard('{Control>}b{/Control}k');
+  const agentInput = screen.getAllByLabelText('Terminal input')[0];
+  expect(document.activeElement).toBe(agentInput);
+  expect(screen.queryByRole('textbox', { name: /^Rename / })).toBeNull();
+  expect(binary.actions().filter((action) => action.type === 'input')).toEqual([]);
+  await type('explicit navigation');
+  expect(binary.actions().filter((action) => action.type === 'input')).toEqual(expectedInput(firstOpen, 'explicit navigation'));
+
+  fireEvent.keyDown(agentInput, { key: 'r', ctrlKey: true });
+  const responsiveEditor = await screen.findByRole('textbox', { name: /^Rename / });
+  await waitFor(() => expect(document.activeElement).toBe(responsiveEditor));
+  binary.sent = [];
+  await act(async () => setNarrow(true));
+  await waitFor(() => expect(binary.actions().some((action) => action.type === 'open' && action.terminalId === agent.terminalId)).toBe(true));
+  const remountedOpen = binary.actions().find((action) => action.type === 'open' && action.terminalId === agent.terminalId) as Open;
+  await ready(binary, remountedOpen);
+  expect(document.activeElement).toBe(responsiveEditor);
+  binary.sent = []; await userEvent.keyboard('responsive editor');
+  expect(screen.getByRole('textbox', { name: /^Rename / })).toBe(responsiveEditor);
+  expect(binary.actions().filter((action) => action.type === 'input')).toEqual([]);
+
+  fireEvent.keyDown(responsiveEditor, { key: 'p', metaKey: true });
+  const search = await screen.findByRole('textbox', { name: 'Search commands and threads' });
+  await waitFor(() => expect(document.activeElement).toBe(search));
+  await userEvent.keyboard('Focus Agent{Enter}');
+  expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull();
+  expect(document.activeElement).toBe(screen.getByLabelText('Terminal input'));
+  binary.sent = []; await type('palette navigation');
+  expect(binary.actions().filter((action) => action.type === 'input')).toEqual(expectedInput(remountedOpen, 'palette navigation'));
 });

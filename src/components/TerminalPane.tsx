@@ -164,7 +164,14 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
   // Navigation owns DOM focus, independently of asynchronous control/baseline
   // readiness. A read-only textarea can keep focus without accepting bytes.
   // Readiness changes must not replay an old navigation request over an editor.
-  useLayoutEffect(() => { if (active) focusInput(false); }, [active]);
+  useLayoutEffect(() => {
+    const focused = document.activeElement;
+    // Mounting (including a responsive remount) and late split activation are
+    // automatic. An editor keeps ownership; App consumes explicit navigation
+    // requests separately, after the selected pane's DOM has committed.
+    const editingElsewhere = focused instanceof HTMLElement && focused.closest('input, textarea, [contenteditable]:not([contenteditable="false"])') && !focused.closest('.terminal-input-capture, .xterm');
+    if (active && !editingElsewhere) focusInput(false);
+  }, [active]);
   useEffect(() => {
     // The input may already own focus before the first baseline enables writes.
     // Report that focus to the application without moving browser focus again.
