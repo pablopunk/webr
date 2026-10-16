@@ -177,13 +177,18 @@ it('commits split focus before async xterm mounting or its writable baseline, an
 it('does not replay pending initial focus over an editor or dialog when a delayed baseline arrives', async () => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
-  render(<><input aria-label="Editor" /><div role="dialog"><input aria-label="Dialog field" /></div><TerminalPane pane={{ id: 'one', terminalId: 'one', title: 'Agent', kind: 'agent' }} machineId="fixture" threadId="fixture-thread" active canControl onFocus={() => {}} /></>);
+  const tree = (dialogOpen: boolean) => <><input aria-label="Editor" />{dialogOpen && <div role="dialog"><input aria-label="Dialog field" /></div>}<TerminalPane pane={{ id: 'one', terminalId: 'one', title: 'Agent', kind: 'agent' }} machineId="fixture" threadId="fixture-thread" active canControl onFocus={() => {}} /></>;
+  const view = render(tree(true));
+  const input = screen.getByLabelText('Terminal input');
   const dialog = screen.getByLabelText('Dialog field'); dialog.focus();
   await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
   const { terminal, onState } = fixture.mount.mock.calls[0][0];
   await act(async () => onState('Input control is active.', true));
   terminal.focus(); expect(document.activeElement).toBe(dialog);
-  screen.getByRole('dialog').remove();
+  view.rerender(tree(false));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByLabelText('Terminal input')).toBe(input);
+  expect(fixture.mount).toHaveBeenCalledTimes(1);
   const editor = screen.getByLabelText('Editor'); editor.focus();
   await act(async () => onState('Waiting for the resized full baseline.', false));
   await act(async () => onState('Input control is active.', true));
