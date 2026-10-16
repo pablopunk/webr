@@ -145,6 +145,47 @@ it('changes supported links locally, preserves route state and provider identiti
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
+it('navigates threads in the displayed sidebar order when grouped by project', () => {
+  vi.stubGlobal('fetch', deferredFetch());
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+  localStorage.setItem('webr-sidebar-mode', 'projects');
+  localStorage.setItem('webr-shortcuts', JSON.stringify({ nextThread: 'ctrl+j', previousThread: 'ctrl+k' }));
+
+  const sample = exampleThreads()[0];
+  const thread = (id: string, projectId: string, minutesAgo: number): Thread => ({
+    ...sample,
+    id,
+    projectId,
+    title: id,
+    updatedAt: new Date(Date.now() - minutesAgo * 60_000).toISOString(),
+    tabId: `w1:${id}`,
+    bindingState: 'attached',
+  });
+  const current = thread('current', 'web', 4);
+  const nextInSidebar = thread('next-in-sidebar', 'web', 21);
+  const nextByGlobalRecency = thread('next-by-global-recency', 'music', 20);
+  const project = (id: string, name: string) => ({ id, name, path: `/${id}`, color: '#888', initial: name[0], machineId: 'local', metadataVersion: 0 });
+  const bootstrap: Bootstrap = {
+    projections: [{
+      machineId: 'local', generation: 'navigation-shortcuts', revision: 1, freshAt: null, connected: false,
+      threads: [current, nextByGlobalRecency, nextInSidebar], projects: [project('web', 'Web'), project('music', 'Music')], layouts: [],
+    }],
+    machines: [], projects: [], threads: [], recoveryScope: 'local',
+  };
+
+  window.history.replaceState(null, '', '/threads/current');
+  render(<App initialUrl={window.location.href} bootstrap={bootstrap} />);
+
+  expect(Array.from(document.querySelectorAll('[data-sidebar-navigation-item="true"]')).map((item) => item.getAttribute('data-sidebar-navigation-href')))
+    .toEqual(['/threads/current', '/threads/next-in-sidebar', '/threads/next-by-global-recency']);
+
+  fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true });
+  expect(window.location.pathname).toBe('/threads/next-in-sidebar');
+
+  fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+  expect(window.location.pathname).toBe('/threads/current');
+});
+
 it('removes the recovery query during the initial composer mount', () => {
   vi.stubGlobal('fetch', deferredFetch());
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));

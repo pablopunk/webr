@@ -37,6 +37,7 @@ import { carriesFiles } from '../client/image-attach';
 import { trackVisualViewport } from '../client/visual-viewport';
 import { terminalStartupStorageKey, type TerminalStartupPreset } from '../client/terminal-presets';
 import { clearLaunchDraft, clearNewThreadDraftForLaunch } from '../client/new-thread-draft';
+import { sidebarNavigationHref } from '../client/sidebar-navigation';
 
 type Props = { initialUrl: string; bootstrap: Bootstrap };
 
@@ -259,6 +260,9 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
         setFocusedPane(thread.panes[(index + (action === 'nextPane' ? 1 : -1) + thread.panes.length) % thread.panes.length].id);
       }
       if ((action === 'nextThread' || action === 'previousThread') && (threads.length || floating.length)) {
+        const direction = action === 'nextThread' ? 1 : -1;
+        const sidebarHref = sidebarNavigationHref(direction);
+        if (sidebarHref) { navigate(sidebarHref); return; }
         const items: ({ kind: 'thread'; id: string } | { kind: 'terminal'; machineId: string; tabId: string; session: string })[] = [
           ...threads.map((item) => ({ kind: 'thread' as const, id: item.id })),
           ...floating.map((item) => ({ kind: 'terminal' as const, machineId: item.machineId, tabId: item.tabId, session: item.session })),
@@ -266,7 +270,8 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
         const currentIndex = page === 'terminal'
           ? items.findIndex((item) => item.kind === 'terminal' && item.machineId === machineId && item.tabId === tabId)
           : items.findIndex((item) => item.kind === 'thread' && item.id === thread?.id);
-        const next = items[(currentIndex + (action === 'nextThread' ? 1 : -1) + items.length) % items.length];
+        const startIndex = currentIndex >= 0 ? currentIndex : direction === 1 ? -1 : 0;
+        const next = items[(startIndex + direction + items.length) % items.length];
         if (next?.kind === 'thread') void navigate(`/threads/${encodeURIComponent(next.id)}`);
         else if (next) {
           const machine = machines.find((item) => item.id === next.machineId);

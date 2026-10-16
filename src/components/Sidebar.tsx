@@ -126,7 +126,7 @@ const ThreadRow = memo(function ThreadRow({ thread, project, machineName, curren
     if (await confirmDialog(resaveMetadataWarning, { confirmLabel: 'Re-save anyway' })) void metadata.setThreadArchived(thread, archiveDraftValue, true).catch(reportFailure);
   };
   return <ContextMenu.Root>
-    <ContextMenu.Trigger className="thread-item" data-flip-id={flipId} onDoubleClick={(event) => { event.preventDefault(); setRenaming(true); }}>
+    <ContextMenu.Trigger className="thread-item" data-flip-id={flipId} data-sidebar-navigation-item="true" data-sidebar-navigation-href={href} data-sidebar-navigation-current={current ? 'true' : 'false'} onDoubleClick={(event) => { event.preventDefault(); setRenaming(true); }}>
       <ThreadLink thread={thread} project={project} machineName={machineName} current={current} showProject={showProject} editor={editor} href={href} connected={connected} />
       <Tooltip label={archiveDraft ? archiveLabel : archived ? 'Unarchive' : 'Archive'}><button type="button" className="thread-archive" aria-label={archiveLabel} onClick={() => archiveDraft ? changeArchiveDraft() : void (metadata ? metadata.setThreadArchived(thread, !archived) : setThreadArchived(thread, !archived)).catch(reportFailure)}><ArchiveIcon size={15} strokeWidth={1.8} aria-hidden="true" /></button></Tooltip>
     </ContextMenu.Trigger>
@@ -153,7 +153,7 @@ const TerminalRow = memo(function TerminalRow({ tab, session, machineName, curre
       if (result.busy && await confirmDialog(`${tab.label} is running a process. Close it anyway?`, { confirmLabel: 'Close', danger: true })) result = await closeTerminalTab(tab.machineId, tab.tabId, true);
     } catch (error) { reportFailure(error); } finally { setClosing(false); }
   };
-  return <div className="thread-item" data-flip-id={sidebarTabKey(tab.machineId, tab.tabId)}>
+  return <div className="thread-item" data-flip-id={sidebarTabKey(tab.machineId, tab.tabId)} data-sidebar-navigation-item="true" data-sidebar-navigation-href={href} data-sidebar-navigation-current={current ? 'true' : 'false'}>
     <Tooltip label={label} side="right"><a className={`thread-row ${current ? 'is-current' : ''}`} href={href} aria-current={current ? 'page' : undefined} aria-label={`${tab.label} · ${machineName} · Terminal`}>
       <span className="thread-avatar" aria-hidden="true"><span className="thread-bot-avatar"><SquareTerminal size={24} strokeWidth={1.6} /></span></span>
       <span className="thread-copy"><span className="thread-context">{machineName} · Terminal</span><span className="thread-name">{tab.label}</span></span>
@@ -349,7 +349,7 @@ export function Sidebar({ projects, threads, archived = [], floating = [], detac
         </div>}
       </div>
       {!collapsed && <>
-        <nav ref={navigation} className="thread-navigation" aria-label="Agent threads">
+        <nav ref={navigation} className="thread-navigation" aria-label="Agent threads" data-sidebar-navigation="true">
           {mode === 'projects' ? <>{projectGroups.filter((group) => threads.some((thread) => group.locations.includes(thread.projectId))).sort((a, b) => (threads.find((thread) => b.locations.includes(thread.projectId))?.updatedAt ?? '').localeCompare(threads.find((thread) => a.locations.includes(thread.projectId))?.updatedAt ?? '')).map(({ id, project, locations }) => <section key={id} className="thread-group">
             <ProjectGroupHeader project={project} machine={machines.find((machine) => machine.id === (project.machineId ?? 'local'))} closed={closedProjects.includes(id)} onToggle={() => toggleProject(id)} onNavigate={onNavigate} metadata={metadata} metadataFields={metadataFields} />
             {!closedProjects.includes(id) && threads.filter((thread) => locations.includes(thread.projectId)).map((thread) => threadLink(thread, false))}

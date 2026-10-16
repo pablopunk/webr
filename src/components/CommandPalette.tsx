@@ -12,6 +12,7 @@ import type { AppNavigate } from '../client/app-navigation';
 import { requestThreadRename } from '../client/keyboard';
 import { setThreadArchived } from '../client/thread-actions';
 import { threadDisplayTitle, threadIsArchived, type PendingMetadataController } from '../client/pending-metadata';
+import { sidebarNavigationHref } from '../client/sidebar-navigation';
 import type { MetadataFieldSnapshot } from '../client/store';
 import { canClosePane } from '../lib/pane-strip';
 import { perfAvailable, perfVisible, setPerfVisible } from '../client/perf';
@@ -40,10 +41,12 @@ export function CommandPalette({ open, onClose, onNavigate, projects, threads, f
     requestAnimationFrame(() => input.current?.focus());
   }, [open]);
 
-  const navigateThread = (offset: number) => {
+  const navigateThread = (direction: 1 | -1) => {
+    const sidebarHref = sidebarNavigationHref(direction);
+    if (sidebarHref) { onNavigate?.(sidebarHref); return; }
     const index = threads.findIndex((item) => item.id === thread?.id);
-    const start = index === -1 && offset < 0 ? 0 : index;
-    const target = threads[(start + offset + threads.length) % threads.length];
+    const start = index === -1 && direction < 0 ? 0 : index;
+    const target = threads[(start + direction + threads.length) % threads.length];
     if (target) onNavigate?.(`/threads/${encodeURIComponent(target.id)}`);
   };
   const focusPane = (offset: number) => {
