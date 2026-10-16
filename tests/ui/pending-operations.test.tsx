@@ -109,7 +109,9 @@ it('leaves the composer for a local pending view before the acceptance response 
   await user.click(screen.getByRole('button', { name: 'Create thread' }));
 
   expect(screen.getByRole('main', { name: 'Pending thread' })).toBeDefined();
-  expect(screen.getByRole('heading', { name: 'Starting your thread' })).toBeDefined();
+  expect(screen.getByRole('status').getAttribute('aria-busy')).toBe('true');
+  expect(document.querySelector('.loading-orb-visual')).not.toBeNull();
+  expect(document.querySelector('.loading-step')?.textContent).toBe('Checking the machine…');
   await waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
   expect(new URL(window.location.href).searchParams.get('pending')).toMatch(/^[0-9a-f-]{36}$/);
   expect(new URL(window.location.href).searchParams.get('project')).toBe('local:first');
@@ -132,9 +134,10 @@ it('warns visibly when storage is denied while retaining the in-memory ticket an
   expect(deniedSetItem).toHaveBeenCalled();
   expect(currentTickets?.get(key)?.reloadRecoveryUnavailable).toBe(true);
   expect(await screen.findByText(/held in memory only; reloading will lose recovery/i)).toBeDefined();
-  expect(screen.getByText('Keep this draft')).toBeDefined();
+  expect(document.querySelector('.loading-step')?.textContent).toBe('Checking the machine…');
+  expect(currentTickets?.getDraft(key)?.prompt).toBe('Keep this draft');
   expect(fetcher).toHaveBeenCalledOnce();
-  await user.click(screen.getByRole('link', { name: 'Leave this pending view' }));
+  await user.click(screen.getByRole('button', { name: 'Navigate to composer' }));
   expect((screen.getByRole('textbox', { name: 'Thread prompt' }) as HTMLTextAreaElement).value).toBe('');
   expect(fetcher).toHaveBeenCalledOnce();
 });
@@ -195,10 +198,11 @@ it('restores attachment references for an unknown ticket without offering a repl
   vi.stubGlobal('fetch', fetcher);
   renderRoute(`/new?project=local%3Afirst&pending=${created.key}`);
 
+  expect(await screen.findByRole('heading', { name: 'Launch outcome uncertain' })).toBeDefined();
   expect(screen.getByText('Inspect this source')).toBeDefined();
   expect(screen.getByText('source.png')).toBeDefined();
-  expect(await screen.findByRole('heading', { name: 'Launch outcome uncertain' })).toBeDefined();
   expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
+  expect(screen.getByRole('link', { name: 'Edit draft' })).toBeDefined();
   expect(fetcher).toHaveBeenCalledOnce();
 });
 
@@ -238,7 +242,7 @@ it('does not navigate away from the user after they leave a pending operation', 
   await user.click(screen.getByRole('button', { name: 'Create thread' }));
   await waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
   const key = new URL(window.location.href).searchParams.get('pending')!;
-  await user.click(screen.getByRole('link', { name: 'Leave this pending view' }));
+  await user.click(screen.getByRole('button', { name: 'Navigate to composer' }));
   expect(window.location.pathname).toBe('/new');
 
   await act(async () => { resolvePost(response('ready')); await currentTickets!.start(key); });

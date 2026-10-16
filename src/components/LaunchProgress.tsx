@@ -1,8 +1,11 @@
+import { useEffect } from 'react';
 import { CircleAlert, CircleCheck, Circle, LoaderCircle } from 'lucide-react';
 import type { Thread } from '../lib/models';
 import { launchFailureMessage, launchStepIndex, launchStepLabel, launchSteps } from '../lib/launch';
 import { threadDisplayTitle } from '../client/pending-metadata';
-import { LoadingOrb } from './LoadingOrb';
+import { LoadingOrbVisual } from './LoadingOrb';
+import { useThreadTickets } from '../client/provider';
+import { readLaunchDraft, writeLaunchDraft } from '../client/new-thread-draft';
 
 export type LaunchProgressOutcome = 'active' | 'failed' | 'unknown';
 
@@ -17,14 +20,41 @@ export function LaunchStepList({ step, worktree, outcome = 'active' }: { step: s
   </ol>;
 }
 
+export function LaunchLoadingOrb({ step, worktree }: { step: string; worktree: boolean }) {
+  const label = launchStepLabel(step, worktree);
+  return <div className="loading-orb" role="status" aria-live="polite" aria-busy="true">
+    <LoadingOrbVisual />
+    <div className="loading-orb-copy">
+      <p key={`${step}:${worktree}:${label}`} className="loading-step">{label}…</p>
+    </div>
+  </div>;
+}
+
 export function LaunchProgress({ thread }: { thread: Thread }) {
+  const tickets = useThreadTickets();
   const failed = thread.operation?.state === 'failed';
   const unknown = thread.operation?.state === 'unknown';
   const loading = !failed && !unknown;
   const step = thread.operation?.step ?? 'validate';
   const outcome = unknown ? 'unknown' : failed ? 'failed' : 'active';
-  return <main className={`launch-progress ${loading ? 'is-loading' : ''}`} aria-label="Launch progress">
-    {loading ? <LoadingOrb title="Starting your agent" detail={launchStepLabel(step, thread.worktree)} /> : <h1>{unknown ? 'Launch outcome uncertain' : 'The launch stopped'}</h1>}
+
+  useEffect(() => {
+    if (!failed) return;
+    try {
+      if (readLaunchDraft(tickets.recoveryScope, thread.id)) return;
+      writeLaunchDraft(tickets.recoveryScope, thread.id, {
+        prompt: thread.prompt, images: [], projectId: thread.projectId, machineId: thread.machineId, harness: thread.agent, worktree: thread.worktree,
+      });
+    } catch { /* Draft recovery is best-effort; the failure copy remains visible. */ }
+  }, [failed, thread, tickets]);
+
+  if (loading) {
+    return <main className="launch-progress is-loading" aria-label="Launch progress">
+      <LaunchLoadingOrb step={step} worktree={thread.worktree} />
+    </main>;
+  }
+  return <main className="launch-progress" aria-label="Launch progress">
+    <h1>{unknown ? 'Launch outcome uncertain' : 'The launch stopped'}</h1>
     <blockquote className="launch-prompt">{thread.prompt || threadDisplayTitle(thread)}</blockquote>
     <LaunchStepList step={step} worktree={thread.worktree} outcome={outcome} />
     {(failed || unknown) && <div className="launch-failure" role="alert">

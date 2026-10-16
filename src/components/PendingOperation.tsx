@@ -4,7 +4,7 @@ import { useRuntime } from '../client/provider';
 import { parseRoute, buildPendingThreadUrl } from '../client/navigation';
 import { useRouteNavigation } from '../client/app-navigation';
 import { launchFailureMessage } from '../lib/launch';
-import { LaunchStepList } from './LaunchProgress';
+import { LaunchLoadingOrb, LaunchStepList } from './LaunchProgress';
 import type { ResourceTicket, ThreadTicket } from '../client/create-tickets';
 import { terminalStartupStorageKey } from '../client/terminal-presets';
 import type { NewThreadDraft } from '../client/new-thread-draft';
@@ -72,16 +72,24 @@ export function PendingOperation({ ticketKey }: { ticketKey: string }) {
   const leaveUrl = `/new${ticket.normalizedPayload.projectId ? `?project=${encodeURIComponent(ticket.normalizedPayload.projectId)}` : ''}`;
 
   const title = ready ? 'Your thread is ready' : unknown ? 'Launch outcome uncertain' : failed ? 'The launch stopped' : ticket.transport === 'checking' ? 'Checking launch acceptance' : 'Starting your thread';
-  return <main className={`pending-operation ${loading ? 'is-loading' : ''}`} aria-label="Pending thread">
-    {loading
-      ? <LoadingOrb title={title} />
-      : <h1>{title}</h1>}
+  if (loading) {
+    return <main className="pending-operation is-loading" aria-label="Pending thread">
+      <LaunchLoadingOrb step={step} worktree={worktree} />
+      {ticket.transport === 'checking' && ticket.notice && <p className="pending-warning" role="status">{ticket.notice}</p>}
+      {ticket.reloadRecoveryUnavailable && <p className="pending-warning" role="alert">Browser storage is unavailable. This ticket and its draft are held in memory only; reloading will lose recovery.</p>}
+    </main>;
+  }
+  return <main className="pending-operation" aria-label="Pending thread">
+    <h1>{title}</h1>
     {draft && <>
       <blockquote className="launch-prompt">{draft.prompt}</blockquote>
       {!!draft.images.length && <ul className="pending-attachments" aria-label="Attached files">{draft.images.map((image) => <li key={image.id}>{image.name}</li>)}</ul>}
     </>}
     {!ready && <LaunchStepList step={step} worktree={worktree} outcome={unknown ? 'unknown' : failed ? 'failed' : 'active'} />}
     {unknown && <p className="pending-warning" role="alert">The launch may have reached the machine. Webr will not replay this prompt or offer a new attempt. Check the Herdr session before starting another prompt.</p>}
+    {unknown && draft && <div className="pending-actions">
+      <a className="launch-retry" href={editDraftUrl(ticketKey)}>Edit draft</a>
+    </div>}
     {failed && <div className="launch-failure" role="alert">
       <p>{ticket.operationId ? `Launch stopped while ${step.replaceAll('_', ' ')}. ${launchFailureMessage(step, worktree)}` : ticket.error ?? launchFailureMessage(step, worktree)}</p>
       {draft && <div className="pending-actions">
@@ -93,7 +101,7 @@ export function PendingOperation({ ticketKey }: { ticketKey: string }) {
     {ticket.reloadRecoveryUnavailable && <p className="pending-warning" role="alert">Browser storage is unavailable. This ticket and its draft are held in memory only; reloading will lose recovery.</p>}
     {draft && <button className="pending-dismiss" type="button" onClick={() => tickets.dismissDraft(ticketKey)}>Dismiss saved draft</button>}
     {ready && ticket.result?.threadId && <a className="launch-retry" href={`/threads/${encodeURIComponent(ticket.result.threadId)}`}>Open thread</a>}
-    <a className="pending-leave" href={leaveUrl}>{ready ? 'Back to new thread' : 'Leave this pending view'}</a>
+    {(ready || !draft) && <a className="pending-leave" href={leaveUrl}>Back to new thread</a>}
   </main>;
 }
 
@@ -185,6 +193,6 @@ export function PendingResourceOperation({ ticketKey }: { ticketKey: string }) {
     {ready && ticket.kind === 'terminal' && ticket.result && <button type="button" className="launch-retry" onClick={() => openTerminal(ticket)}>Open terminal</button>}
     {ready && ticket.kind === 'worktree' && ticket.result && <a className="launch-retry" href={`/threads/${encodeURIComponent(ticket.result.threadId)}`}>Open thread</a>}
     {ticket.reloadRecoveryUnavailable && <p className="pending-warning" role="alert">Browser storage is unavailable. This ticket is held in memory only; reloading will lose recovery.</p>}
-    <a className="pending-leave" href="/new">Leave this pending view</a>
+    <a className="pending-leave" href="/new">Back to new thread</a>
   </main>;
 }

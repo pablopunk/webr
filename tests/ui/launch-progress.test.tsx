@@ -31,9 +31,17 @@ it('describes the actual launch resource and whether prompt delivery is uncertai
 
 it('uses the animated orb while an agent launch is in progress', () => {
   render(<LaunchProgress thread={thread()} />);
-  expect(screen.getByRole('heading', { name: 'Starting your agent' })).toBeDefined();
   expect(screen.getByRole('status').getAttribute('aria-busy')).toBe('true');
   expect(document.querySelector('.loading-orb-visual')).not.toBeNull();
+  expect(document.querySelector('.loading-step')?.textContent).toBe('Creating the worktree…');
+  expect(screen.queryByRole('heading')).toBeNull();
+});
+
+it('animates the current step text when the launch advances', () => {
+  const { rerender } = render(<LaunchProgress thread={thread({ operation: { id: 'o1', state: 'running', step: 'validate' } })} />);
+  expect(document.querySelector('.loading-step')?.textContent).toBe('Checking the machine…');
+  rerender(<LaunchProgress thread={thread({ operation: { id: 'o1', state: 'running', step: 'start' } })} />);
+  expect(document.querySelector('.loading-step')?.textContent).toBe('Starting the agent…');
 });
 
 it('links a definitively failed launch back to its original draft', () => {

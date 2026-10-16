@@ -438,7 +438,7 @@ it('uses the display-title selector for accessible and launch-fallback surfaces'
   render(<ThreadView thread={thread} connected={false} canControl={false} onFocusPane={() => {}} focusedPane="" windowStart={0} narrow={false} />);
   expect(screen.getByRole('main', { name: 'Webr override tab' })).toBeTruthy();
   cleanup();
-  render(<LaunchProgress thread={thread} />);
+  render(<LaunchProgress thread={{ ...thread, operation: { id: 'o1', state: 'failed', step: 'checkout' } }} />);
   expect(screen.getByText('Webr override')).toBeTruthy();
 });
 
