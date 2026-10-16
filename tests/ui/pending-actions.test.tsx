@@ -201,3 +201,113 @@ it('does not steal focus when a split resolves after navigation away', async () 
   await act(async () => { release({ paneId: 'pane-native' }); });
   expect(focus).not.toHaveBeenCalled();
 });
+
+it('collapses a pending close on fresh scoped absence without waiting for HTTP, then ignores the late success', async () => {
+  let release!: (value: { closed: boolean; busy: boolean }) => void;
+  vi.mocked(closeThreadPane).mockReturnValueOnce(new Promise<{ closed: boolean; busy: boolean }>((resolve) => { release = (value) => resolve(value); }));
+  const view = render(<Harness />);
+  const survivorBefore = screen.getByTestId('terminal-terminal-agent');
+  fireEvent.click(screen.getByRole('button', { name: 'Close pane' }));
+  expect(screen.getByText('Closing Shell…')).toBeTruthy();
+  expect(screen.getByTestId('terminal-terminal-shell')).toBeTruthy();
+  expect(focus).not.toHaveBeenCalled();
+  const fresh = projection({ ...originalThread, panes: [originalThread.panes[0]!] }, 2, true, 'fresh-absence');
+  view.rerender(<Harness observation={fresh} />);
+  await waitFor(() => expect(screen.queryByText('Closing Shell…')).toBeNull());
+  expect(screen.queryByTestId('terminal-terminal-shell')).toBeNull();
+  expect(screen.getByTestId('terminal-terminal-agent')).toBe(survivorBefore);
+  expect(document.querySelector('.pane-strip.is-split')).toBeNull();
+  expect(focus).toHaveBeenCalledTimes(1);
+  expect(focus).toHaveBeenCalledWith('machine-test:thread-test', 'pane-agent');
+  await act(async () => { release({ closed: true, busy: false }); });
+  expect(screen.queryByTestId('terminal-terminal-shell')).toBeNull();
+  expect(focus).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('ignores a late busy response after fresh absence already settled a pending close', async () => {
+  let release!: (value: { closed: boolean; busy: boolean }) => void;
+  vi.mocked(closeThreadPane).mockReturnValueOnce(new Promise<{ closed: boolean; busy: boolean }>((resolve) => { release = (value) => resolve(value); }));
+  const confirmClose = vi.fn(async () => true);
+  const view = render(<Harness confirmClose={confirmClose} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Close pane' }));
+  expect(screen.getByText('Closing Shell…')).toBeTruthy();
+  const fresh = projection({ ...originalThread, panes: [originalThread.panes[0]!] }, 2, true, 'fresh-absence');
+  view.rerender(<Harness observation={fresh} confirmClose={confirmClose} />);
+  await waitFor(() => expect(screen.queryByText('Closing Shell…')).toBeNull());
+  expect(focus).toHaveBeenCalledTimes(1);
+  await act(async () => { release({ closed: false, busy: true }); });
+  expect(confirmClose).not.toHaveBeenCalled();
+  expect(closeThreadPane).toHaveBeenCalledTimes(1);
+  expect(focus).toHaveBeenCalledTimes(1);
+  expect(screen.queryByText(/running a process/)).toBeNull();
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('ignores a late uncertain error after fresh absence already settled a pending close', async () => {
+  let reject!: (error: unknown) => void;
+  vi.mocked(closeThreadPane).mockReturnValueOnce(new Promise<{ closed: boolean; busy: boolean }>((_resolve, rejectPromise) => { reject = rejectPromise; }));
+  const view = render(<Harness />);
+  fireEvent.click(screen.getByRole('button', { name: 'Close pane' }));
+  expect(screen.getByText('Closing Shell…')).toBeTruthy();
+  const fresh = projection({ ...originalThread, panes: [originalThread.panes[0]!] }, 2, true, 'fresh-absence');
+  view.rerender(<Harness observation={fresh} />);
+  await waitFor(() => expect(screen.queryByText('Closing Shell…')).toBeNull());
+  expect(focus).toHaveBeenCalledTimes(1);
+  await act(async () => { reject(new PaneActionError(0, undefined, true, 'lost response')); });
+  expect(screen.queryByText(/uncertain/)).toBeNull();
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(focus).toHaveBeenCalledTimes(1);
+});
+
+it('keeps a pending close until a newer same-generation revision confirms absence', async () => {
+  let release!: (value: { closed: boolean; busy: boolean }) => void;
+  vi.mocked(closeThreadPane).mockReturnValueOnce(new Promise<{ closed: boolean; busy: boolean }>((resolve) => { release = (value) => resolve(value); }));
+  const view = render(<Harness />);
+  fireEvent.click(screen.getByRole('button', { name: 'Close pane' }));
+  expect(screen.getByText('Closing Shell…')).toBeTruthy();
+  const agentOnly = { ...originalThread, panes: [originalThread.panes[0]!] };
+  view.rerender(<Harness observation={projection(agentOnly, 1, true, 'fresh-same-revision')} thread={originalThread} />);
+  expect(screen.getByText('Closing Shell…')).toBeTruthy();
+  expect(focus).not.toHaveBeenCalled();
+  view.rerender(<Harness observation={projection(agentOnly, 2, false, null)} thread={originalThread} />);
+  expect(screen.getByText('Closing Shell…')).toBeTruthy();
+  expect(focus).not.toHaveBeenCalled();
+  const wrongGeneration = { ...projection(agentOnly, 3, true, 'fresh-wrong-generation'), generation: 'generation-other' };
+  view.rerender(<Harness observation={wrongGeneration} thread={originalThread} />);
+  expect(screen.getByText('Closing Shell…')).toBeTruthy();
+  expect(focus).not.toHaveBeenCalled();
+  const wrongBinding = { ...originalThread, bindingFingerprint: 'fingerprint-other', bindingConfigVersion: 99, panes: [originalThread.panes[0]!] };
+  view.rerender(<Harness observation={projection(wrongBinding, 4, true, 'fresh-wrong-binding')} thread={originalThread} />);
+  expect(screen.getByText('Closing Shell…')).toBeTruthy();
+  expect(focus).not.toHaveBeenCalled();
+  const reidentified = projection({ ...originalThread, panes: [originalThread.panes[0]!, { ...originalThread.panes[1]!, id: 'pane-shell-reidentified' }] }, 5, true, 'fresh-reidentified');
+  view.rerender(<Harness observation={reidentified} thread={originalThread} />);
+  expect(screen.getByText('Closing Shell…')).toBeTruthy();
+  expect(screen.getByTestId('terminal-terminal-shell')).toBeTruthy();
+  expect(focus).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Close pane' }));
+  expect(closeThreadPane).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('previous close'));
+  const fresh = projection(agentOnly, 6, true, 'fresh-qualifying');
+  view.rerender(<Harness observation={fresh} />);
+  await waitFor(() => expect(screen.queryByText('Closing Shell…')).toBeNull());
+  expect(screen.queryByTestId('terminal-terminal-shell')).toBeNull();
+  expect(focus).toHaveBeenCalledWith('machine-test:thread-test', 'pane-agent');
+  await act(async () => { release({ closed: true, busy: false }); });
+  expect(focus).toHaveBeenCalledTimes(1);
+});
+
+it('never steals focus when a pending close settles after navigation away', async () => {
+  let release!: (value: { closed: boolean; busy: boolean }) => void;
+  vi.mocked(closeThreadPane).mockReturnValueOnce(new Promise<{ closed: boolean; busy: boolean }>((resolve) => { release = (value) => resolve(value); }));
+  const view = render(<Harness />);
+  fireEvent.click(screen.getByRole('button', { name: 'Close pane' }));
+  expect(screen.getByText('Closing Shell…')).toBeTruthy();
+  const fresh = projection({ ...originalThread, panes: [originalThread.panes[0]!] }, 2, true, 'fresh-absence');
+  view.rerender(<Harness observation={fresh} routeKey="other-route" />);
+  await waitFor(() => expect(screen.queryByText('Closing Shell…')).toBeNull());
+  expect(focus).not.toHaveBeenCalled();
+  await act(async () => { release({ closed: true, busy: false }); });
+  expect(focus).not.toHaveBeenCalled();
+});

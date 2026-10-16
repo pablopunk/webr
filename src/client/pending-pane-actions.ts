@@ -3,6 +3,7 @@ import { closeThreadPane, openThreadTerminal, PaneActionError } from './thread-a
 import { canClosePane, paneToFocusAfterClosing } from '../lib/pane-strip';
 import type { Pane, Thread } from '../lib/models';
 import type { Projection } from '../shared/runtime';
+import { event, perfAvailable, perfNow, time } from './perf';
 
 export type PaneActionPhase = 'pending' | 'confirming' | 'awaiting' | 'uncertain' | 'confirmed';
 export type PendingPaneSplit = {
@@ -36,6 +37,9 @@ type PaneActionIdentity = {
   routeKey: string;
   windowStart: number;
   panesAtStart: Pane[];
+  attemptId?: string;
+  startGeneration?: string;
+  startRevision?: number;
 };
 
 const identityKey = (thread: Thread) => JSON.stringify([
@@ -76,6 +80,10 @@ export function usePendingPaneActions({ thread, projection, routeKey, scope, foc
   const locks = useRef(new Set<string>());
   const current = useRef({ projection, routeKey, focusedPane });
   current.current = { projection, routeKey, focusedPane };
+  const attemptCounter = useRef(0);
+  const settledCloseAttempts = useRef(new Set<string>());
+  const closeTimings = useRef(new Map<string, { start: number; httpStart: number }>());
+  useEffect(() => () => { closeTimings.current.clear(); }, []);
 
   const makeIdentity = useCallback((currentThread: Thread): PaneActionIdentity => ({
     machineId: currentThread.machineId,
@@ -117,11 +125,40 @@ export function usePendingPaneActions({ thread, projection, routeKey, scope, foc
       if (live.routeKey === split.routeKey && live.focusedPane === split.afterPaneId) focusPane(split.scope, confirmed.pane.id);
     }
     for (const close of closes) {
-      if (close.phase !== 'uncertain' && close.phase !== 'confirmed') continue;
+      if (close.phase !== 'pending' && close.phase !== 'confirming' && close.phase !== 'uncertain' && close.phase !== 'confirmed') continue;
       const confirmed = actionThread(projection, close);
-      if (!confirmed || confirmed.panes.some((pane) => pane.id === close.paneId || pane.terminalId === close.terminalId)) continue;
+      if (!confirmed) continue;
+      // Generation-aware freshness: a later accepted, connected, fresh
+      // projection in the same generation with a newer revision. Never compare
+      // revisions across generations and never settle on generation change.
+      if (close.startGeneration !== undefined) {
+        if (!projection || projection.generation !== close.startGeneration) continue;
+        if (typeof projection.revision !== 'number' || typeof close.startRevision !== 'number' || !(projection.revision > close.startRevision)) continue;
+      }
+      if (confirmed.panes.some((pane) => pane.id === close.paneId || pane.terminalId === close.terminalId)) continue;
+      // Fresh scoped absence of both native pane ID and terminal ID is
+      // authoritative evidence, not optimistic deletion. Collapse promptly even
+      // when the HTTP promise remains unresolved.
+      const settledKey = close.attemptId ? `${close.key}:${close.attemptId}` : close.key;
+      if (close.attemptId) {
+        settledCloseAttempts.current.add(settledKey);
+        if (settledCloseAttempts.current.size > 100) {
+          const oldest = settledCloseAttempts.current.values().next().value;
+          if (oldest) settledCloseAttempts.current.delete(oldest);
+        }
+      }
+      if (perfAvailable) {
+        const timing = close.attemptId ? closeTimings.current.get(settledKey) : undefined;
+        if (timing) {
+          time('pane.close.clickToAbsenceMs', perfNow() - timing.start);
+          event('pane.close.absenceSettled', { ...(close.attemptId ? { closeId: close.attemptId } : {}), via: 'observation' });
+          closeTimings.current.delete(settledKey);
+        } else {
+          event('pane.close.absenceSettled', { ...(close.attemptId ? { closeId: close.attemptId } : {}), via: 'observation' });
+        }
+      }
       removeClose(close.key);
-      if (close.phase === 'uncertain') focusAfterClose(close, confirmed);
+      if (close.phase !== 'confirmed') focusAfterClose(close, confirmed);
     }
   }, [projection, splits, closes, focusPane, focusAfterClose, removeSplit, removeClose]);
 
@@ -170,7 +207,16 @@ export function usePendingPaneActions({ thread, projection, routeKey, scope, foc
     if (!thread || thread.bindingState !== 'attached' || !canClosePane(thread, paneId)) return;
     const pane = thread.panes.find((item) => item.id === paneId && !!item.terminalId);
     if (!pane?.terminalId) return;
-    const identity = makeIdentity(thread);
+    const baseIdentity = makeIdentity(thread);
+    const attemptId = `close-${++attemptCounter.current}`;
+    const liveProjection = current.current.projection;
+    const startGeneration = liveProjection && liveProjection.machineId === thread.machineId ? liveProjection.generation : undefined;
+    const startRevision = liveProjection && liveProjection.machineId === thread.machineId ? liveProjection.revision : undefined;
+    const identity: PaneActionIdentity = {
+      ...baseIdentity,
+      attemptId,
+      ...(typeof startGeneration === 'string' && Number.isSafeInteger(startRevision) ? { startGeneration, startRevision: startRevision as number } : {}),
+    };
     const key = paneKey('close', identity, pane.terminalId);
     if (locks.current.has(key)) {
       if (!closes.some((item) => item.key === key && item.identityKey === identity.identityKey && !item.dismissed)) setNotice({ identityKey: identity.identityKey, message: 'A previous close on this terminal is unresolved. Webr did not retry it.' });
@@ -183,42 +229,79 @@ export function usePendingPaneActions({ thread, projection, routeKey, scope, foc
     };
     setCloses((items) => items.some((item) => item.key === key) ? items : [...items, pending]);
 
+    const settledKey = `${key}:${attemptId}`;
+    const isSettled = () => settledCloseAttempts.current.has(settledKey);
+    if (perfAvailable) {
+      const now = perfNow();
+      closeTimings.current.set(settledKey, { start: now, httpStart: now });
+      event('pane.close.start', { closeId: attemptId });
+      time('pane.close.clickToFeedbackMs', perfNow() - now);
+    }
+
     const finish = (result: { closed: boolean; busy: boolean }, forced: boolean): Promise<void> => {
+      if (isSettled()) return Promise.resolve();
+      if (perfAvailable) {
+        const timing = closeTimings.current.get(settledKey);
+        if (timing) {
+          time('pane.close.httpMs', perfNow() - timing.httpStart);
+          event('pane.close.httpSettled', { closeId: attemptId, closed: result.closed, busy: result.busy, forced });
+        }
+      }
       if (result.closed) {
         const liveThread = actionThread(current.current.projection, identity);
-        setCloses((items) => items.map((item) => item.key === key
+        setCloses((items) => items.map((item) => item.key === key && (!item.attemptId || item.attemptId === attemptId)
           ? { ...item, phase: 'confirmed', message: `${pane.title} closed.` }
           : item));
         focusAfterClose(pending, liveThread);
         return Promise.resolve();
       }
       if (result.busy && !forced) {
-        setCloses((items) => items.map((item) => item.key === key
+        setCloses((items) => items.map((item) => item.key === key && (!item.attemptId || item.attemptId === attemptId)
           ? { ...item, phase: 'confirming', message: `${pane.title} is running a process.` }
           : item));
         return confirmClose(`${pane.title} is running a process. Close it anyway?`).then((confirmed) => {
-          if (!confirmed) { removeClose(key); return; }
-          setCloses((items) => items.map((item) => item.key === key
+          if (isSettled()) return;
+          if (!confirmed) {
+            if (perfAvailable) closeTimings.current.delete(settledKey);
+            removeClose(key); return;
+          }
+          if (perfAvailable) {
+            const timing = closeTimings.current.get(settledKey);
+            if (timing) timing.httpStart = perfNow();
+          }
+          setCloses((items) => items.map((item) => item.key === key && (!item.attemptId || item.attemptId === attemptId)
             ? { ...item, phase: 'pending', message: `Closing ${pane.title}…` }
             : item));
           return closeThreadPane(thread, paneId, true).then((forcedResult) => finish(forcedResult, true));
         }, () => {
+          if (isSettled()) return;
+          if (perfAvailable) closeTimings.current.delete(settledKey);
           removeClose(key);
           setNotice({ identityKey: identity.identityKey, message: 'Close confirmation was interrupted; the pane was left open.' });
         });
       }
+      if (perfAvailable) closeTimings.current.delete(settledKey);
       removeClose(key);
       setNotice({ identityKey: identity.identityKey, message: forced ? 'Herdr could not confirm that the pane closed.' : 'The pane could not be closed.' });
       return Promise.resolve();
     };
 
     void closeThreadPane(thread, paneId, false).then((result) => finish(result, false)).catch((error: unknown) => {
+      if (isSettled()) return;
       if (error instanceof PaneActionError && !error.outcomeUncertain) {
+        if (perfAvailable) closeTimings.current.delete(settledKey);
         removeClose(key);
         setNotice({ identityKey: identity.identityKey, message: error.message });
         return;
       }
-      setCloses((items) => items.map((item) => item.key === key
+      if (perfAvailable) {
+        const timing = closeTimings.current.get(settledKey);
+        if (timing) {
+          time('pane.close.httpMs', perfNow() - timing.httpStart);
+          event('pane.close.httpSettled', { closeId: attemptId, uncertain: true });
+        }
+      }
+      setCloses((items) => items.map((item) => item.key === key && (!item.attemptId || item.attemptId === attemptId)
         ? { ...item, phase: 'uncertain', message: `Close outcome is uncertain. ${pane.title} remains visible; Webr did not retry it.` }
         : item));
     });
