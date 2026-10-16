@@ -93,7 +93,7 @@ it('opens only two app sockets and ACKs binary output only after xterm finishes 
   writes[0].finish(); expect(JSON.parse(binary.sent[1]).type).toBe('ack');
   pane.close(); expect(JSON.parse(binary.sent.at(-1)!).type).toBe('release'); manager.stop();
 });
-it('revokes control on machine-only loss and recovers only as an observer after fresh binding evidence', () => {
+it('revokes control on machine-only loss and takes it back by itself once fresh binding evidence returns', () => {
   const { manager, pane, metadata, binary, open } = setup();
   pane.control(); const control = JSON.parse(binary.sent.at(-1)!);
   binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: control.generation, writable: true }) });
@@ -102,14 +102,28 @@ it('revokes control on machine-only loss and recovers only as an observer after 
   metadata.onmessage!({ data: JSON.stringify({ type: 'projection', projection: { machineId: 'fixture', generation: 'g1', revision: 1, connected: true, freshAt: new Date().toISOString(), threads: [{ id: '00000000-0000-4000-8000-000000000001', bindingState: 'attached', panes: [{ terminalId: 'term_fixture' }] }], availableTabs: [] } }) });
   expect(binary.sent).toHaveLength(disconnectedCount);
   metadata.onmessage!({ data: JSON.stringify({ type: 'projection', projection: { machineId: 'fixture', generation: 'g2', revision: 1, connected: true, freshAt: new Date().toISOString(), threads: [{ id: '00000000-0000-4000-8000-000000000001', bindingState: 'attached', panes: [{ terminalId: 'term_fixture' }] }], availableTabs: [] } }) });
-  const observer = JSON.parse(binary.sent.at(-1)!);
-  expect(observer).toMatchObject({ type: 'open', mode: 'observe' });
-  expect(observer.generation).toBeGreaterThan(control.generation);
+  const restored = JSON.parse(binary.sent.at(-1)!);
+  expect(restored).toMatchObject({ type: 'open', mode: 'control' });
+  expect(restored.generation).toBeGreaterThan(control.generation);
   const recoveredCount = binary.sent.length;
   metadata.onmessage!({ data: JSON.stringify({ type: 'projection', projection: { machineId: 'fixture', generation: 'g1', revision: 99, connected: true, freshAt: new Date().toISOString(), threads: [{ id: '00000000-0000-4000-8000-000000000001', bindingState: 'attached', panes: [{ terminalId: 'term_fixture' }] }], availableTabs: [] } }) });
   expect(binary.sent).toHaveLength(recoveredCount);
-  pane.input('after recovery'); expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false);
-  pane.control(); expect(JSON.parse(binary.sent.at(-1)!).mode).toBe('control'); manager.stop();
+  pane.input('before the restored stream is accepted'); expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false);
+  pane.control(); expect(binary.sent).toHaveLength(recoveredCount); manager.stop();
+});
+it('takes control back by itself after a lost binding, but not after another controller refused it', () => {
+  const { manager, pane, metadata, binary, open } = setup();
+  const projection = (revision: number) => metadata.onmessage!({ data: JSON.stringify({ type: 'projection', projection: { machineId: 'fixture', generation: 'g1', revision, connected: true, freshAt: new Date().toISOString(), threads: [{ id: '00000000-0000-4000-8000-000000000001', bindingState: 'attached', panes: [{ terminalId: 'term_fixture' }] }], availableTabs: [] } }) });
+  pane.control(); const control = JSON.parse(binary.sent.at(-1)!);
+  binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: control.generation, writable: true }) });
+  binary.onmessage!({ data: JSON.stringify({ type: 'stream.closed', streamId: open.streamId, generation: control.generation, reason: 'binding_invalid' }) });
+  projection(2);
+  const restored = JSON.parse(binary.sent.at(-1)!); expect(restored).toMatchObject({ type: 'open', mode: 'control' }); expect(restored.generation).toBeGreaterThan(control.generation);
+  binary.onmessage!({ data: JSON.stringify({ type: 'stream.error', streamId: open.streamId, generation: restored.generation, reason: 'controller_conflict' }) });
+  const observer = JSON.parse(binary.sent.at(-1)!); expect(observer).toMatchObject({ type: 'open', mode: 'observe' });
+  binary.onmessage!({ data: JSON.stringify({ type: 'stream.closed', streamId: open.streamId, generation: observer.generation, reason: 'binding_invalid' }) });
+  projection(3);
+  expect(JSON.parse(binary.sent.at(-1)!)).toMatchObject({ type: 'open', mode: 'observe' }); manager.stop();
 });
 
 it('revokes an existing controller when a fresh projection confirms the pane is absent', () => {

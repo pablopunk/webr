@@ -11,11 +11,11 @@ import { frame, FakeTarget } from './fixtures/target';
 const cleanup: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); vi.useRealTimers(); });
 class FakeSocket { readyState = 1; bufferedAmount = 0; packets: (string | Uint8Array)[] = []; send(packet: string | Uint8Array) { this.packets.push(packet); } }
-async function setup(budget = 512 * 1024) {
+async function setup(budget = 512 * 1024, bindingGraceMs = 100) {
   const db = new MetadataDatabase(':memory:'); cleanup.push(() => db.close());
   const target = new FakeTarget(); const manager = new RuntimeManager(db, [target]); cleanup.push(() => manager.close()); manager.start();
   await expect.poll(() => manager.bootstrap().machines[0].connected).toBe(true);
-  const hub = new TerminalHub(manager, budget, budget * 2); cleanup.push(() => hub.close());
+  const hub = new TerminalHub(manager, budget, budget * 2, bindingGraceMs); cleanup.push(() => hub.close());
   const one = new FakeSocket(); const two = new FakeSocket(); hub.attach('one', one as unknown as WebSocket); hub.attach('two', two as unknown as WebSocket);
   const open = { type: 'open' as const, streamId: 1, generation: 1, machineId: target.id, threadId: manager.bootstrap().threads[0].id, terminalId: 'term_fixture', cols: 80, rows: 24, mode: 'control' as const, takeover: false };
   return { target, manager, hub, one, two, open };
@@ -94,6 +94,23 @@ it('does not give observers scroll, input or resize authority', async () => {
   const { hub, open } = await setup(); hub.action('one', { ...open, mode: 'observe' });
   expect(() => hub.action('one', { type: 'resize', streamId: 1, generation: 1, cols: 100, rows: 30 })).toThrow('observer_read_only');
   expect(() => hub.action('one', { type: 'scroll', streamId: 1, generation: 1, direction: 'up', lines: 1 })).toThrow('observer_read_only');
+});
+it('keeps a control stream through a brief binding flicker and releases it only after the grace period', async () => {
+  const { target, hub, open, one } = await setup(512 * 1024, 600); hub.action('one', open);
+  target.streams[0].onFrame(frame(1, true)); acknowledge(hub, 'one', 1, 1);
+  const panes = target.state.panes;
+  target.state.panes = []; target.event!();
+  await expect.poll(() => target.reads).toBeGreaterThan(1);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  expect(target.streams[0].closed).toBe(false);
+  hub.action('one', { type: 'input', streamId: 1, generation: 1, text: 'typed during the flicker', paste: false });
+  expect(target.streams[0].commands.at(-1)).toEqual({ type: 'terminal.input', text: 'typed during the flicker' });
+  target.state.panes = panes; target.event!();
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  expect(target.streams[0].closed).toBe(false); expect(noticesOf(one).some((notice) => notice.type === 'stream.closed')).toBe(false);
+  target.state.panes = []; target.event!();
+  await expect.poll(() => target.streams[0].closed, { timeout: 3000 }).toBe(true);
+  expect(noticesOf(one).at(-1)).toMatchObject({ type: 'stream.closed', reason: 'binding_invalid' });
 });
 it('revokes all leases on binding deletion and disconnect', async () => {
   const { target, hub, open, manager } = await setup(); hub.action('one', open);

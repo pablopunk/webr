@@ -11,6 +11,8 @@ const rotateWhenLarge = async (file: string) => {
   if (size >= MAX_TRACE_BYTES) await rename(file, file.replace(/\.log$/, '.1.log')).catch(() => undefined);
 };
 
+export const serverTrace = (event: string, fields: Record<string, unknown> = {}) => ({ t: new Date().toISOString(), source: 'server', event, ...fields });
+
 /** Appends client trace records (focus moves, pane states, stream events) as JSON lines for later reading. */
 export function traceLog(records: Record<string, unknown>[], receivedAt = new Date().toISOString()) {
   const file = traceLogPath();

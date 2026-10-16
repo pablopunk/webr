@@ -5,10 +5,15 @@ import type { TerminalAction } from '../../shared/runtime';
 import type { TerminalFrame, TerminalStream } from './cli';
 import { encodeUserInput } from './writer';
 import { perfLog } from '../perf-log';
+import { serverTrace, traceLog } from '../trace-log';
 
 type TerminalRef = { threadId: string } | { tabId: string };
-type Lease = { id: number; generation: number; terminalId: string; machineId: string; ref: TerminalRef; mode: string; stream?: TerminalStream; outstanding: Map<number, number>; bytes: number; sequence: FrameSequence; baselineReady: boolean; outputSeq: number; started: boolean; baselineSeq?: number; expectedSize?: [number, number]; timer?: ReturnType<typeof setTimeout>; scrollAt?: number; scrollMode?: { value: 'scrollback' | 'app'; checkedAt: number }; scrolledUp?: boolean; pendingInput: string[]; pendingBytes: number };
+type Target = ReturnType<RuntimeManager['binding']>;
+type Lease = { id: number; generation: number; terminalId: string; machineId: string; ref: TerminalRef; mode: string; target: Target; invalidSince?: number; stream?: TerminalStream; outstanding: Map<number, number>; bytes: number; sequence: FrameSequence; baselineReady: boolean; outputSeq: number; started: boolean; baselineSeq?: number; expectedSize?: [number, number]; timer?: ReturnType<typeof setTimeout>; scrollAt?: number; scrollMode?: { value: 'scrollback' | 'app'; checkedAt: number }; scrolledUp?: boolean; pendingInput: string[]; pendingBytes: number };
 const MAX_WHEEL_TICKS = 30;
+/** A thread binding can flicker for one projection while Herdr re-reports an agent session; the stream survives that, not a sustained loss. */
+const BINDING_GRACE_MS = 2000;
+const errorDetail = (error: unknown) => ({ error: error instanceof Error ? error.message : String(error), detail: (error as { detail?: unknown })?.detail });
 const isFocusReport = (text: string) => text === '\x1b[I' || text === '\x1b[O';
 const SCROLL_MODE_CHECK_MS = 1000;
 // First keystrokes (including monitor startup commands) can legitimately arrive
@@ -21,10 +26,24 @@ export class TerminalHub {
   private viewers = new Map<string, { socket: WebSocket; leases: Map<number, Lease>; bytes: number }>();
   private controllers = new Map<string, SharedControl>();
   private expiry: ReturnType<typeof setInterval>;
-  constructor(private manager: RuntimeManager, private streamBudget = 512 * 1024, private totalBudget = 2 * 1024 * 1024) {
-    this.expiry = setInterval(() => { for (const [owner, viewer] of this.viewers) for (const lease of viewer.leases.values()) if (lease.mode === 'control') { try { if (!this.binding(lease).writable) this.release(owner, lease.id, 'capability_revoked'); } catch { this.release(owner, lease.id, 'binding_invalid'); } } }, 250);
+  constructor(private manager: RuntimeManager, private streamBudget = 512 * 1024, private totalBudget = 2 * 1024 * 1024, private bindingGraceMs = BINDING_GRACE_MS) {
+    this.expiry = setInterval(() => { for (const [owner, viewer] of this.viewers) for (const lease of [...viewer.leases.values()]) if (lease.mode === 'control') { const target = this.checkBinding(owner, lease); if (target && !target.writable) this.release(owner, lease.id, 'capability_revoked'); } }, 250);
     this.expiry.unref();
-    manager.on('projection', () => { for (const [owner, viewer] of this.viewers) for (const lease of viewer.leases.values()) { try { this.binding(lease); } catch { this.release(owner, lease.id, 'binding_invalid'); } } });
+    manager.on('projection', () => { for (const [owner, viewer] of this.viewers) for (const lease of [...viewer.leases.values()]) this.checkBinding(owner, lease); });
+  }
+  /** Re-validates the lease's binding; a lapse shorter than the grace period keeps the last known target instead of dropping the stream. */
+  private checkBinding(owner: string, lease: Lease): Target | undefined {
+    try {
+      lease.target = this.binding(lease);
+      if (lease.invalidSince !== undefined) { traceLog([serverTrace('hub.binding.recovered', { terminalId: lease.terminalId, ref: lease.ref, invalidForMs: Date.now() - lease.invalidSince })]); lease.invalidSince = undefined; }
+      return lease.target;
+    } catch (error) {
+      const now = Date.now();
+      if (lease.invalidSince === undefined) { lease.invalidSince = now; traceLog([serverTrace('hub.binding.invalid', { terminalId: lease.terminalId, ref: lease.ref, mode: lease.mode, ...errorDetail(error) })]); }
+      if (now - lease.invalidSince < this.bindingGraceMs) return lease.target;
+      this.release(owner, lease.id, 'binding_invalid', { invalidForMs: now - lease.invalidSince, ...errorDetail(error) });
+      return undefined;
+    }
   }
   close() { clearInterval(this.expiry); for (const owner of this.viewers.keys()) this.detach(owner); }
   attach(owner: string, socket: WebSocket) { if (this.viewers.has(owner)) throw new Error('duplicate_terminal_socket'); this.viewers.set(owner, { socket, leases: new Map(), bytes: 0 }); }
@@ -38,7 +57,7 @@ export class TerminalHub {
       const target = this.manager.terminalBinding(action.machineId, action.terminalId, ref);
       if (action.mode === 'control' && !target.writable) throw new Error('read_only_target');
       const controllerKey = action.machineId + '\0' + action.terminalId;
-      const lease: Lease = { id: action.streamId, generation: action.generation, machineId: action.machineId, ref, terminalId: action.terminalId, mode: action.mode, outstanding: new Map(), bytes: 0, sequence: new FrameSequence(), baselineReady: false, outputSeq: 0, started: false, pendingInput: [], pendingBytes: 0 };
+      const lease: Lease = { id: action.streamId, generation: action.generation, machineId: action.machineId, ref, terminalId: action.terminalId, mode: action.mode, target, outstanding: new Map(), bytes: 0, sequence: new FrameSequence(), baselineReady: false, outputSeq: 0, started: false, pendingInput: [], pendingBytes: 0 };
       viewer.leases.set(lease.id, lease);
       try {
         lease.stream = action.mode === 'control'
@@ -64,7 +83,8 @@ export class TerminalHub {
       clearTimeout(lease.timer); lease.timer = lease.outstanding.size ? setTimeout(() => this.release(owner, lease.id, 'ack_timeout'), 5000) : undefined;
       return;
     }
-    const target = this.binding(lease);
+    const target = this.checkBinding(owner, lease);
+    if (!target) throw new Error('binding_invalid');
     if (lease.mode !== 'control') throw new Error('observer_read_only');
     if (!target.writable) { this.release(owner, lease.id, 'capability_revoked'); throw new Error('read_only_target'); }
     if (action.type !== 'resize' && action.type !== 'input' && !lease.baselineReady) throw new Error('baseline_not_acknowledged');
@@ -151,10 +171,11 @@ export class TerminalHub {
     lease.scrollAt = undefined;
   }
   stats() { return { viewers: this.viewers.size, controllers: this.controllers.size, bytes: [...this.viewers.values()].reduce((total, viewer) => total + viewer.bytes, 0) }; }
-  private release(owner: string, id: number, reason: string) {
+  private release(owner: string, id: number, reason: string, detail: Record<string, unknown> = {}) {
     const viewer = this.viewers.get(owner);
     const lease = viewer?.leases.get(id);
     if (!viewer || !lease) return;
+    if (reason !== 'released' && reason !== 'connection_closed') traceLog([serverTrace('hub.release', { terminalId: lease.terminalId, ref: lease.ref, mode: lease.mode, reason, ...detail })]);
     viewer.leases.delete(id); viewer.bytes -= lease.bytes; clearTimeout(lease.timer);
     lease.stream?.close();
     this.notice(viewer.socket, { type: 'stream.closed', streamId: id, generation: lease.generation, reason });

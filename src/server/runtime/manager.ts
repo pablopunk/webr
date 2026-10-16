@@ -151,7 +151,11 @@ export class RuntimeManager extends EventEmitter {
     const identity = this.targetIdentity(supervisor);
     const projection = this.requireCurrentProjection(identity);
     const thread = projection.threads.find((thread) => thread.id === threadId);
-    if (!thread || !this.matchesTargetIdentity(thread, identity) || thread.bindingState !== 'attached' || !thread.panes.some((pane) => pane.terminalId === terminalId)) throw new Error('binding_invalid');
+    const hasPane = !!thread?.panes.some((pane) => pane.terminalId === terminalId);
+    if (!thread || !this.matchesTargetIdentity(thread, identity) || thread.bindingState !== 'attached' || !hasPane) {
+      const detail = { threadFound: !!thread, identityMatches: thread ? this.matchesTargetIdentity(thread, identity) : undefined, bindingState: thread?.bindingState, recovery: thread?.recovery?.reason, hasPane, panes: thread?.panes.length, revision: projection.revision };
+      throw Object.assign(new Error('binding_invalid'), { detail });
+    }
     return identity.target;
   }
   terminalBinding(machineId: string, terminalId: string, ref: { threadId?: string; tabId?: string }) {

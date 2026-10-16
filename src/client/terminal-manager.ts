@@ -7,7 +7,8 @@ import { count, gauge, perfNow, time } from './perf';
 import { uuid } from '../lib/uuid';
 import { trace } from './trace';
 
-type VisiblePane = { machineId: string; threadId?: string; tabId?: string; terminalId: string; terminal: Terminal; mode: 'observe' | 'control'; generation: number; sequence: FrameSequence; renderer?: TerminalRenderer; writable: boolean; accepted: boolean; baseline: boolean; pending: number; resizing: boolean; awaitingFresh: boolean; pendingControl: boolean; reason?: string; cols: number; rows: number; onState: (message: string, writable: boolean, typeable?: boolean) => void; attempts: number };
+type VisiblePane = { machineId: string; threadId?: string; tabId?: string; terminalId: string; terminal: Terminal; mode: 'observe' | 'control'; generation: number; sequence: FrameSequence; renderer?: TerminalRenderer; writable: boolean; accepted: boolean; baseline: boolean; pending: number; resizing: boolean; awaitingFresh: boolean; pendingControl: boolean; reason?: string; cols: number; rows: number; onState: (message: string, writable: boolean, typeable?: boolean) => void; attempts: number; wantsControl: boolean };
+const controlWasRefused = (reason: unknown) => reason === 'controller_conflict' || reason === 'taken_over';
 /** Control was granted, so keystrokes may go out even while a (re)sized baseline is still on its way: the server holds them until it lands. */
 const typeable = (pane: VisiblePane) => pane.mode === 'control' && pane.accepted;
 export const conflictMessage = 'Another controller owns this terminal.';
@@ -32,15 +33,15 @@ export class BrowserTerminalManager {
   constructor(private install: (projection: Projection) => boolean | void, private onConnection: (connected: boolean) => void) {}
   start() { this.stopped = false; this.connect(); }
   stop() { this.stopped = true; clearTimeout(this.reconnect); this.disconnect(); }
-  mount(pane: Omit<VisiblePane, 'generation' | 'sequence' | 'writable' | 'attempts' | 'accepted' | 'baseline' | 'pending' | 'resizing' | 'awaitingFresh' | 'pendingControl'>) {
+  mount(pane: Omit<VisiblePane, 'generation' | 'sequence' | 'writable' | 'attempts' | 'accepted' | 'baseline' | 'pending' | 'resizing' | 'awaitingFresh' | 'pendingControl' | 'wantsControl'>) {
     const id = this.nextId++;
-    this.panes.set(id, { ...pane, generation: 1, sequence: new FrameSequence(), writable: false, accepted: false, baseline: false, pending: 0, resizing: false, awaitingFresh: false, pendingControl: false, attempts: 0 });
+    this.panes.set(id, { ...pane, wantsControl: pane.mode === 'control', generation: 1, sequence: new FrameSequence(), writable: false, accepted: false, baseline: false, pending: 0, resizing: false, awaitingFresh: false, pendingControl: false, attempts: 0 });
     this.open(id);
     return {
       close: () => { const current = this.panes.get(id); if (current) { this.send({ type: 'release', streamId: id, generation: current.generation }); current.renderer?.close(); } this.panes.delete(id); },
       input: (text: string, paste = false) => { const current = this.panes.get(id); if (current && typeable(current)) { count('inputMessages'); this.inputSentAt.set(id, perfNow()); this.send({ type: 'input', streamId: id, generation: current.generation, text, paste }); } },
-      control: (takeover = false) => { const current = this.panes.get(id); if (current && this.canAct(current) && (current.mode !== 'control' || takeover)) { this.send({ type: 'release', streamId: id, generation: current.generation }); current.reason = undefined; current.mode = 'control'; ++current.generation; current.sequence = new FrameSequence(); this.open(id, takeover); } },
-      observe: () => { const current = this.panes.get(id); if (current && current.mode !== 'observe') { this.send({ type: 'release', streamId: id, generation: current.generation }); current.mode = 'observe'; ++current.generation; current.sequence = new FrameSequence(); this.open(id); } },
+      control: (takeover = false) => { const current = this.panes.get(id); if (current) current.wantsControl = true; if (current && this.canAct(current) && (current.mode !== 'control' || takeover)) { this.send({ type: 'release', streamId: id, generation: current.generation }); current.reason = undefined; current.mode = 'control'; ++current.generation; current.sequence = new FrameSequence(); this.open(id, takeover); } },
+      observe: () => { const current = this.panes.get(id); if (current) current.wantsControl = false; if (current && current.mode !== 'observe') { this.send({ type: 'release', streamId: id, generation: current.generation }); current.mode = 'observe'; ++current.generation; current.sequence = new FrameSequence(); this.open(id); } },
       resize: (cols: number, rows: number, claim = false) => {
         const current = this.panes.get(id);
         if (!current || cols === current.cols && rows === current.rows && !(claim && current.mode === 'control' && current.accepted)) return;
@@ -60,7 +61,7 @@ export class BrowserTerminalManager {
     const [id, pane] = entry;
     if (!this.canAct(pane)) return;
     pane.writable = false; pane.reason = undefined; this.send({ type: 'release', streamId: id, generation: pane.generation });
-    pane.mode = action === 'release' ? 'observe' : 'control'; ++pane.generation; pane.sequence = new FrameSequence(); this.open(id, action === 'takeover');
+    pane.wantsControl = action !== 'release'; pane.mode = action === 'release' ? 'observe' : 'control'; ++pane.generation; pane.sequence = new FrameSequence(); this.open(id, action === 'takeover');
   }
   private canAct(pane: VisiblePane) {
     const projection = this.projections.get(pane.machineId);
@@ -88,8 +89,9 @@ export class BrowserTerminalManager {
     }
     this.projectionGenerations.set(projection.machineId, projection.generation);
   }
-  private reopenObserver(id: number, pane: VisiblePane) {
-    pane.awaitingFresh = false; pane.pendingControl = false; pane.reason = undefined; pane.mode = 'observe'; pane.writable = false; pane.accepted = false; pane.baseline = false; pane.resizing = false;
+  /** Fresh binding evidence restores whatever the user had: control comes back by itself unless it was refused. */
+  private reopenAfterFreshBinding(id: number, pane: VisiblePane) {
+    pane.awaitingFresh = false; pane.pendingControl = false; pane.reason = undefined; pane.mode = pane.wantsControl ? 'control' : 'observe'; pane.writable = false; pane.accepted = false; pane.baseline = false; pane.resizing = false;
     this.send({ type: 'release', streamId: id, generation: pane.generation }); ++pane.generation; pane.sequence = new FrameSequence(); this.open(id);
   }
   private receiveProjection(projection: Projection) {
@@ -107,8 +109,8 @@ export class BrowserTerminalManager {
         pane.awaitingFresh = true; pane.pendingControl = false; pane.writable = false; pane.accepted = false; pane.baseline = false; pane.resizing = false; pane.mode = 'observe'; pane.renderer?.close(); pane.reason = 'Terminal binding is no longer available.'; pane.onState(pane.reason, false);
         continue;
       }
-      if (pane.pendingControl) { pane.pendingControl = false; this.open(id); continue; }
-      if (pane.awaitingFresh) this.reopenObserver(id, pane);
+      if (pane.pendingControl) { pane.pendingControl = false; pane.awaitingFresh = false; this.open(id); continue; }
+      if (pane.awaitingFresh) this.reopenAfterFreshBinding(id, pane);
     }
   }
   private send(action: TerminalAction) {
@@ -167,12 +169,14 @@ export class BrowserTerminalManager {
             const reason = record.reason === 'controller_conflict' ? conflictMessage : String(record.reason).replaceAll('_', ' ');
             const lostBinding = record.reason === 'binding_invalid' || record.reason === 'machine_disconnected';
             const wasControl = pane.mode === 'control';
+            const refused = controlWasRefused(record.reason);
             pane.writable = false; pane.accepted = false; pane.baseline = false; pane.renderer?.close(); pane.reason = reason; pane.onState(reason, false);
             if (lostBinding) pane.awaitingFresh = true;
-            if (wasControl) pane.mode = 'observe';
-            if (record.type === 'stream.error' && record.reason !== 'stream_resync_required' && record.reason !== 'controller_conflict') pane.awaitingFresh = true;
-            if (record.type === 'stream.error' && wasControl) { ++pane.generation; pane.sequence = new FrameSequence(); this.open(record.streamId); return; }
-            if (record.reason === 'stream_resync_required' && pane.attempts++ < 2) { ++pane.generation; pane.sequence = new FrameSequence(); pane.mode = 'observe'; this.open(record.streamId); }
+            if (refused) pane.wantsControl = false;
+            pane.mode = 'observe';
+            if (record.type === 'stream.error' && record.reason !== 'stream_resync_required' && !refused) pane.awaitingFresh = true;
+            if (record.type === 'stream.error' && wasControl) { ++pane.generation; pane.sequence = new FrameSequence(); pane.mode = pane.wantsControl ? 'control' : 'observe'; this.open(record.streamId); return; }
+            if (record.reason === 'stream_resync_required' && pane.attempts++ < 2) { ++pane.generation; pane.sequence = new FrameSequence(); pane.mode = pane.wantsControl ? 'control' : 'observe'; this.open(record.streamId); }
           }
           return;
         }
