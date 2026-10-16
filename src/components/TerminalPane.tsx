@@ -255,8 +255,13 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
   // know an agent asked for it; agents (Ink, crossterm, Bubble Tea) parse
   // CSI I / CSI O regardless, while a shell would echo them, hence the gate.
   const appWantsFocusReports = () => !!term.current?.modes.sendFocusMode || pane.kind === 'agent';
+  // xterm draws its cursor only while it believes its own helper textarea is
+  // focused; keep that belief in step with the capture textarea that really
+  // holds focus (stdin is disabled, so xterm emits nothing on these events).
+  const mirrorFocusIntoXterm = (focused: boolean) => term.current?.textarea?.dispatchEvent(new FocusEvent(focused ? 'focus' : 'blur'));
   const reportInputFocus = (focused: boolean) => {
     setInputFocused(focused);
+    mirrorFocusIntoXterm(focused);
     const reported = appWantsFocusReports();
     trace('pane.input.focus', { pane: pane.id, focused, reported, typeable: typeableRef.current });
     if (reported) control.current?.input(focused ? FOCUS_IN : FOCUS_OUT);
