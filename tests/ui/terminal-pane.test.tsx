@@ -11,7 +11,7 @@ vi.mock('@xterm/xterm', () => ({ Terminal: class {
   parser = { registerOscHandler: (code: number, handler: (data: string) => boolean) => { fixture.osc.set(code, handler); return { dispose() { fixture.osc.delete(code); } }; } };
   loadAddon() {}
   textarea = document.createElement('textarea'); modes = { sendFocusMode: true };
-  open(host: HTMLElement) { this.element = document.createElement('div'); this.element.className = 'xterm-screen'; host.append(this.element); }
+  open(host: HTMLElement) { this.element = document.createElement('div'); this.element.className = 'xterm-screen'; this.element.append(this.textarea); host.append(this.element); }
   focus() { this.textarea.focus(); }
   hasSelection() { return !!fixture.selection; } getSelection() { return fixture.selection; } dispose() {}
 } }));
@@ -35,7 +35,7 @@ it('mounts a standalone terminal with its tab identity instead of a thread id', 
   expect(fixture.mount.mock.calls[0][0]).toMatchObject({ machineId: 'fixture', tabId: 'w2:t1', terminalId: 'term_shell' });
   expect(fixture.mount.mock.calls[0][0]).not.toHaveProperty('threadId');
 });
-it('retains terminal DOM on disconnect while removing writable input and suppressing control', async () => {
+it('retains terminal DOM and its read-only input on disconnect while suppressing control', async () => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
   const pane = { id: 'w1:p1', terminalId: 'term_fixture', title: 'Agent', kind: 'agent' as const };
@@ -49,8 +49,70 @@ it('retains terminal DOM on disconnect while removing writable input and suppres
   view.rerender(<TerminalPane {...props} connected={false} />);
   await act(async () => mounted.onState('Disconnected; input is disabled.', false));
   expect(view.container.querySelector('.terminal-host')).toBe(host); expect(host!.contains(cachedOutput)).toBe(true);
-  expect(screen.queryByLabelText('Terminal input')).toBeNull();
+  expect((screen.getByLabelText('Terminal input') as HTMLTextAreaElement).readOnly).toBe(true);
+  fixture.input.mockClear(); fireEvent.change(screen.getByLabelText('Terminal input'), { target: { value: 'offline' } }); expect(fixture.input).not.toHaveBeenCalled();
   fireEvent.click(screen.getByLabelText('Agent terminal')); expect(fixture.control).not.toHaveBeenCalled();
+});
+
+it('keeps the same focused input through resize readiness changes without losing typed input', async () => {
+  await mountWritablePane();
+  const input = screen.getByLabelText('Terminal input') as HTMLTextAreaElement;
+  const { onState } = fixture.mount.mock.calls[0][0];
+  expect(document.activeElement).toBe(input);
+  await act(async () => onState('Waiting for the resized full baseline.', false));
+  expect(screen.getByLabelText('Terminal input')).toBe(input);
+  expect(document.activeElement).toBe(input); expect(input.readOnly).toBe(true);
+  fixture.input.mockClear(); fireEvent.keyDown(input, { key: 'Enter' }); expect(fixture.input).not.toHaveBeenCalled();
+  await act(async () => onState('Input control is active.', true));
+  expect(document.activeElement).toBe(input); expect(input.readOnly).toBe(false);
+  fireEvent.change(input, { target: { value: 'still typing' } });
+  expect(fixture.input).toHaveBeenCalledWith('still typing', undefined);
+});
+
+it('autofocuses a newly writable terminal but does not steal focus back from an editor on resize', async () => {
+  const launcher = document.createElement('button'); document.body.append(launcher); launcher.focus();
+  const view = await mountWritablePane();
+  expect(document.activeElement).toBe(screen.getByLabelText('Terminal input'));
+  launcher.remove();
+  const editor = document.createElement('input'); view.container.append(editor); editor.focus();
+  const { onState } = fixture.mount.mock.calls[0][0];
+  await act(async () => onState('Waiting for the resized full baseline.', false));
+  await act(async () => onState('Input control is active.', true));
+  expect(document.activeElement).toBe(editor);
+  fireEvent(window, new Event('focus')); expect(document.activeElement).toBe(editor);
+});
+
+it('moves real keyboard focus between split panes even when the destination has a selection', async () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  const inputs = new Map<string, ReturnType<typeof vi.fn>>();
+  fixture.mount.mockImplementation((options) => {
+    const input = vi.fn(); inputs.set(options.terminalId, input);
+    return { control: fixture.control, observe: fixture.observe, input, close: fixture.close, resize() {}, mouse() {}, scroll() {} };
+  });
+  const onFocus = vi.fn();
+  const panes = (active: string) => <>{['one', 'two'].map((id) => <TerminalPane key={id} pane={{ id, terminalId: id, title: id, kind: 'shell' }} machineId="fixture" threadId="fixture-thread" active={active === id} canControl onFocus={onFocus} />)}</>;
+  const view = render(panes('one'));
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(2));
+  await act(async () => { for (const [options] of fixture.mount.mock.calls) options.onState('Input control is active.', true); });
+  const [first, second] = screen.getAllByLabelText('Terminal input');
+  expect(document.activeElement).toBe(first);
+  fixture.selection = 'selected output';
+  for (const id of ['two', 'one', 'two']) {
+    inputs.forEach((input) => input.mockClear()); onFocus.mockClear();
+    view.rerender(panes(id));
+    const target = id === 'one' ? first : second;
+    expect(document.activeElement).toBe(target);
+    expect(onFocus).not.toHaveBeenCalled();
+    fireEvent.change(target, { target: { value: id } });
+    expect(inputs.get(id)).toHaveBeenCalledWith(id, undefined);
+    expect(inputs.get(id === 'one' ? 'two' : 'one')).not.toHaveBeenCalled();
+  }
+  inputs.forEach((input) => input.mockClear());
+  // A stale browser event must never type into an inactive pane.
+  fireEvent.change(first, { target: { value: 'stale' } });
+  expect(inputs.get('one')).not.toHaveBeenCalled();
+  fireEvent.keyDown(first, { key: 'z' });
+  expect(inputs.get('two')).toHaveBeenCalledWith('z');
 });
 
 it('does not queue a startup command while disconnected or replay it after reconnection', async () => {

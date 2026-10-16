@@ -6,11 +6,11 @@ export function terminalKeyBytes(event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 
   return bytes && (event.altKey || newlineInsteadOfSubmit ? '\x1b' + bytes : bytes);
 }
 export const controlCharacter = (text: string) => /^[a-z@\[\\\]^_]$/i.test(text) ? String.fromCharCode(text.toUpperCase().charCodeAt(0) & 0x1f) : undefined;
-export function TerminalInput({ onInput, onFocusChange }: { onInput: (text: string, paste?: boolean) => void; onFocusChange?: (focused: boolean) => void }) {
+export function TerminalInput({ onInput, onFocusChange, readOnly = false, active = true }: { onInput: (text: string, paste?: boolean) => void; onFocusChange?: (focused: boolean) => void; readOnly?: boolean; active?: boolean }) {
   const [draft, setDraft] = useState('');
   const composing = useRef(false);
   const committed = useRef<string | null>(null);
-  return <textarea className="terminal-input-capture" value={draft} aria-label="Terminal input" rows={1} onFocus={() => onFocusChange?.(true)} onBlur={() => onFocusChange?.(false)}
+  return <textarea className="terminal-input-capture" value={draft} aria-label="Terminal input" rows={1} readOnly={readOnly} tabIndex={active ? 0 : -1} onFocus={() => onFocusChange?.(true)} onBlur={() => onFocusChange?.(false)}
     onCompositionStart={() => { composing.current = true; committed.current = null; }}
     onCompositionEnd={(event) => { composing.current = false; const text = event.data; committed.current = text; if (text) onInput(text); setDraft(''); event.currentTarget.value = ''; }}
     onChange={(event) => {
@@ -21,7 +21,7 @@ export function TerminalInput({ onInput, onFocusChange }: { onInput: (text: stri
     }}
     onPaste={(event) => { event.preventDefault(); committed.current = null; const text = event.clipboardData.getData('text/plain'); if (text) onInput(text, true); }}
     onKeyDown={(event) => {
-      if (event.defaultPrevented || event.nativeEvent.isComposing || composing.current || event.metaKey) return;
+      if (readOnly || !active || event.defaultPrevented || event.nativeEvent.isComposing || composing.current || event.metaKey) return;
       committed.current = null;
       const bytes = terminalKeyBytes(event);
       if (bytes) { event.preventDefault(); onInput(bytes); }

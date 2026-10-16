@@ -63,6 +63,8 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
   const writableRef = useRef(false);
   const canControlRef = useRef(canControl); canControlRef.current = canControl;
   const connectedRef = useRef(connected); connectedRef.current = connected;
+  const activeRef = useRef(active); activeRef.current = active;
+  const pendingFocus = useRef(active);
   const startupSent = useRef(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [ctrl, setCtrl] = useState(false);
@@ -99,7 +101,7 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     loadGlyphRenderer(terminal, () => new WebglAddon());
     terminal.attachCustomWheelEventHandler(() => false);
     term.current = terminal;
-    const redirectFocus = () => { if (writableRef.current) host.current?.parentElement?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus(); };
+    const redirectFocus = () => { if (activeRef.current && writableRef.current) section.current?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus({ preventScroll: true }); };
     terminal.textarea?.addEventListener('focus', redirectFocus);
     const clipboard = bindTerminalClipboard(host.current, terminal, () => writableRef.current, (outcome) => showCopyResult.current(outcome));
     const links = terminal.parser.registerOscHandler(8, () => true);
@@ -145,20 +147,35 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
 
 
   const sendInput = (text: string, paste?: boolean) => {
-    if (!writableRef.current) return;
+    if (!activeRef.current || !connectedRef.current || !writableRef.current) return;
     if (!ctrl || paste) { control.current?.input(text, paste); return; }
     setCtrl(false);
     control.current?.input(controlCharacter(text) ?? text);
   };
-  const showCursorAsFocused = () => term.current?.focus();
-  const focusInput = () => { if (!writable || term.current?.hasSelection()) return; showCursorAsFocused(); host.current?.parentElement?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus(); };
-  useEffect(() => { if (active) focusInput(); }, [active, writable]);
+  // xterm is a renderer, not our input owner. Focusing its helper first creates
+  // a second focus/blur cycle and can reactivate the pane we just left.
+  const focusInput = (preserveSelection = true) => {
+    if (!activeRef.current || !connectedRef.current || !writableRef.current || preserveSelection && term.current?.hasSelection()) return;
+    if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+    const input = section.current?.querySelector<HTMLTextAreaElement>('.terminal-input-capture');
+    input?.focus({ preventScroll: true });
+    if (input && document.activeElement === input) pendingFocus.current = false;
+  };
+  useEffect(() => { pendingFocus.current = active; if (active) focusInput(false); }, [active]);
+  useEffect(() => {
+    const focused = document.activeElement;
+    // Readiness is not a navigation request: don't steal focus from a search,
+    // palette, or editor when a resized baseline arrives.
+    if (active && writable && (pendingFocus.current || focused === document.body || section.current?.contains(focused))) focusInput(false);
+  }, [active, writable]);
   useEffect(() => { if (term.current) term.current.options.cursorInactiveStyle = active ? 'block' : 'outline'; }, [active, writable]);
   useEffect(() => {
     if (!active || !writable) return;
     const unfocused = (event: Event) => event.target === document.body || event.target === document.documentElement || section.current?.contains(event.target as Node);
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.metaKey || event.isComposing || !unfocused(event) || (event.target as HTMLElement).classList?.contains('terminal-input-capture')) return;
+      const fromInput = (event.target as HTMLElement).classList?.contains('terminal-input-capture');
+      const ownInput = fromInput && section.current?.contains(event.target as Node);
+      if (event.defaultPrevented || event.metaKey || event.isComposing || !unfocused(event) && !fromInput || ownInput) return;
       // Herdr-style app shortcuts (including the prefix starter) belong to the
       // app leader-key handler even when a terminal pane has focus.
       // A doubled prefix is the exception: it sends one literal prefix to
@@ -168,7 +185,9 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
       if (combo && peekLeaderPrefix() === combo) takeLeaderPrefix();
       else if (shortcutInvolves(combo, getShortcuts())) return;
       const bytes = terminalKeyBytes(event);
-      if (bytes) { event.preventDefault(); event.stopPropagation(); control.current?.input(bytes); } else if (event.key.length === 1 && !event.ctrlKey) focusInput();
+      if (bytes) { event.preventDefault(); event.stopPropagation(); control.current?.input(bytes); } else if (event.key.length === 1 && !event.ctrlKey && !event.altKey) {
+        event.preventDefault(); event.stopPropagation(); focusInput(false); control.current?.input(event.key);
+      }
     };
     const onPaste = (event: ClipboardEvent) => {
       const fromInput = (event.target as HTMLElement).classList?.contains('terminal-input-capture');
@@ -176,13 +195,20 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
       const pastedImages = imageFilesFrom(event.clipboardData);
       if (pastedImages.length) { event.preventDefault(); event.stopPropagation(); void images.attach(pastedImages); return; }
       const text = event.clipboardData?.getData('text/plain');
-      if (!text || fromInput) return;
+      if (!text || fromInput && section.current?.contains(event.target as Node)) return;
       event.preventDefault(); event.stopPropagation(); control.current?.input(text, true);
     };
     window.addEventListener('keydown', onKeyDown, true); window.addEventListener('paste', onPaste, true);
     return () => { window.removeEventListener('keydown', onKeyDown, true); window.removeEventListener('paste', onPaste, true); };
   }, [active, writable, images.attach]);
-  useEffect(() => { const refocus = () => { if (active) focusInput(); }; window.addEventListener('focus', refocus); return () => window.removeEventListener('focus', refocus); }, [active, writable]);
+  useEffect(() => {
+    const refocus = () => {
+      const focused = document.activeElement;
+      if (active && (focused === document.body || section.current?.contains(focused))) focusInput(false);
+    };
+    window.addEventListener('focus', refocus);
+    return () => window.removeEventListener('focus', refocus);
+  }, [active, writable]);
 
   return <section ref={section} className={`terminal-pane ${active ? 'is-active' : ''}`} aria-label={`${pane.title} terminal`} onPointerDownCapture={() => { if (!active) onFocus(); }} onFocusCapture={() => { if (!active) onFocus(); }} onClick={() => { if (canControlRef.current && connectedRef.current && !writableRef.current) control.current?.control(); focusInput(); }}>
     <span className="terminal-status" role="status">{message}</span>
@@ -191,7 +217,7 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     {images.dragging && <div className="terminal-drop-overlay" aria-hidden="true"><ImagePlus size={22} strokeWidth={1.6} /><span>Drop image to attach</span></div>}
     {selectedUrl && <TerminalUrlActions selected={selectedUrl} onDone={() => { setSelectedUrl(null); term.current?.clearSelection(); }} onCopied={(copied) => showCopyResult.current(copied ? 'copied' : 'blocked')} />}
     {notice && <div className={`terminal-attach-notice is-${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.text}</div>}
-    {writable && <TerminalInput onInput={sendInput} onFocusChange={(focused) => { setInputFocused(focused); if (term.current?.modes.sendFocusMode) control.current?.input(focused ? FOCUS_IN : FOCUS_OUT); }} />}
+    <TerminalInput active={active} readOnly={!writable || !connected} onInput={sendInput} onFocusChange={(focused) => { setInputFocused(focused); if (term.current?.modes.sendFocusMode) control.current?.input(focused ? FOCUS_IN : FOCUS_OUT); }} />
     {writable && active && touch && inputFocused && <TerminalKeyBar ctrl={ctrl} onToggleCtrl={() => setCtrl((armed) => !armed)} onBytes={(bytes) => control.current?.input(bytes)} voice={voice} />}
   </section>;
 }
