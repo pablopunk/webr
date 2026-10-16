@@ -257,7 +257,7 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
       if (action === 'newThread') void navigate(`/new${thread ? `?project=${encodeURIComponent(thread.projectId)}` : ''}`);
       if ((action === 'nextPane' || action === 'previousPane') && displayPanes.length) {
         const selected = ui.getState().focusedPanes[scope] ?? focusedPane;
-        const index = displayPanes.findIndex((pane) => pane.id === selected);
+        const index = Math.max(0, displayPanes.findIndex((pane) => pane.id === selected));
         setFocusedPane(displayPanes[(index + (action === 'nextPane' ? 1 : -1) + displayPanes.length) % displayPanes.length].id);
       }
       if ((action === 'nextThread' || action === 'previousThread') && (threads.length || floating.length)) {
