@@ -21,7 +21,7 @@ import { useTerminalNotice } from './useTerminalNotice';
 import { useVoiceInput } from './useVoiceInput';
 import { terminalStartupCommands, type TerminalStartupPreset } from '../client/terminal-presets';
 import { isNarrowScreen } from '../client/pane-window';
-import { focusRestsNowhere } from '../client/focus-ownership';
+import { focusRestsNowhere, textIsSelectedOutsideTerminal } from '../client/focus-ownership';
 
 function themeColors() {
   const styles = getComputedStyle(document.documentElement);
@@ -169,17 +169,27 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     // palette, or editor when a resized baseline arrives.
     if (active && writable && (pendingFocus.current || focused === document.body || section.current?.contains(focused))) focusInput(false);
   }, [active, writable]);
-  useEffect(() => { if (active && writable && focusRestsNowhere()) focusInput(false); });
+  const pointerIsDown = useRef(false);
+  useEffect(() => {
+    const pressed = () => { pointerIsDown.current = true; };
+    const released = () => { pointerIsDown.current = false; };
+    document.addEventListener('pointerdown', pressed, true); document.addEventListener('pointerup', released, true); document.addEventListener('pointercancel', released, true);
+    return () => { document.removeEventListener('pointerdown', pressed, true); document.removeEventListener('pointerup', released, true); document.removeEventListener('pointercancel', released, true); };
+  }, []);
+  const focusDroppedWithNothingBetterToDo = () => focusRestsNowhere() && !pointerIsDown.current && !textIsSelectedOutsideTerminal();
+  useEffect(() => { if (active && writable && focusDroppedWithNothingBetterToDo()) focusInput(false); });
   useEffect(() => {
     if (!active || !writable) return;
-    let frame = 0;
+    let frame = 0; let reclaimOnRelease = false;
+    const reclaim = () => { if (pointerIsDown.current) { reclaimOnRelease = true; return; } if (focusDroppedWithNothingBetterToDo()) focusInput(false); };
     const reclaimFocusDroppedOnBody = (event: FocusEvent) => {
       if (event.relatedTarget) return;
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => { if (focusRestsNowhere()) focusInput(false); });
+      cancelAnimationFrame(frame); frame = requestAnimationFrame(reclaim);
     };
+    const reclaimAfterPointerRelease = () => { if (!reclaimOnRelease) return; reclaimOnRelease = false; cancelAnimationFrame(frame); frame = requestAnimationFrame(reclaim); };
     document.addEventListener('focusout', reclaimFocusDroppedOnBody);
-    return () => { cancelAnimationFrame(frame); document.removeEventListener('focusout', reclaimFocusDroppedOnBody); };
+    document.addEventListener('pointerup', reclaimAfterPointerRelease); document.addEventListener('pointercancel', reclaimAfterPointerRelease);
+    return () => { cancelAnimationFrame(frame); document.removeEventListener('focusout', reclaimFocusDroppedOnBody); document.removeEventListener('pointerup', reclaimAfterPointerRelease); document.removeEventListener('pointercancel', reclaimAfterPointerRelease); };
   }, [active, writable]);
   useEffect(() => { if (term.current) term.current.options.cursorInactiveStyle = active ? 'block' : 'outline'; }, [active, writable]);
   useEffect(() => {

@@ -103,6 +103,16 @@ it('takes focus back when the browser drops it on the body, but never from anoth
   expect(document.activeElement).toBe(input); expect(fixture.input).toHaveBeenLastCalledWith('\r');
   const editor = document.createElement('input'); view.container.append(editor); editor.focus();
   view.rerender(<TerminalPane {...props} />); expect(document.activeElement).toBe(editor);
+  editor.remove(); input.focus();
+  // While a pointer is down the user may be selecting text: wait for the release, then leave a selection alone.
+  const note = document.createElement('p'); note.textContent = 'copy this path'; document.body.append(note);
+  fireEvent.pointerDown(note); input.blur(); tick(); expect(document.activeElement).toBe(document.body);
+  const range = document.createRange(); range.selectNodeContents(note); document.getSelection()!.removeAllRanges(); document.getSelection()!.addRange(range);
+  fireEvent.pointerUp(note); tick(); expect(document.activeElement).toBe(document.body);
+  view.rerender(<TerminalPane {...props} />); expect(document.activeElement).toBe(document.body);
+  document.getSelection()!.removeAllRanges(); view.rerender(<TerminalPane {...props} />); expect(document.activeElement).toBe(input);
+  fireEvent.pointerDown(note); input.blur(); tick(); fireEvent.pointerUp(note); tick(); expect(document.activeElement).toBe(input);
+  note.remove();
 });
 
 it('moves real keyboard focus between split panes even when the destination has a selection', async () => {
