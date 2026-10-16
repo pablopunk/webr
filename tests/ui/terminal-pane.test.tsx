@@ -17,6 +17,7 @@ vi.mock('@xterm/xterm', () => ({ Terminal: class {
 } }));
 vi.mock('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }));
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { proposeDimensions() { return fixture.dimensions; } } }));
+vi.mock('@xterm/addon-webgl', () => ({ WebglAddon: class { onContextLoss() {} dispose() {} } }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); fixture.selection = ''; fixture.dimensions = { cols: 90, rows: 31 }; });
 it('keeps terminals free of control bars and leaves right-click to the browser', async () => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
@@ -83,6 +84,8 @@ it('autofocuses a newly writable terminal but does not steal focus back from an 
 });
 
 it('moves real keyboard focus between split panes even when the destination has a selection', async () => {
+  // Resolve the lazy module mock before mounting two panes concurrently.
+  await import('@xterm/xterm');
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   const inputs = new Map<string, ReturnType<typeof vi.fn>>();
   fixture.mount.mockImplementation((options) => {
