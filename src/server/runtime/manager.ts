@@ -562,7 +562,8 @@ export class RuntimeManager extends EventEmitter {
     const targetTerminalId = thread.panes.find((pane) => pane.id === paneId)?.terminalId;
     if (!targetTerminalId) throw new Error('thread_not_found');
     if (!identity.target.writable) throw new Error('read_only');
-    if (!identity.target.closePane) throw new Error('pane_action_unavailable');
+    const closePane = identity.target.closePane?.bind(identity.target);
+    if (!closePane) throw new Error('pane_action_unavailable');
     const isBusy = async () => {
       try { return !!(await identity.target.paneBusy?.(paneId)); }
       catch { throw paneActionRefused(); }
@@ -578,7 +579,7 @@ export class RuntimeManager extends EventEmitter {
       const latest = this.requireCurrentProjection(identity).threads.find((item) => item.id === threadId);
       if (!latest || !this.matchesTargetIdentity(latest, identity) || latest.bindingState !== 'attached' || latest.tabId !== thread.tabId) throw new Error('machine_disconnected');
       if (!canClosePane(latest, paneId) || !latest.panes.some((pane) => pane.id === paneId && pane.terminalId === targetTerminalId)) return { closed: false, busy: false };
-      try { await identity.target.closePane(paneId); }
+      try { await closePane(paneId); }
       catch { /* A rejected native reply can still mean the pane closed; inspect a fresh scoped projection. */ }
       try {
         await readPaneActionSnapshot(supervisor);
