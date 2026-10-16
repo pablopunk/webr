@@ -87,6 +87,23 @@ it('keeps accepting keystrokes while a resized baseline is pending and shows why
   vi.useRealTimers();
 });
 
+it('asks Herdr to focus the pane shown here once it is active and typeable, so the agent draws its cursor', async () => {
+  const fetchMock = vi.fn(async () => ({ ok: true, status: 200 })); vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
+  const props = { pane: { id: 'w1:p2', terminalId: 'term_shell', title: 'Shell', kind: 'shell' as const }, machineId: 'local', threadId: 'fixture-thread', canControl: true, onFocus: () => {} };
+  const view = render(<TerminalPane {...props} active={false} />);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
+  await act(async () => fixture.mount.mock.calls[0][0].onState('Input control is active.', true));
+  const focusCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/focus'));
+  expect(focusCalls()).toHaveLength(0);
+  view.rerender(<TerminalPane {...props} active />);
+  await waitFor(() => expect(focusCalls()).toHaveLength(1));
+  expect(focusCalls()[0]).toEqual(['/api/threads/fixture-thread/focus', expect.objectContaining({ method: 'POST', body: JSON.stringify({ machineId: 'local', paneId: 'w1:p2' }) })]);
+  view.rerender(<TerminalPane {...props} active />);
+  expect(focusCalls()).toHaveLength(1);
+});
+
 it('autofocuses a newly writable terminal but does not steal focus back from an editor on resize', async () => {
   const launcher = document.createElement('button'); document.body.append(launcher); launcher.focus();
   const view = await mountWritablePane();

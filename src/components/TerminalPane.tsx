@@ -23,6 +23,7 @@ import { terminalStartupCommands, type TerminalStartupPreset } from '../client/t
 import { isNarrowScreen } from '../client/pane-window';
 import { focusRestsNowhere, textIsSelectedOutsideTerminal } from '../client/focus-ownership';
 import { describeNode, trace } from '../client/trace';
+import { followNativeFocus } from '../client/native-focus';
 
 function themeColors() {
   const styles = getComputedStyle(document.documentElement);
@@ -244,6 +245,15 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     window.addEventListener('focus', refocus);
     return () => window.removeEventListener('focus', refocus);
   }, [active, typeable]);
+  useEffect(() => {
+    if (!active || !typeable || !threadId) return;
+    let followed = false;
+    const followWhenVisible = () => { if (document.visibilityState !== 'visible' || followed) return; followed = true; void followNativeFocus(machineId, threadId, pane.id); };
+    const followAgainWhenShown = () => { if (document.visibilityState === 'visible') { followed = false; followWhenVisible(); } };
+    followWhenVisible();
+    document.addEventListener('visibilitychange', followAgainWhenShown);
+    return () => document.removeEventListener('visibilitychange', followAgainWhenShown);
+  }, [active, typeable, machineId, threadId, pane.id]);
   const inputPaused = active && connected && canControl && !typeable;
   const [showInputPaused, setShowInputPaused] = useState(false);
   useEffect(() => {
