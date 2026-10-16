@@ -23,11 +23,11 @@ import { isListedThread } from '../lib/launch';
 import type { Bootstrap } from '../shared/runtime';
 import type { Pane } from '../lib/models';
 import { selectTerminalMachine } from '../lib/machines';
+import { windowStartShowing } from '../lib/pane-strip';
 import { appShortcutAction, armLeaderPrefix, paletteToggle, sequenceAction, sequenceStarters, subscribeLeaderPrefix, takeLeaderPrefix, requestThreadRename } from '../client/keyboard';
 import { perfAvailable, startPerf } from '../client/perf';
-import { closeThreadPane, openThreadTerminal } from '../client/thread-actions';
+import { usePendingPaneActions } from '../client/pending-pane-actions';
 import { openTerminalTab } from '../client/terminal-navigation';
-import { canClosePane, paneToFocusAfterClosing } from '../lib/pane-strip';
 import { usePaneWindowStart, useNarrowScreen } from '../client/pane-window';
 import { alertDialog, confirmDialog } from './dialogs';
 import { useClearDoneOnVisit } from '../client/clear-done-on-visit';
@@ -124,6 +124,7 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
   const [mode, setMode] = useState<SidebarMode>('threads');
   const scope = page === 'terminal' ? `${machineId ?? ''}:tab:${tabId ?? ''}` : `${thread?.machineId ?? ''}:${thread?.id ?? ''}`;
   const storedFocus = useStore(ui, (state) => state.focusedPanes[scope]);
+  const storedPaneWindow = useStore(ui, (state) => state.paneWindows[scope] ?? 0);
   const activePanes = page === 'terminal' ? terminalPanes : thread?.panes ?? [];
   const focusedPane = activePanes.some((pane) => pane.id === storedFocus) ? storedFocus! : activePanes[0]?.id ?? '';
   const setFocusedPane = useCallback((paneId: string) => ui.getState().focus(scope, paneId), [ui, scope]);
@@ -205,14 +206,20 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
   }, []);
 
   const terminalMachine = selectTerminalMachine(machines, page === 'terminal' ? machineId : thread?.machineId);
-  const reportPaneFailure = (error: unknown) => void alertDialog(error instanceof Error ? error.message : 'Herdr could not change the pane.');
-  const paneIds = activePanes.map((pane) => pane.id);
-  const windowStart = usePaneWindowStart(ui, scope, paneIds, focusedPane);
+  const actionWindowStart = windowStartShowing(activePanes.length, storedPaneWindow, activePanes.findIndex((pane) => pane.id === focusedPane));
   const narrow = useNarrowScreen();
-  const openTerminal = useCallback(() => {
-    if (!thread || !focusedPane) return;
-    void openThreadTerminal(thread, focusedPane).then(({ paneId }) => setFocusedPane(paneId), reportPaneFailure);
-  }, [thread, focusedPane, setFocusedPane]);
+  const paneActionRouteKey = page === 'thread' && thread
+    ? JSON.stringify([thread.machineId, thread.id, thread.tabId, thread.session, thread.bindingFingerprint, thread.bindingConfigVersion])
+    : '';
+  const focusPaneAtScope = useCallback((targetScope: string, paneId: string) => ui.getState().focus(targetScope, paneId), [ui]);
+  const confirmPaneClose = useCallback((message: string) => confirmDialog(message, { confirmLabel: 'Close', danger: true }), []);
+  const paneActions = usePendingPaneActions({ thread: page === 'thread' ? thread : undefined, projection: thread ? projections[thread.machineId] : undefined,
+    routeKey: paneActionRouteKey, scope, focusedPane, windowStart: actionWindowStart, focusPane: focusPaneAtScope, confirmClose: confirmPaneClose });
+  const openTerminal = paneActions.openTerminal;
+  const closePane = paneActions.closePane;
+  const visibleThreadPanes = thread?.panes.filter((pane) => !paneActions.pendingCloses.some((pending) => (pending.paneId === pane.id || pending.terminalId === pane.terminalId) && pending.phase === 'confirmed')) ?? [];
+  const displayPanes = page === 'terminal' ? terminalPanes : visibleThreadPanes;
+  const windowStart = usePaneWindowStart(ui, scope, displayPanes.map((pane) => pane.id), focusedPane);
   const standaloneTerminalBusy = useRef(false);
   const openStandaloneTerminal = useCallback(async (startup?: TerminalStartupPreset) => {
     const machine = terminalMachine;
@@ -222,16 +229,6 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
     catch (error) { void alertDialog(error instanceof Error ? error.message : 'Herdr could not create a terminal.'); }
     finally { standaloneTerminalBusy.current = false; }
   }, [terminalMachine, tickets, navigate]);
-  const closePane = useCallback(async (paneId = focusedPane) => {
-    if (!thread || !canClosePane(thread, paneId)) return;
-    const pane = thread.panes.find((pane) => pane.id === paneId)!;
-    const next = paneToFocusAfterClosing(thread.panes, windowStart, paneId);
-    try {
-      let result = await closeThreadPane(thread, paneId, false);
-      if (result.busy && await confirmDialog(`${pane.title} is running a process. Close it anyway?`, { confirmLabel: 'Close', danger: true })) result = await closeThreadPane(thread, paneId, true);
-      if (result.closed && next) setFocusedPane(next.id);
-    } catch (error) { reportPaneFailure(error); }
-  }, [thread, focusedPane, windowStart, setFocusedPane]);
 
   const toggleSidebar = useCallback(() => {
     if (window.matchMedia('(max-width: 760px)').matches) { setMobileOpen((value) => !value); return; }
@@ -321,8 +318,9 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
     <Sidebar projects={projects} threads={threads} archived={archived} floating={floating} detached={detached} ownedTabs={ownedTabs} machines={machines} currentId={thread?.id} currentMachineId={page === 'terminal' ? machineId : thread?.machineId} currentTab={route.type === 'terminal' && machineId && tabId ? { machineId, tabId } : undefined} mode={mode} onModeChange={changeMode} collapsed={collapsed}
       mobileOpen={mobileOpen} onCollapse={toggleSidebar} onCloseMobile={() => setMobileOpen(false)} onOpenPalette={() => setPaletteOpen(true)} onNavigate={navigate} paletteShortcut={shortcuts.commandPalette} updateAction={<UpdateButton />} metadata={metadata} metadataFields={metadataFields} />
     <div className="main-panel">
-      {narrow && (page === 'thread' || page === 'terminal') && <MobileTopBar panes={page === 'thread' ? thread?.panes ?? [] : terminalPanes} focusedPane={focusedPane} onFocusPane={setFocusedPane} onOpenSidebar={toggleSidebar} onOpenPalette={() => setPaletteOpen(true)} keepTerminalFocus={keepTerminalFocus} />}
-      {page === 'thread' && thread && <ThreadView thread={thread} connected={!!machines.find((machine) => machine.id === thread.machineId)?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow} />}
+      {narrow && (page === 'thread' || page === 'terminal') && <MobileTopBar panes={page === 'thread' ? visibleThreadPanes : terminalPanes} focusedPane={focusedPane} onFocusPane={setFocusedPane} onOpenSidebar={toggleSidebar} onOpenPalette={() => setPaletteOpen(true)} keepTerminalFocus={keepTerminalFocus} />}
+      {page === 'thread' && thread && <ThreadView thread={thread} connected={!!machines.find((machine) => machine.id === thread.machineId)?.connected} canControl={!!machines.find((machine) => machine.id === thread.machineId)?.writable} focusedPane={focusedPane} onFocusPane={setFocusedPane} windowStart={windowStart} narrow={narrow}
+        pendingSplits={paneActions.pendingSplits} pendingCloses={paneActions.pendingCloses} paneActionNotice={paneActions.notice} onDismissPendingSplit={paneActions.dismissSplit} onDismissPendingClose={paneActions.dismissClose} onDismissPaneActionNotice={paneActions.dismissNotice} />}
       {page === 'thread' && !thread && threadIsAuthoritativelyMissing && <main className="not-found"><h1>Thread not found</h1><a href="/">Open a thread</a></main>}
       {page === 'thread' && !thread && !threadIsAuthoritativelyMissing && <main className="native-thread-layout" aria-label="Thread"><p className="runtime-notice" role="status">Waiting for this thread to appear…</p></main>}
       {page === 'terminal' && route.type === 'terminal' && routeMachineSession !== route.session && <main className="native-thread-layout" aria-label="Terminal tab"><p className="runtime-notice" role="status">Waiting for this terminal tab to appear…</p></main>}

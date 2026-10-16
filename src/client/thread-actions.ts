@@ -86,8 +86,49 @@ export async function resetProjectIcon(project: Project) {
   const response = await fetch(projectIconUrl(project), { method: 'DELETE' });
   if (!response.ok) throw new Error('Could not reset this icon.');
 }
-export const openThreadTerminal = (thread: Thread, afterPaneId: string) => post(`/api/threads/${encodeURIComponent(thread.id)}/panes/terminal`, { machineId: thread.machineId, afterPaneId }) as Promise<{ paneId: string }>;
-export const closeThreadPane = (thread: Thread, paneId: string, force: boolean) => post(`/api/threads/${encodeURIComponent(thread.id)}/panes/close`, { machineId: thread.machineId, paneId, force }) as Promise<{ closed: boolean; busy: boolean }>;
+const paneActionErrors: Record<string, string> = {
+  machine_disconnected: 'The machine is not connected.',
+  thread_not_found: 'This thread does not exist anymore.',
+  read_only: 'This machine is read-only.',
+  pane_action_unavailable: 'This Herdr machine cannot change panes.',
+  pane_action_refused: 'Herdr could not check whether the pane action was safe to start.',
+  pane_outcome_unknown: 'Herdr could not confirm the pane action.',
+};
+
+export class PaneActionError extends Error {
+  constructor(readonly status: number, readonly errorCode: string | undefined, readonly outcomeUncertain: boolean, message: string) {
+    super(message);
+    this.name = 'PaneActionError';
+  }
+}
+
+async function postPaneAction(path: string, body: Record<string, unknown>, action: 'split' | 'close'): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  } catch {
+    throw new PaneActionError(0, undefined, true, `The ${action} request lost its connection; its outcome is uncertain.`);
+  }
+  const result = await response.json().catch(() => undefined) as unknown;
+  if (!response.ok) {
+    const code = record(result) && typeof result.error === 'string' ? result.error : undefined;
+    const uncertain = response.status === 408 || response.status >= 500 || code === 'pane_outcome_unknown';
+    throw new PaneActionError(response.status, code, uncertain, paneActionErrors[code ?? ''] ?? `Herdr could not confirm this ${action} action.`);
+  }
+  if (!record(result)) throw new PaneActionError(response.status, undefined, true, `The ${action} response was invalid; its outcome is uncertain.`);
+  return result;
+}
+
+export async function openThreadTerminal(thread: Thread, afterPaneId: string): Promise<{ paneId: string }> {
+  const result = await postPaneAction(`/api/threads/${encodeURIComponent(thread.id)}/panes/terminal`, { machineId: thread.machineId, afterPaneId }, 'split');
+  if (!record(result) || typeof result.paneId !== 'string' || !result.paneId) throw new PaneActionError(200, undefined, true, 'The split response did not identify a pane; its outcome is uncertain.');
+  return { paneId: result.paneId };
+}
+export async function closeThreadPane(thread: Thread, paneId: string, force: boolean): Promise<{ closed: boolean; busy: boolean }> {
+  const result = await postPaneAction(`/api/threads/${encodeURIComponent(thread.id)}/panes/close`, { machineId: thread.machineId, paneId, force }, 'close');
+  if (!record(result) || typeof result.closed !== 'boolean' || typeof result.busy !== 'boolean' || result.closed && result.busy) throw new PaneActionError(200, undefined, true, 'The close response was invalid; its outcome is uncertain.');
+  return { closed: result.closed, busy: result.busy };
+}
 export const closeTerminalTab = (machineId: string, tabId: string, force: boolean) => post('/api/tabs/close', { machineId, tabId, force }) as Promise<{ closed: boolean; busy: boolean }>;
 export const deleteThreadPermanently = (thread: Thread) => post(`/api/threads/${encodeURIComponent(thread.id)}/delete`, { machineId: thread.machineId });
 export const deleteArchivedThreads = () => post('/api/archive/delete') as Promise<{ deleted: number; orphanTabsDeleted: number; failed: string[]; skippedMachines: string[] }>;

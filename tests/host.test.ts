@@ -52,6 +52,16 @@ it('opens resources without accounts or cookies and guards Host and Origin', asy
   await expect(app.injectWS('/api/ws/metadata?instance=' + randomUUID(), { headers: { host: 'localhost:4321' } })).rejects.toThrow();
   await expect(app.injectWS('/api/ws/metadata?instance=' + randomUUID(), { headers: { ...headers, origin: 'https://attacker.invalid' } })).rejects.toThrow();
 });
+it('returns an explicit uncertain outcome when a split reply cannot be correlated', async () => {
+  const { app, target, manager, headers } = await setup();
+  target.state.panes[0].agent = 'claude'; target.event!();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0];
+  target.splitTerminal = async () => 'w1:p-unconfirmed';
+  const response = await app.inject({ method: 'POST', url: `/api/threads/${thread.id}/panes/terminal`, headers, payload: { machineId: target.id, afterPaneId: 'w1:p1' } });
+  expect(response.statusCode).toBe(503);
+  expect(response.json()).toEqual({ error: 'pane_outcome_unknown' });
+});
 it.each(['localhost:4321', '127.0.0.1:4321', '[::1]:4321'])('accepts the loopback alias %s for pages, API writes and paired sockets', async (host) => {
   const { app } = await setup('http://127.0.0.1:4321'); const headers = { host, origin: 'http://' + host };
   expect((await app.inject({ url: '/api/runtime', headers })).statusCode).toBe(200);

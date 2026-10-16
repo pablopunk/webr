@@ -61,6 +61,8 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     if (message === 'read_only') return reply.code(403).send({ error: message });
     if (message === 'launch_in_progress') return reply.code(409).send({ error: message });
     if (message === 'launch_capacity_exceeded') return reply.code(429).send({ error: message });
+    if (message === 'pane_outcome_unknown') return reply.code(503).send({ error: message });
+    if (message === 'pane_action_unavailable' || message === 'pane_action_refused') return reply.code(409).send({ error: message });
     const conflict = ['idempotency_conflict', 'binding_conflict', 'invalid_adoption', 'machine_disconnected', 'workspace_creation_unavailable', 'legacy_operation_ownership_ambiguous', 'legacy_operation_kind_ambiguous'].includes(message);
     return reply.code(conflict ? 409 : 503).send({ error: conflict ? message : 'request_failed' });
   });

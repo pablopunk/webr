@@ -29,6 +29,16 @@
 .terminal-control-conflict { position: absolute; z-index: 10; top: 8px; left: 50%; display: flex; align-items: center; gap: 10px; max-width: calc(100% - 16px); padding: 6px 10px; transform: translateX(-50%); border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-raised); color: var(--ink-soft); box-shadow: var(--card-shadow); white-space: nowrap; }
 .terminal-control-conflict button { padding: 3px 7px; border: 0; border-radius: 5px; background: var(--surface-hover); color: var(--ink); }
 .runtime-notice { padding: 10px 16px; color: var(--ink-muted); font-size: 15px; }
+.pane-action-notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 12px; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: 8px; color: #d16a64; font-size: 14px; }
+.pending-pane-dismiss { flex: none; padding: 4px 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface-raised); color: var(--ink); font-size: 12px; cursor: pointer; }
+.pending-pane-slot { display: grid; place-items: center; padding: 16px; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb, var(--terminal-bg) 94%, var(--surface-raised)); color: var(--ink-soft); text-align: center; }
+.pending-pane-card { display: grid; justify-items: center; gap: 12px; max-width: 100%; font-size: 14px; }
+.pending-pane-skeleton { display: block; width: min(68%, 280px); height: 10px; border-radius: 999px; background: var(--line-strong); }
+.pending-pane-slot.is-loading .pending-pane-skeleton { background: linear-gradient(90deg, var(--line) 20%, var(--line-strong) 48%, var(--line) 76%); background-size: 220% 100%; animation: pending-pane-shimmer 1.25s ease-in-out infinite; }
+.pane-action-overlay { position: absolute; z-index: 20; top: 10px; right: 10px; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 20px); padding: 6px 9px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-raised); box-shadow: var(--card-shadow); color: var(--ink-soft); font-size: 12px; }
+.pane-action-overlay.is-uncertain { color: #d16a64; }
+@keyframes pending-pane-shimmer { to { background-position: -220% 0; } }
+@media (prefers-reduced-motion: reduce) { .pending-pane-slot.is-loading .pending-pane-skeleton { animation: none; } }
 .launch-progress { height: 100%; display: grid; align-content: center; justify-items: start; gap: 18px; width: min(520px, 100%); margin: 0 auto; padding: 0 20px; }
 .launch-progress h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.03em; }
 .launch-prompt { margin: 0; padding: 10px 14px; border-left: 2px solid var(--line-strong); color: var(--ink-soft); font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 9em; overflow: auto; }

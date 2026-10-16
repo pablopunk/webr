@@ -228,6 +228,33 @@ it('opens terminals after the focused pane and keeps that order in the thread', 
   expect(manager.bootstrap().threads[0].panes.map((pane) => pane.id)).toEqual(['w1:p1', 'w1:p1s2', 'w1:p1s1']);
   expect(target.effects).toEqual(['split:right', 'split:right']);
 });
+it('refuses pane actions definitively when a fresh pre-effect snapshot times out', async () => {
+  const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0]; const supervisor = manager.supervisors.get(target.id)!;
+  const readFresh = vi.spyOn(supervisor, 'readFresh');
+  readFresh.mockRejectedValueOnce(new Error('snapshot_timeout'));
+  await expect(manager.openTerminal(target.id, thread.id, 'w1:p1')).rejects.toThrow('pane_action_refused');
+  readFresh.mockRejectedValueOnce(new Error('snapshot_timeout'));
+  await expect(manager.closePane(target.id, thread.id, 'w1:p1', true)).rejects.toThrow('pane_action_refused');
+  expect(target.effects).toEqual([]);
+});
+it('keeps a split uncertain when the post-effect snapshot times out', async () => {
+  const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0]; const supervisor = manager.supervisors.get(target.id)!; const readFresh = supervisor.readFresh.bind(supervisor);
+  vi.spyOn(supervisor, 'readFresh').mockImplementationOnce(() => readFresh()).mockRejectedValueOnce(new Error('snapshot_timeout'));
+  await expect(manager.openTerminal(target.id, thread.id, 'w1:p1')).rejects.toThrow('pane_outcome_unknown');
+  expect(target.effects).toEqual(['split:right']);
+});
+it('keeps a split uncertain unless its returned pane appears in the same fresh thread', async () => {
+  const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  target.splitTerminal = async () => 'w1:p-from-another-thread';
+  const thread = manager.bootstrap().threads[0];
+  await expect(manager.openTerminal(target.id, thread.id, 'w1:p1')).rejects.toThrow('pane_outcome_unknown');
+  expect(manager.bootstrap().threads[0].panes.map((pane) => pane.id)).toEqual(['w1:p1']);
+});
 it('serializes pane splits against terminal-pane close', async () => {
   const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
   await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
@@ -272,6 +299,42 @@ it('closes only terminal panes and asks the client to confirm while a process ru
   expect(await manager.closePane('fixture', thread.id, paneId, false)).toEqual({ closed: false, busy: true });
   expect(await manager.closePane('fixture', thread.id, paneId, true)).toEqual({ closed: true, busy: false });
   expect(target.effects).toEqual(['split:right', `close:${paneId}`]); expect(manager.bootstrap().threads[0].panes.map((pane) => pane.kind)).toEqual(['agent']);
+});
+it('does not acknowledge close while the pane remains in a fresh scoped projection', async () => {
+  const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0]; const { paneId } = await manager.openTerminal(target.id, thread.id, 'w1:p1');
+  target.closePane = async () => {};
+  await expect(manager.closePane(target.id, thread.id, paneId, true)).rejects.toThrow('pane_outcome_unknown');
+  expect(manager.bootstrap().threads[0].panes.some((pane) => pane.id === paneId)).toBe(true);
+});
+it('confirms close from a fresh scoped absence even when the native close reply is lost', async () => {
+  const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0]; const { paneId } = await manager.openTerminal(target.id, thread.id, 'w1:p1');
+  target.closePane = async (id) => { target.state.panes = target.state.panes.filter((pane) => pane.pane_id !== id); throw new Error('rpc_timeout'); };
+  await expect(manager.closePane(target.id, thread.id, paneId, true)).resolves.toEqual({ closed: true, busy: false });
+  expect(manager.bootstrap().threads[0].panes.some((pane) => pane.id === paneId)).toBe(false);
+});
+it('keeps close uncertain when the post-effect snapshot times out', async () => {
+  const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0]; const { paneId } = await manager.openTerminal(target.id, thread.id, 'w1:p1');
+  const supervisor = manager.supervisors.get(target.id)!; const readFresh = supervisor.readFresh.bind(supervisor);
+  vi.spyOn(supervisor, 'readFresh').mockImplementationOnce(() => readFresh()).mockImplementationOnce(() => readFresh()).mockRejectedValueOnce(new Error('snapshot_timeout'));
+  await expect(manager.closePane(target.id, thread.id, paneId, true)).rejects.toThrow('pane_outcome_unknown');
+  expect(target.effects).toContain(`close:${paneId}`);
+});
+it('keeps close uncertain when disconnect prevents fresh confirmation after native absence', async () => {
+  const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0]; const { paneId } = await manager.openTerminal(target.id, thread.id, 'w1:p1');
+  target.closePane = async (id) => {
+    target.state.panes = target.state.panes.filter((pane) => pane.pane_id !== id);
+    target.readHook = async () => { throw new Error('snapshot_failed'); };
+  };
+  await expect(manager.closePane(target.id, thread.id, paneId, true)).rejects.toThrow('pane_outcome_unknown');
+  expect(manager.bootstrap().threads[0].panes.some((pane) => pane.id === paneId)).toBe(true);
 });
 it('rechecks pane busy state inside the destructive mutation queue', async () => {
   const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
