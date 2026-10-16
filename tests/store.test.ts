@@ -42,7 +42,7 @@ it('sanitizes poison threads, projects and tabs instead of throwing', () => {
 });
 
 it('keeps confirmed metadata separate while deriving optimistic title and archive membership', () => {
-  const thread = { id: 'same-thread', machineId: 'machine-a', title: 'Native title', titleOverride: undefined, metadataVersion: 3, titleSync: { version: 3, state: 'unknown' as const }, archivedAt: undefined, panes: [], updatedAt: '2026-10-16T00:00:00.000Z' } as Projection['threads'][number];
+  const thread = { id: 'same-thread', machineId: 'machine-a', title: 'Native title', titleOverride: undefined, metadataVersion: 3, titleSync: { version: 3, state: 'unknown' as const }, archivedAt: undefined, panes: [], updatedAt: '2026-10-16T00:00:00.000Z' } as unknown as Projection['threads'][number];
   const store = createRuntimeStore(empty);
   store.getState().install(projection('machine-a', 1, [thread]));
   const titleKey = metadataFieldKey('thread', 'machine-a', thread.id, 'titleOverride');
@@ -70,7 +70,7 @@ it('preserves newer confirmed metadata when a later projection carries older thr
 });
 
 it('keeps thread status unknown across metadata updates until a fresh projection arrives', () => {
-  const thread = { id: 'thread', machineId: 'machine-a', title: 'Native', titleOverride: undefined, metadataVersion: 1, titleSync: { version: 1, state: 'unknown' as const }, archivedAt: undefined, panes: [], updatedAt: '', status: 'working' as const } as Projection['threads'][number];
+  const thread = { id: 'thread', machineId: 'machine-a', title: 'Native', titleOverride: undefined, metadataVersion: 1, titleSync: { version: 1, state: 'unknown' as const }, archivedAt: undefined, panes: [], updatedAt: '', status: 'working' as const } as unknown as Projection['threads'][number];
   const store = createRuntimeStore(empty);
   store.getState().install(projection('machine-a', 1, [thread]));
   store.getState().connection(false);

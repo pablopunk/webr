@@ -217,8 +217,8 @@ export function createPendingMetadataController(runtime: RuntimeStore, initialSc
     });
     if (disposed || generation !== scopeGeneration || queues.get(key) !== queue || queue.inFlight !== command || !queue.commands.includes(command)) return;
     queue.inFlight = undefined;
-    const failure = outcome.kind === 'timeout' ? new Error('The metadata request timed out; its result is uncertain.') : outcome.kind === 'error' ? outcome.error : undefined;
-    if (failure !== undefined) {
+    if (outcome.kind !== 'response') {
+      const failure = outcome.kind === 'timeout' ? new Error('The metadata request timed out; its result is uncertain.') : outcome.error;
       command.reject?.(failure);
       command.resolve = undefined;
       command.reject = undefined;
