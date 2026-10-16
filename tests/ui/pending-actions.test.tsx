@@ -77,8 +77,8 @@ it('waits for the exact returned native pane instead of correlating an unrelated
   expect(focus).not.toHaveBeenCalled();
   const confirmed = { id: 'pane-from-this-split', title: 'Shell', kind: 'shell' as const, terminalId: 'terminal-confirmed' };
   view.rerender(<Harness observation={projection({ ...originalThread, panes: [...originalThread.panes, unrelated, confirmed] }, 3)} />);
-  await waitFor(() => expect(screen.queryByText(/Waiting for the new pane to appear/)).toBeNull());
-  expect(screen.getByTestId('terminal-terminal-confirmed')).toBeTruthy();
+  await waitFor(() => expect(screen.getByTestId('terminal-terminal-confirmed')).toBeTruthy());
+  expect(screen.queryByText(/Waiting for the new pane to appear/)).toBeNull();
   expect(focus).toHaveBeenCalledWith('machine-test:thread-test', 'pane-from-this-split');
 });
 
@@ -125,7 +125,7 @@ it('keeps unresolved native-terminal guards across binding changes but allows ot
   expect(screen.getByRole('alert').textContent).toContain('previous split');
   fireEvent.click(screen.getByRole('button', { name: 'Close reidentified pane' }));
   expect(closeThreadPane).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole('alert').textContent).toContain('previous close');
+  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('previous close'));
   fireEvent.click(screen.getByRole('button', { name: 'Split unrelated terminal' }));
   expect(openThreadTerminal).toHaveBeenCalledTimes(2);
 });

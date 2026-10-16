@@ -231,13 +231,13 @@ it('opens terminals after the focused pane and keeps that order in the thread', 
 it('refuses pane actions definitively when a fresh pre-effect snapshot times out', async () => {
   const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
   await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
-  const thread = manager.bootstrap().threads[0]; const supervisor = manager.supervisors.get(target.id)!;
-  const readFresh = vi.spyOn(supervisor, 'readFresh');
+  const thread = manager.bootstrap().threads[0]; const { paneId } = await manager.openTerminal(target.id, thread.id, 'w1:p1');
+  const supervisor = manager.supervisors.get(target.id)!; const readFresh = vi.spyOn(supervisor, 'readFresh');
   readFresh.mockRejectedValueOnce(new Error('snapshot_timeout'));
   await expect(manager.openTerminal(target.id, thread.id, 'w1:p1')).rejects.toThrow('pane_action_refused');
   readFresh.mockRejectedValueOnce(new Error('snapshot_timeout'));
-  await expect(manager.closePane(target.id, thread.id, 'w1:p1', true)).rejects.toThrow('pane_action_refused');
-  expect(target.effects).toEqual([]);
+  await expect(manager.closePane(target.id, thread.id, paneId, true)).rejects.toThrow('pane_action_refused');
+  expect(target.effects).toEqual(['split:right']);
 });
 it('keeps a split uncertain when the post-effect snapshot times out', async () => {
   const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
