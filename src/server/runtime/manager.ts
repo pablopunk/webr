@@ -14,6 +14,8 @@ import { LaunchJournal, type LaunchTargetIdentity } from './launch';
 import { isListedThread } from '../../lib/launch';
 import { isSameOrSiblingWorktree, sameSession } from './recovery';
 import { createOperationEnvelope, type CreatedWorkspace } from './workspace';
+import { randomUUID } from 'node:crypto';
+import { perfLog, perfLogEnabled } from '../perf-log';
 
 const CATALOG_TTL_MS = 5 * 60_000;
 const MODELS_PENDING_TTL_MS = 500;
@@ -568,24 +570,44 @@ export class RuntimeManager extends EventEmitter {
       try { return !!(await identity.target.paneBusy?.(paneId)); }
       catch { throw paneActionRefused(); }
     };
-    if (!force && await isBusy()) return { closed: false, busy: true };
+    // The pre-lock busy probe was removed: it cost an extra RPC plus its
+    // version ping while another client could still replace the pane during
+    // the await. The in-lock busy check below revalidates the exact target
+    // after a fresh snapshot, so safety is retained with one fewer round trip.
+    const timingId = perfLogEnabled ? randomUUID() : undefined;
+    const queueEnteredAt = timingId ? performance.now() : 0;
     return this.withTargetMutation(machineId, async () => {
+      const queueWaitMs = timingId ? performance.now() - queueEnteredAt : 0;
+      const preSnapshotAt = timingId ? performance.now() : 0;
       await readPaneActionSnapshot(supervisor);
+      const preSnapshotMs = timingId ? performance.now() - preSnapshotAt : 0;
       const current = this.requireCurrentProjection(identity).threads.find((item) => item.id === threadId);
       if (!current || !this.matchesTargetIdentity(current, identity) || current.bindingState !== 'attached' || current.tabId !== thread.tabId) throw new Error('machine_disconnected');
       if (!canClosePane(current, paneId) || !current.panes.some((pane) => pane.id === paneId && pane.terminalId === targetTerminalId)) return { closed: false, busy: false };
-      if (!force && await isBusy()) return { closed: false, busy: true };
+      const busyAt = timingId ? performance.now() : 0;
+      if (!force && await isBusy()) {
+        if (timingId) perfLog('server', { event: 'pane.close.stages', timingId, queueWaitMs: Math.round(queueWaitMs), preSnapshotMs: Math.round(preSnapshotMs), busyMs: Math.round(performance.now() - busyAt), busy: true });
+        return { closed: false, busy: true };
+      }
+      const busyMs = timingId ? performance.now() - busyAt : 0;
+      const revalidateAt = timingId ? performance.now() : 0;
       await readPaneActionSnapshot(supervisor);
+      const revalidateSnapshotMs = timingId ? performance.now() - revalidateAt : 0;
       const latest = this.requireCurrentProjection(identity).threads.find((item) => item.id === threadId);
       if (!latest || !this.matchesTargetIdentity(latest, identity) || latest.bindingState !== 'attached' || latest.tabId !== thread.tabId) throw new Error('machine_disconnected');
       if (!canClosePane(latest, paneId) || !latest.panes.some((pane) => pane.id === paneId && pane.terminalId === targetTerminalId)) return { closed: false, busy: false };
+      const effectAt = timingId ? performance.now() : 0;
       try { await closePane(paneId); }
       catch { /* A rejected native reply can still mean the pane closed; inspect a fresh scoped projection. */ }
+      const effectMs = timingId ? performance.now() - effectAt : 0;
       try {
+        const postAt = timingId ? performance.now() : 0;
         await readPaneActionSnapshot(supervisor);
+        const postSnapshotMs = timingId ? performance.now() - postAt : 0;
         const projection = this.requireCurrentProjection(identity);
         const confirmed = projection.threads.find((item) => item.id === threadId);
         if (!confirmed || !this.matchesTargetIdentity(confirmed, identity) || confirmed.bindingState !== 'attached' || confirmed.tabId !== latest.tabId || confirmed.panes.some((pane) => pane.id === paneId || pane.terminalId === targetTerminalId)) throw new Error('pane_outcome_unknown');
+        if (timingId) perfLog('server', { event: 'pane.close.stages', timingId, queueWaitMs: Math.round(queueWaitMs), preSnapshotMs: Math.round(preSnapshotMs), busyMs: Math.round(busyMs), revalidateSnapshotMs: Math.round(revalidateSnapshotMs), effectMs: Math.round(effectMs), postSnapshotMs: Math.round(postSnapshotMs), closed: true });
         this.publish(supervisor);
         return { closed: true, busy: false };
       } catch {

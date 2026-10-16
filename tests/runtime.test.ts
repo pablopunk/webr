@@ -336,13 +336,16 @@ it('keeps close uncertain when disconnect prevents fresh confirmation after nati
   await expect(manager.closePane(target.id, thread.id, paneId, true)).rejects.toThrow('pane_outcome_unknown');
   expect(manager.bootstrap().threads[0].panes.some((pane) => pane.id === paneId)).toBe(true);
 });
-it('rechecks pane busy state inside the destructive mutation queue', async () => {
+it('checks pane busy state once inside the destructive mutation queue', async () => {
   const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
   await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
   const thread = manager.bootstrap().threads[0]; const { paneId } = await manager.openTerminal('fixture', thread.id, 'w1:p1');
-  let probes = 0; target.paneBusy = async () => ++probes > 1;
+  let probes = 0; target.paneBusy = async () => { ++probes; return true; };
   expect(await manager.closePane('fixture', thread.id, paneId, false)).toEqual({ closed: false, busy: true });
-  expect(probes).toBe(2); expect(target.effects).not.toContain(`close:${paneId}`);
+  expect(probes).toBe(1); expect(target.effects).not.toContain(`close:${paneId}`);
+  probes = 0;
+  expect(await manager.closePane('fixture', thread.id, paneId, true)).toEqual({ closed: true, busy: false });
+  expect(probes).toBe(0); expect(target.effects).toContain(`close:${paneId}`);
 });
 it('does not close a pane after a fresh projection detaches its thread during the busy probe', async () => {
   const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
@@ -359,6 +362,37 @@ it('does not close a pane after a fresh projection detaches its thread during th
   finishProbe(false);
   await expect(closing).rejects.toThrow('machine_disconnected');
   await expect.poll(() => manager.bootstrap().threads.find((item) => item.id === thread.id)?.bindingState).toBe('detached');
+  expect(target.effects).not.toContain(`close:${paneId}`);
+});
+it('does not close a pane replaced with a new terminal while the busy probe waits', async () => {
+  const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0]; const { paneId } = await manager.openTerminal('fixture', thread.id, 'w1:p1');
+  let finishProbe!: (busy: boolean) => void; let started!: () => void;
+  const probeStarted = new Promise<void>((resolve) => { started = resolve; });
+  target.paneBusy = async () => { started(); return new Promise<boolean>((resolve) => { finishProbe = resolve; }); };
+  const closing = manager.closePane('fixture', thread.id, paneId, false);
+  await probeStarted;
+  target.state.panes = target.state.panes.map((pane) => pane.pane_id === paneId ? { ...pane, terminal_id: 'term_replaced' } : pane);
+  target.event!();
+  finishProbe(false);
+  await expect(closing).resolves.toEqual({ closed: false, busy: false });
+  expect(target.effects).not.toContain(`close:${paneId}`);
+  expect(manager.bootstrap().threads[0].panes.some((pane) => pane.id === paneId)).toBe(true);
+});
+it('does not close a shell pane converted to an agent while the busy probe waits', async () => {
+  const target = new FakeTarget(); target.state.panes[0].agent = 'claude'; const manager = new RuntimeManager(database(), [target]); cleanup.push(() => manager.close()); manager.start();
+  await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+  const thread = manager.bootstrap().threads[0]; const { paneId } = await manager.openTerminal('fixture', thread.id, 'w1:p1');
+  let finishProbe!: (busy: boolean) => void; let started!: () => void;
+  const probeStarted = new Promise<void>((resolve) => { started = resolve; });
+  target.paneBusy = async () => { started(); return new Promise<boolean>((resolve) => { finishProbe = resolve; }); };
+  const closing = manager.closePane('fixture', thread.id, paneId, false);
+  await probeStarted;
+  target.state.panes = target.state.panes.map((pane) => pane.pane_id === paneId ? { ...pane, agent: 'claude' } : pane);
+  target.event!();
+  finishProbe(false);
+  await expect(closing).resolves.toEqual({ closed: false, busy: false });
   expect(target.effects).not.toContain(`close:${paneId}`);
 });
 it('does not close a terminal tab adopted by a thread during the busy probe', async () => {
