@@ -5,8 +5,11 @@ import { TerminalRenderer } from './terminal-renderer';
 import { retryDelay } from '../shared/retry';
 import { count, gauge, perfNow, time } from './perf';
 import { uuid } from '../lib/uuid';
+import { trace } from './trace';
 
-type VisiblePane = { machineId: string; threadId?: string; tabId?: string; terminalId: string; terminal: Terminal; mode: 'observe' | 'control'; generation: number; sequence: FrameSequence; renderer?: TerminalRenderer; writable: boolean; accepted: boolean; baseline: boolean; pending: number; resizing: boolean; awaitingFresh: boolean; pendingControl: boolean; reason?: string; cols: number; rows: number; onState: (message: string, writable: boolean) => void; attempts: number };
+type VisiblePane = { machineId: string; threadId?: string; tabId?: string; terminalId: string; terminal: Terminal; mode: 'observe' | 'control'; generation: number; sequence: FrameSequence; renderer?: TerminalRenderer; writable: boolean; accepted: boolean; baseline: boolean; pending: number; resizing: boolean; awaitingFresh: boolean; pendingControl: boolean; reason?: string; cols: number; rows: number; onState: (message: string, writable: boolean, typeable?: boolean) => void; attempts: number };
+/** Control was granted, so keystrokes may go out even while a (re)sized baseline is still on its way: the server holds them until it lands. */
+const typeable = (pane: VisiblePane) => pane.mode === 'control' && pane.accepted;
 export const conflictMessage = 'Another controller owns this terminal.';
 export class BrowserTerminalManager {
   private metadata?: WebSocket;
@@ -35,7 +38,7 @@ export class BrowserTerminalManager {
     this.open(id);
     return {
       close: () => { const current = this.panes.get(id); if (current) { this.send({ type: 'release', streamId: id, generation: current.generation }); current.renderer?.close(); } this.panes.delete(id); },
-      input: (text: string, paste = false) => { const current = this.panes.get(id); if (current?.writable) { count('inputMessages'); this.inputSentAt.set(id, perfNow()); this.send({ type: 'input', streamId: id, generation: current.generation, text, paste }); } },
+      input: (text: string, paste = false) => { const current = this.panes.get(id); if (current && typeable(current)) { count('inputMessages'); this.inputSentAt.set(id, perfNow()); this.send({ type: 'input', streamId: id, generation: current.generation, text, paste }); } },
       control: (takeover = false) => { const current = this.panes.get(id); if (current && this.canAct(current) && (current.mode !== 'control' || takeover)) { this.send({ type: 'release', streamId: id, generation: current.generation }); current.reason = undefined; current.mode = 'control'; ++current.generation; current.sequence = new FrameSequence(); this.open(id, takeover); } },
       observe: () => { const current = this.panes.get(id); if (current && current.mode !== 'observe') { this.send({ type: 'release', streamId: id, generation: current.generation }); current.mode = 'observe'; ++current.generation; current.sequence = new FrameSequence(); this.open(id); } },
       resize: (cols: number, rows: number, claim = false) => {
@@ -43,7 +46,8 @@ export class BrowserTerminalManager {
         if (!current || cols === current.cols && rows === current.rows && !(claim && current.mode === 'control' && current.accepted)) return;
         current.cols = cols; current.rows = rows;
         if (!this.canAct(current)) return;
-        if (current.mode === 'control' && current.accepted) { current.writable = false; current.baseline = false; current.resizing = true; current.onState('Waiting for the resized full baseline.', false); this.send({ type: 'resize', streamId: id, generation: current.generation, cols, rows }); }
+        trace('stream.resize', { terminalId: current.terminalId, cols, rows, claim, accepted: current.accepted });
+        if (current.mode === 'control' && current.accepted) { current.writable = false; current.baseline = false; current.resizing = true; current.onState('Waiting for the resized full baseline.', false, true); this.send({ type: 'resize', streamId: id, generation: current.generation, cols, rows }); }
         else { this.send({ type: 'release', streamId: id, generation: current.generation }); ++current.generation; current.sequence = new FrameSequence(); this.open(id); }
       },
       scroll: (direction: 'up' | 'down', lines: number, column?: number, row?: number) => { const current = this.panes.get(id); if (current?.writable) { count('scrollMessages'); this.scrollSentAt.set(id, perfNow()); this.send({ type: 'scroll', streamId: id, generation: current.generation, direction, lines, column, row }); } },
@@ -109,7 +113,7 @@ export class BrowserTerminalManager {
   }
   private send(action: TerminalAction) {
     if (this.binary?.readyState !== WebSocket.OPEN || this.metadata?.readyState !== WebSocket.OPEN) return false;
-    if (this.binary.bufferedAmount > 32 * 1024) { this.disconnect(); return false; }
+    if (this.binary.bufferedAmount > 32 * 1024) { this.disconnect('send_buffer_full'); return false; }
     this.binary.send(JSON.stringify(action)); return true;
   }
   private open(id: number, takeover = false) {
@@ -132,8 +136,9 @@ export class BrowserTerminalManager {
       if (frame.full && (!pane.resizing || frame.width === pane.cols && frame.height === pane.rows)) { pane.baseline = true; pane.resizing = false; const openedAt = this.openedAt.get(id); if (openedAt !== undefined) { time('openToBaselineMs', perfNow() - openedAt); this.openedAt.delete(id); } }
       const ready = pane.mode === 'control' && pane.accepted && pane.baseline;
       pane.writable = ready;
-      if (frame.full) pane.onState(ready ? 'Input control is active.' : pane.reason ?? 'Read-only', ready);
+      if (frame.full) { trace('stream.baseline', { terminalId: pane.terminalId, width: frame.width, height: frame.height, expected: [pane.cols, pane.rows], ready }); pane.onState(ready ? 'Input control is active.' : pane.reason ?? 'Read-only', ready, typeable(pane)); }
     });
+    trace('stream.open', { terminalId: pane.terminalId, mode: pane.mode, generation: pane.generation, cols: pane.cols, rows: pane.rows, takeover });
     pane.onState(pane.mode === 'control' ? 'Waiting for terminal control.' : pane.reason ?? 'Read-only', false);
     this.openedAt.set(id, perfNow());
     this.send({ type: 'open', streamId: id, generation: pane.generation, machineId: pane.machineId, ...(pane.threadId ? { threadId: pane.threadId } : { tabId: pane.tabId! }), terminalId: pane.terminalId, mode: pane.mode, cols: pane.cols, rows: pane.rows, takeover });
@@ -148,7 +153,7 @@ export class BrowserTerminalManager {
     this.metadata = metadata; this.binary = binary; binary.binaryType = 'arraybuffer';
     const opened = () => { if (epoch !== this.epoch || metadata.readyState !== 1 || binary.readyState !== 1) return; this.connectedAt = Date.now(); this.onConnection(true); for (const [id, pane] of this.panes) { ++pane.generation; pane.sequence = new FrameSequence(); pane.attempts = 0; this.open(id); } };
     metadata.onopen = opened; binary.onopen = opened;
-    metadata.onmessage = (event) => { if (epoch !== this.epoch) return; try { const record = JSON.parse(event.data); if (record.type === 'projection' && this.acceptsProjectionOrder(record.projection)) { const accepted = this.install(record.projection); if (accepted !== false) { this.rememberProjectionOrder(record.projection); this.receiveProjection(record.projection); } } } catch (error) { console.error('Projection update failed:', error instanceof Error ? error.message : error); this.disconnect(); } };
+    metadata.onmessage = (event) => { if (epoch !== this.epoch) return; try { const record = JSON.parse(event.data); if (record.type === 'projection' && this.acceptsProjectionOrder(record.projection)) { const accepted = this.install(record.projection); if (accepted !== false) { this.rememberProjectionOrder(record.projection); this.receiveProjection(record.projection); } } } catch (error) { console.error('Projection update failed:', error instanceof Error ? error.message : error); this.disconnect('projection_failed'); } };
     binary.onmessage = (event) => {
       if (epoch !== this.epoch) return;
       try {
@@ -156,8 +161,9 @@ export class BrowserTerminalManager {
           const record = JSON.parse(event.data);
           const pane = this.panes.get(record.streamId);
           if (!pane || pane.generation !== record.generation) return;
-          if (record.type === 'stream.opened') { pane.accepted = !!record.writable && pane.mode === 'control'; if (pane.accepted) { pane.baseline = false; pane.resizing = true; this.send({ type: 'resize', streamId: record.streamId, generation: record.generation, cols: pane.cols, rows: pane.rows }); } pane.writable = pane.accepted && pane.baseline; pane.onState(pane.writable ? 'Input control is active.' : pane.reason ?? (pane.accepted ? 'Waiting for the full baseline; input is disabled.' : 'Read-only'), pane.writable); }
+          if (record.type === 'stream.opened') { pane.accepted = !!record.writable && pane.mode === 'control'; trace('stream.opened', { terminalId: pane.terminalId, writable: !!record.writable, mode: pane.mode }); if (pane.accepted) { pane.baseline = false; pane.resizing = true; this.send({ type: 'resize', streamId: record.streamId, generation: record.generation, cols: pane.cols, rows: pane.rows }); } pane.writable = pane.accepted && pane.baseline; pane.onState(pane.writable ? 'Input control is active.' : pane.reason ?? (pane.accepted ? 'Waiting for the full baseline.' : 'Read-only'), pane.writable, typeable(pane)); }
           if (record.type === 'stream.closed' || record.type === 'stream.error') {
+            trace(record.type, { terminalId: pane.terminalId, reason: record.reason, mode: pane.mode });
             const reason = record.reason === 'controller_conflict' ? conflictMessage : String(record.reason).replaceAll('_', ' ');
             const lostBinding = record.reason === 'binding_invalid' || record.reason === 'machine_disconnected';
             const wasControl = pane.mode === 'control';
@@ -182,12 +188,13 @@ export class BrowserTerminalManager {
         pane.sequence.accept(frame);
         ++pane.pending; gauge('unackedFrames', pane.pending);
         pane.renderer?.push(frame);
-      } catch { this.disconnect(); }
+      } catch { this.disconnect('frame_failed'); }
     };
-    const lost = () => { if (epoch === this.epoch) this.disconnect(); };
+    const lost = (event?: Event) => { if (epoch === this.epoch) this.disconnect(`socket_${event?.type ?? 'closed'}`); };
     metadata.onclose = lost; metadata.onerror = lost; binary.onclose = lost; binary.onerror = lost;
   }
-  private disconnect() {
+  private disconnect(cause = 'stopped') {
+    trace('socket.disconnect', { cause, connectedForMs: this.connectedAt ? Date.now() - this.connectedAt : null, panes: this.panes.size });
     if (this.connectedAt && Date.now() - this.connectedAt >= 30_000) this.failures = 0;
     this.connectedAt = 0;
     ++this.epoch;

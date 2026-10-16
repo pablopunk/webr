@@ -22,6 +22,7 @@ import { useVoiceInput } from './useVoiceInput';
 import { terminalStartupCommands, type TerminalStartupPreset } from '../client/terminal-presets';
 import { isNarrowScreen } from '../client/pane-window';
 import { focusRestsNowhere, textIsSelectedOutsideTerminal } from '../client/focus-ownership';
+import { describeNode, trace } from '../client/trace';
 
 function themeColors() {
   const styles = getComputedStyle(document.documentElement);
@@ -62,6 +63,8 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
   const [message, setMessage] = useState('Connecting…');
   const [writable, setWritable] = useState(false);
   const writableRef = useRef(false);
+  const [typeable, setTypeable] = useState(false);
+  const typeableRef = useRef(false);
   const canControlRef = useRef(canControl); canControlRef.current = canControl;
   const connectedRef = useRef(connected); connectedRef.current = connected;
   const activeRef = useRef(active); activeRef.current = active;
@@ -102,7 +105,7 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     loadGlyphRenderer(terminal, () => new WebglAddon());
     terminal.attachCustomWheelEventHandler(() => false);
     term.current = terminal;
-    const redirectFocus = () => { if (activeRef.current && writableRef.current) section.current?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus({ preventScroll: true }); };
+    const redirectFocus = () => { if (activeRef.current && typeableRef.current) section.current?.querySelector<HTMLTextAreaElement>('.terminal-input-capture')?.focus({ preventScroll: true }); };
     terminal.textarea?.addEventListener('focus', redirectFocus);
     const clipboard = bindTerminalClipboard(host.current, terminal, () => writableRef.current, (outcome) => showCopyResult.current(outcome));
     const links = terminal.parser.registerOscHandler(8, () => true);
@@ -122,7 +125,10 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     const measuredViewport = () => { try { return finiteSize(fit.proposeDimensions()); } catch { return undefined; } };
     const hostIsLaidOut = () => !!host.current?.isConnected && host.current.clientWidth > 0 && host.current.clientHeight > 0;
     const viewport = () => { const { cols, rows } = measuredViewport() ?? estimatedViewport(); return { cols: Math.max(2, Math.min(500, cols)), rows: Math.max(1, Math.min(300, rows)) }; };
-    control.current = terminals.mount({ machineId, ...(threadId ? { threadId } : { tabId }), terminalId: pane.terminalId, terminal, mode: canControlRef.current && connectedRef.current ? 'control' : 'observe', ...viewport(), onState: (message, writable) => { setMessage(message); setWritable(writable); writableRef.current = writable; } });
+    control.current = terminals.mount({ machineId, ...(threadId ? { threadId } : { tabId }), terminalId: pane.terminalId, terminal, mode: canControlRef.current && connectedRef.current ? 'control' : 'observe', ...viewport(), onState: (message, writable, typeable = writable) => {
+      trace('pane.state', { pane: pane.id, terminalId: pane.terminalId, message, writable, typeable, active: activeRef.current });
+      setMessage(message); setWritable(writable); writableRef.current = writable; setTypeable(typeable); typeableRef.current = typeable;
+    } });
     const gestures = bindTerminalGestures(host.current, () => ({ element: terminal.element?.querySelector<HTMLElement>('.xterm-screen') ?? undefined, cols: terminal.cols, rows: terminal.rows }), () => control.current, () => writableRef.current);
     let timer: ReturnType<typeof setTimeout>;
     const resize = new ResizeObserver(() => {
@@ -148,27 +154,31 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
 
 
   const sendInput = (text: string, paste?: boolean) => {
-    if (!activeRef.current || !connectedRef.current || !writableRef.current) return;
+    if (!activeRef.current || !connectedRef.current || !typeableRef.current) return;
     if (!ctrl || paste) { control.current?.input(text, paste); return; }
     setCtrl(false);
     control.current?.input(controlCharacter(text) ?? text);
   };
   // xterm is a renderer, not our input owner. Focusing its helper first creates
   // a second focus/blur cycle and can reactivate the pane we just left.
+  const whyFocusIsBlocked = (preserveSelection: boolean) => !activeRef.current ? 'inactive' : !connectedRef.current ? 'disconnected' : !typeableRef.current ? 'not typeable'
+    : preserveSelection && term.current?.hasSelection() ? 'selection' : document.querySelector('[role="dialog"], [role="alertdialog"]') ? 'dialog' : undefined;
   const focusInput = (preserveSelection = true) => {
-    if (!activeRef.current || !connectedRef.current || !writableRef.current || preserveSelection && term.current?.hasSelection()) return;
-    if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+    const blocked = whyFocusIsBlocked(preserveSelection);
+    if (blocked) { if (blocked !== 'inactive') trace('pane.focus.skip', { pane: pane.id, reason: blocked }); return; }
     const input = section.current?.querySelector<HTMLTextAreaElement>('.terminal-input-capture');
     input?.focus({ preventScroll: true });
-    if (input && document.activeElement === input) pendingFocus.current = false;
+    const focused = !!input && document.activeElement === input;
+    if (focused) pendingFocus.current = false;
+    trace('pane.focus.claim', { pane: pane.id, focused, sendFocusMode: term.current?.modes.sendFocusMode, before: describeNode(document.activeElement) });
   };
-  useEffect(() => { pendingFocus.current = active; if (active) focusInput(false); }, [active]);
+  useEffect(() => { trace('pane.active', { pane: pane.id, terminalId: pane.terminalId, active, typeable: typeableRef.current }); pendingFocus.current = active; if (active) focusInput(false); }, [active]);
   useEffect(() => {
     const focused = document.activeElement;
     // Readiness is not a navigation request: don't steal focus from a search,
     // palette, or editor when a resized baseline arrives.
-    if (active && writable && (pendingFocus.current || focused === document.body || section.current?.contains(focused))) focusInput(false);
-  }, [active, writable]);
+    if (active && typeable && (pendingFocus.current || focused === document.body || section.current?.contains(focused))) focusInput(false);
+  }, [active, typeable]);
   const pointerIsDown = useRef(false);
   useEffect(() => {
     const pressed = () => { pointerIsDown.current = true; };
@@ -177,9 +187,9 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     return () => { document.removeEventListener('pointerdown', pressed, true); document.removeEventListener('pointerup', released, true); document.removeEventListener('pointercancel', released, true); };
   }, []);
   const focusDroppedWithNothingBetterToDo = () => focusRestsNowhere() && !pointerIsDown.current && !textIsSelectedOutsideTerminal();
-  useEffect(() => { if (active && writable && focusDroppedWithNothingBetterToDo()) focusInput(false); });
+  useEffect(() => { if (active && typeable && focusDroppedWithNothingBetterToDo()) focusInput(false); });
   useEffect(() => {
-    if (!active || !writable) return;
+    if (!active || !typeable) return;
     let frame = 0; let reclaimOnRelease = false;
     const reclaim = () => { if (pointerIsDown.current) { reclaimOnRelease = true; return; } if (focusDroppedWithNothingBetterToDo()) focusInput(false); };
     const reclaimFocusDroppedOnBody = (event: FocusEvent) => {
@@ -190,13 +200,13 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     document.addEventListener('focusout', reclaimFocusDroppedOnBody);
     document.addEventListener('pointerup', reclaimAfterPointerRelease); document.addEventListener('pointercancel', reclaimAfterPointerRelease);
     return () => { cancelAnimationFrame(frame); document.removeEventListener('focusout', reclaimFocusDroppedOnBody); document.removeEventListener('pointerup', reclaimAfterPointerRelease); document.removeEventListener('pointercancel', reclaimAfterPointerRelease); };
-  }, [active, writable]);
+  }, [active, typeable]);
   useEffect(() => { if (term.current) term.current.options.cursorInactiveStyle = active ? 'block' : 'outline'; }, [active, writable]);
   useEffect(() => {
-    if (!active || !writable) return;
+    if (!active || !typeable) return;
     const unfocused = (event: Event) => event.target === document.body || event.target === document.documentElement || section.current?.contains(event.target as Node);
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!activeRef.current || !connectedRef.current || !writableRef.current) return;
+      if (!activeRef.current || !connectedRef.current || !typeableRef.current) return;
       const fromInput = (event.target as HTMLElement).classList?.contains('terminal-input-capture');
       const ownInput = fromInput && section.current?.contains(event.target as Node);
       if (event.defaultPrevented || event.metaKey || event.isComposing || !unfocused(event) && !fromInput || ownInput) return;
@@ -214,7 +224,7 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
       }
     };
     const onPaste = (event: ClipboardEvent) => {
-      if (!activeRef.current || !connectedRef.current || !writableRef.current) return;
+      if (!activeRef.current || !connectedRef.current || !typeableRef.current) return;
       const fromInput = (event.target as HTMLElement).classList?.contains('terminal-input-capture');
       if (!unfocused(event) && !fromInput) return;
       const pastedImages = imageFilesFrom(event.clipboardData);
@@ -225,7 +235,7 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     };
     window.addEventListener('keydown', onKeyDown, true); window.addEventListener('paste', onPaste, true);
     return () => { window.removeEventListener('keydown', onKeyDown, true); window.removeEventListener('paste', onPaste, true); };
-  }, [active, writable, images.attach]);
+  }, [active, typeable, images.attach]);
   useEffect(() => {
     const refocus = () => {
       const focused = document.activeElement;
@@ -233,16 +243,30 @@ export function TerminalPane({ pane, machineId, threadId, tabId, active, canCont
     };
     window.addEventListener('focus', refocus);
     return () => window.removeEventListener('focus', refocus);
-  }, [active, writable]);
+  }, [active, typeable]);
+  const inputPaused = active && connected && canControl && !typeable;
+  const [showInputPaused, setShowInputPaused] = useState(false);
+  useEffect(() => {
+    if (!inputPaused) { setShowInputPaused(false); return; }
+    const timer = setTimeout(() => setShowInputPaused(true), 400);
+    return () => clearTimeout(timer);
+  }, [inputPaused]);
+  const reportInputFocus = (focused: boolean) => {
+    setInputFocused(focused);
+    const reported = !!term.current?.modes.sendFocusMode;
+    trace('pane.input.focus', { pane: pane.id, focused, reported, typeable: typeableRef.current });
+    if (reported) control.current?.input(focused ? FOCUS_IN : FOCUS_OUT);
+  };
 
   return <section ref={section} className={`terminal-pane ${active ? 'is-active' : ''}`} aria-label={`${pane.title} terminal`} onPointerDownCapture={() => { if (!active) onFocus(); }} onFocusCapture={() => { if (!active) onFocus(); }} onClick={() => { if (canControlRef.current && connectedRef.current && !writableRef.current) control.current?.control(); focusInput(); }}>
     <span className="terminal-status" role="status">{message}</span>
+    {showInputPaused && message !== conflictMessage && <div className="terminal-input-paused" aria-hidden="true">Input paused: {message}</div>}
     {message === conflictMessage && <div className="terminal-control-conflict">Another Herdr client controls this terminal.<button type="button" onClick={(event) => { event.stopPropagation(); void confirmDialog('Replace the other Herdr client that controls this terminal? Its input stops working.', { confirmLabel: 'Take over' }).then((accepted) => { if (accepted) control.current?.control(true); }); }}>Take over</button></div>}
     <div ref={host} className="terminal-host" />
     {images.dragging && <div className="terminal-drop-overlay" aria-hidden="true"><ImagePlus size={22} strokeWidth={1.6} /><span>Drop image to attach</span></div>}
     {selectedUrl && <TerminalUrlActions selected={selectedUrl} onDone={() => { setSelectedUrl(null); term.current?.clearSelection(); }} onCopied={(copied) => showCopyResult.current(copied ? 'copied' : 'blocked')} />}
     {notice && <div className={`terminal-attach-notice is-${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.text}</div>}
-    <TerminalInput active={active} readOnly={!writable || !connected} onInput={sendInput} onFocusChange={(focused) => { setInputFocused(focused); if (term.current?.modes.sendFocusMode) control.current?.input(focused ? FOCUS_IN : FOCUS_OUT); }} />
+    <TerminalInput active={active} readOnly={!typeable || !connected} onInput={sendInput} onFocusChange={reportInputFocus} />
     {connected && (canControl || writable) && active && touch && inputFocused && <TerminalKeyBar ctrl={ctrl} onToggleCtrl={() => setCtrl((armed) => !armed)} onBytes={(bytes) => control.current?.input(bytes)} voice={voice} />}
   </section>;
 }

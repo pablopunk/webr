@@ -70,6 +70,23 @@ it('keeps the same focused input through resize readiness changes without losing
   expect(fixture.input).toHaveBeenCalledWith('still typing', undefined);
 });
 
+it('keeps accepting keystrokes while a resized baseline is pending and shows why input is paused when it is not', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const view = await mountWritablePane();
+  const input = screen.getByLabelText('Terminal input') as HTMLTextAreaElement;
+  const { onState } = fixture.mount.mock.calls[0][0];
+  await act(async () => onState('Waiting for the resized full baseline.', false, true));
+  expect(input.readOnly).toBe(false); expect(document.activeElement).toBe(input);
+  fireEvent.keyDown(input, { key: 'Enter' }); expect(fixture.input).toHaveBeenLastCalledWith('\r', undefined);
+  act(() => { vi.advanceTimersByTime(500); }); expect(view.container.querySelector('.terminal-input-paused')).toBeNull();
+  await act(async () => onState('Waiting for fresh terminal binding.', false));
+  expect(input.readOnly).toBe(true); expect(view.container.querySelector('.terminal-input-paused')).toBeNull();
+  act(() => { vi.advanceTimersByTime(500); }); expect(view.container.querySelector('.terminal-input-paused')?.textContent).toBe('Input paused: Waiting for fresh terminal binding.');
+  await act(async () => onState('Input control is active.', true));
+  expect(view.container.querySelector('.terminal-input-paused')).toBeNull();
+  vi.useRealTimers();
+});
+
 it('autofocuses a newly writable terminal but does not steal focus back from an editor on resize', async () => {
   const launcher = document.createElement('button'); document.body.append(launcher); launcher.focus();
   const view = await mountWritablePane();

@@ -39,6 +39,7 @@ import { terminalStartupStorageKey, type TerminalStartupPreset } from '../client
 import { clearLaunchDraft, clearNewThreadDraftForLaunch } from '../client/new-thread-draft';
 import { sidebarNavigationHref } from '../client/sidebar-navigation';
 import { pressesAButtonWhileTerminalOwnsFocus } from '../client/focus-ownership';
+import { startFocusTrace } from '../client/trace';
 
 type Props = { initialUrl: string; bootstrap: Bootstrap };
 
@@ -124,6 +125,7 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
     navigate(url.href, { replace: true });
   }, [machineId, tabId, navigate]);
   useEffect(startPerf, []);
+  useEffect(startFocusTrace, []);
   useEffect(trackVisualViewport, []);
   const [mode, setMode] = useState<SidebarMode>('threads');
   const scope = page === 'terminal' ? `${machineId ?? ''}:tab:${tabId ?? ''}` : `${thread?.machineId ?? ''}:${thread?.id ?? ''}`;

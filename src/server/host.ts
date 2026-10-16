@@ -10,6 +10,7 @@ import { createOperationEnvelope } from './runtime/workspace';
 import { launchInput, opaqueId, terminalCreateInput, worktreeOpenInput, workspaceCreateInput } from '../shared/runtime';
 import { registerWebsockets } from './websockets';
 import { loadHerdrKeymap } from './herdr-keys';
+import { traceLog } from './trace-log';
 import { perfLog, perfLogEnabled } from './perf-log';
 import { Auth, type AuthOptions } from './auth/auth';
 import { isTrustedHost } from './auth/access';
@@ -245,6 +246,7 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     return createOperationEnvelope(createOperation);
   });
   app.get('/api/stats', async () => hub.stats());
+  app.post('/api/trace', { bodyLimit: 256 * 1024 }, async (request) => { await traceLog(z.object({ records: z.array(z.record(z.string(), z.unknown())).max(300) }).parse(request.body).records); return { ok: true }; });
   if (perfLogEnabled) app.post('/api/dev/perf', { bodyLimit: 256 * 1024 }, async (request) => { for (const record of z.object({ records: z.array(z.record(z.string(), z.unknown())).max(100) }).parse(request.body).records) perfLog('client', record); return { ok: true }; });
   if (ssr) {
     const clientRoot = resolve(distRoot(), 'client');

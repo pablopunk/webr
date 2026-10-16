@@ -128,7 +128,8 @@ it('ignores stale stream generations and never replays input after reconnect', (
   const { manager, binary, open, pane, writes } = setup();
   pane.control(); const writable = JSON.parse(binary.sent.at(-1)!);
   binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: writable.generation, writable: true }) });
-  pane.input('before baseline'); expect(JSON.parse(binary.sent.at(-1)!).type).toBe('resize'); expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false);
+  // Control is granted, so typing goes out right away; the server holds it until the baseline lands.
+  expect(JSON.parse(binary.sent.at(-1)!).type).toBe('resize'); pane.input('before baseline'); expect(JSON.parse(binary.sent.at(-1)!)).toMatchObject({ type: 'input', text: 'before baseline' });
   binary.onmessage!({ data: encodeFrame({ ...frame(), streamId: open.streamId, generation: writable.generation }).buffer as ArrayBuffer }); writes[0].finish();
   pane.input('a'); expect(JSON.parse(binary.sent.at(-1)!).text).toBe('a');
   binary.onmessage!({ data: encodeFrame({ ...frame(), streamId: open.streamId, generation: open.generation }).buffer as ArrayBuffer }); expect(writes).toHaveLength(1);
@@ -143,7 +144,7 @@ it('keeps a controller conflict visible until an explicit takeover', () => {
   binary.onmessage!({ data: JSON.stringify({ type: 'stream.error', streamId: open.streamId, generation: control.generation, reason: 'controller_conflict' }) });
   const observer = JSON.parse(binary.sent.at(-1)!);
   binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: observer.generation, writable: false }) });
-  expect(onState.mock.calls.at(-1)).toEqual(['Another controller owns this terminal.', false]);
+  expect(onState.mock.calls.at(-1)).toEqual(['Another controller owns this terminal.', false, false]);
   pane.input('not sent'); expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false);
   pane.control(true); expect(JSON.parse(binary.sent.at(-1)!).takeover).toBe(true);
   expect(onState.mock.calls.at(-1)).toEqual(['Waiting for terminal control.', false]); manager.stop();
@@ -169,39 +170,46 @@ it('cancels catalog reads for a stale machine key without installing the late re
   await client.query({ queryKey: ['catalog', 'second'], queryFn: async () => 'second-only' }); resolve('stale-first'); await first;
   expect(aborted).toBe(true); expect(client.getQueryData(['catalog', 'first'])).toBeUndefined(); expect(client.getQueryData(['catalog', 'second'])).toBe('second-only'); client.clear();
 });
-it('requires open acceptance and a rendered full baseline, and rejects old-generation ACK and input after replacement', () => {
+it('requires open acceptance before typing, lets accepted typing through while the baseline renders, and rejects old-generation ACK and input after replacement', () => {
   const { manager, pane, binary, open, writes } = setup(); pane.control(); const command = JSON.parse(binary.sent.at(-1)!);
-  pane.input('before open'); binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: command.generation, writable: true }) }); pane.input('before full');
+  const typed = () => binary.sent.map((value) => JSON.parse(value)).filter((value) => value.type === 'input').map((value) => value.text);
+  pane.input('before open'); expect(typed()).toEqual([]);
+  binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: command.generation, writable: true }) }); pane.input('before full');
   binary.onmessage!({ data: encodeFrame({ ...frame(), streamId: open.streamId, generation: command.generation }).buffer as ArrayBuffer }); pane.input('before render');
-  expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false);
+  expect(typed()).toEqual(['before full', 'before render']);
   pane.observe(); const replaced = JSON.parse(binary.sent.at(-1)!); writes[0].finish(); binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: command.generation, writable: true }) }); pane.input('after old open');
-  expect(binary.sent.some((value) => JSON.parse(value).type === 'ack')).toBe(false); expect(replaced.generation).not.toBe(command.generation); expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false); manager.stop();
+  expect(binary.sent.some((value) => JSON.parse(value).type === 'ack')).toBe(false); expect(replaced.generation).not.toBe(command.generation); expect(typed()).toEqual(['before full', 'before render']); manager.stop();
 });
-it('disables input immediately during resize and requires a matching rendered full baseline to resume', () => {
-  const { manager, pane, binary, open, writes } = setup(); pane.control(); const command = JSON.parse(binary.sent.at(-1)!);
+it('keeps typing flowing during a resize while control is held, and reports input as not writable until the matching baseline renders', () => {
+  const { manager, pane, binary, open, writes, onState } = setup(); pane.control(); const command = JSON.parse(binary.sent.at(-1)!);
   binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: command.generation, writable: true }) });
   const deliver = (seq: number, full: boolean, width = 80, height = 24) => binary.onmessage!({ data: encodeFrame({ ...frame(seq, full), width, height, streamId: open.streamId, generation: command.generation }).buffer as ArrayBuffer });
-  deliver(1, true); writes[0].finish(); deliver(2, false); pane.resize(120, 30); pane.input('must not send'); writes[1].finish(); pane.input('still no new baseline');
-  expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false); deliver(3, true, 120, 30); writes[2].finish(); pane.input('safe now'); expect(JSON.parse(binary.sent.at(-1)!).text).toBe('safe now'); manager.stop();
+  deliver(1, true); writes[0].finish(); deliver(2, false); pane.resize(120, 30);
+  expect(onState.mock.calls.at(-1)).toEqual(['Waiting for the resized full baseline.', false, true]);
+  pane.input('typed during resize'); expect(JSON.parse(binary.sent.at(-1)!)).toMatchObject({ type: 'input', text: 'typed during resize' });
+  writes[1].finish(); deliver(3, true, 80, 24); writes[2].finish(); expect(onState.mock.calls.at(-1)).toEqual(['Read-only', false, true]);
+  deliver(4, true, 120, 30); writes[3].finish(); expect(onState.mock.calls.at(-1)).toEqual(['Input control is active.', true, true]); manager.stop();
 });
-it('keeps established input writable during sustained delta rendering without replaying input across takeover', () => {
+it('keeps typing flowing once control is accepted and never replays or authorizes input across a takeover', () => {
   const { manager, pane, binary, open, writes, onState } = setup(); pane.control(); const control = JSON.parse(binary.sent.at(-1)!);
   const accepted = (generation: number) => binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation, writable: true }) });
   const deliver = (generation: number, seq: number, full: boolean, width = 80, height = 24) => binary.onmessage!({ data: encodeFrame({ ...frame(seq, full), width, height, streamId: open.streamId, generation }).buffer as ArrayBuffer });
   const inputs = () => binary.sent.map((message) => JSON.parse(message)).filter((message) => message.type === 'input');
+  pane.input('not before acceptance'); expect(inputs()).toHaveLength(0);
   accepted(control.generation); deliver(control.generation, 1, true); deliver(control.generation, 2, false); deliver(control.generation, 3, false);
-  pane.input('not before baseline'); expect(inputs()).toHaveLength(0); writes[0].finish();
+  pane.input('before the baseline renders'); expect(inputs()).toHaveLength(1); writes[0].finish();
   expect(writes).toHaveLength(2); expect(onState.mock.calls.at(-1)?.[1]).toBe(true);
   pane.input('during first delta'); expect(inputs().at(-1)?.text).toBe('during first delta');
   writes[1].finish(); pane.input('during second delta'); expect(inputs().at(-1)?.text).toBe('during second delta');
   pane.control(true); const takeover = JSON.parse(binary.sent.at(-1)!); expect(takeover.takeover).toBe(true); expect(onState.mock.calls.at(-1)?.[1]).toBe(false);
-  writes[2].finish(); accepted(control.generation); pane.input('old acceptance must not authorize'); expect(inputs()).toHaveLength(2);
-  accepted(takeover.generation); deliver(takeover.generation, 1, true); pane.input('not before takeover render'); expect(inputs()).toHaveLength(2); writes[3].finish();
-  pane.input('new lease'); expect(inputs().at(-1)?.generation).toBe(takeover.generation); expect(inputs()).toHaveLength(3);
-  deliver(takeover.generation, 2, false); pane.resize(120, 30); expect(onState.mock.calls.at(-1)?.[1]).toBe(false); pane.input('not during resize'); writes[4].finish(); expect(inputs()).toHaveLength(3);
-  deliver(takeover.generation, 3, true); writes[5].finish(); pane.input('wrong baseline size'); expect(inputs()).toHaveLength(3);
+  writes[2].finish(); accepted(control.generation); pane.input('old acceptance must not authorize'); expect(inputs()).toHaveLength(3);
+  accepted(takeover.generation); pane.input('typed before the takeover renders'); expect(inputs().at(-1)).toMatchObject({ text: 'typed before the takeover renders', generation: takeover.generation }); expect(inputs()).toHaveLength(4);
+  deliver(takeover.generation, 1, true); writes[3].finish();
+  deliver(takeover.generation, 2, false); pane.resize(120, 30); expect(onState.mock.calls.at(-1)).toEqual(['Waiting for the resized full baseline.', false, true]);
+  pane.input('typed during resize'); writes[4].finish(); expect(inputs()).toHaveLength(5);
+  deliver(takeover.generation, 3, true); writes[5].finish(); expect(onState.mock.calls.at(-1)?.[1]).toBe(false);
   deliver(takeover.generation, 4, true, 120, 30); deliver(takeover.generation, 5, false, 120, 30); writes[6].finish();
-  expect(onState.mock.calls.at(-1)?.[1]).toBe(true); pane.input('resized baseline with delta pending'); expect(inputs().at(-1)?.text).toBe('resized baseline with delta pending'); expect(inputs()).toHaveLength(4);
+  expect(onState.mock.calls.at(-1)?.[1]).toBe(true); pane.input('resized baseline with delta pending'); expect(inputs().at(-1)?.text).toBe('resized baseline with delta pending'); expect(inputs()).toHaveLength(6);
   manager.stop();
 });
 it('claims the shared terminal size on focus even when its own size has not changed', () => {
@@ -217,7 +225,7 @@ it('sends its own size as soon as control opens, so a fresh pane is never left a
   binary.onmessage!({ data: JSON.stringify({ type: 'stream.opened', streamId: open.streamId, generation: command.generation, writable: true }) });
   expect(JSON.parse(binary.sent.at(-1)!)).toMatchObject({ type: 'resize', cols: 80, rows: 24, generation: command.generation });
   const deliver = (seq: number, width: number, height: number) => binary.onmessage!({ data: encodeFrame({ ...frame(seq, true), width, height, streamId: open.streamId, generation: command.generation }).buffer as ArrayBuffer });
-  deliver(1, 80, 44); writes[0].finish(); pane.input('still waiting for the right size'); expect(binary.sent.some((value) => JSON.parse(value).type === 'input')).toBe(false);
+  deliver(1, 80, 44); writes[0].finish(); pane.input('typed while the right size is pending'); expect(JSON.parse(binary.sent.at(-1)!)).toMatchObject({ type: 'input', text: 'typed while the right size is pending' });
   deliver(2, 80, 24); writes[1].finish(); pane.input('now'); expect(JSON.parse(binary.sent.at(-1)!).text).toBe('now'); manager.stop();
 });
 it('escapes image paths the way a terminal drag and drop does', async () => {
