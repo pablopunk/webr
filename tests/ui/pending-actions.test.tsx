@@ -288,7 +288,10 @@ it('keeps a pending close until a newer same-generation revision confirms absenc
   expect(focus).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Close pane' }));
   expect(closeThreadPane).toHaveBeenCalledTimes(1);
-  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('previous close'));
+  expect(screen.getByText('Closing Shell…')).toBeTruthy();
+  expect(screen.getByLabelText('Focused pane').textContent).toBe('pane-shell');
+  expect(focus).not.toHaveBeenCalled();
+  expect(screen.queryByRole('alert')).toBeNull();
   const fresh = projection(agentOnly, 6, true, 'fresh-qualifying');
   view.rerender(<Harness observation={fresh} />);
   await waitFor(() => expect(screen.queryByText('Closing Shell…')).toBeNull());
