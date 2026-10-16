@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { TerminalPane } from '../../src/components/TerminalPane';
+import { startTransition, Suspense, useState } from 'react';
 import { terminalStartupCommands } from '../../src/client/terminal-presets';
 
 const fixture = vi.hoisted(() => ({ onData: vi.fn(), control: vi.fn(), observe: vi.fn(), input: vi.fn(), close: vi.fn(), mount: vi.fn(), selection: '', dimensions: { cols: 90, rows: 31 } as { cols: number; rows: number }, osc: new Map<number, (data: string) => boolean>() }));
@@ -11,7 +12,7 @@ vi.mock('@xterm/xterm', () => ({ Terminal: class {
   parser = { registerOscHandler: (code: number, handler: (data: string) => boolean) => { fixture.osc.set(code, handler); return { dispose() { fixture.osc.delete(code); } }; } };
   loadAddon() {}
   textarea = document.createElement('textarea'); modes = { sendFocusMode: true };
-  open(host: HTMLElement) { this.element = document.createElement('div'); this.element.className = 'xterm-screen'; this.element.append(this.textarea); host.append(this.element); }
+  open(host: HTMLElement) { this.element = document.createElement('div'); this.element.className = 'xterm-screen'; this.element.append(this.textarea); host.append(this.element); this.textarea.addEventListener('keyup', () => this.focus()); }
   focus() { this.textarea.focus(); }
   hasSelection() { return !!fixture.selection; } getSelection() { return fixture.selection; } dispose() {}
 } }));
@@ -119,6 +120,111 @@ it('moves real keyboard focus between split panes even when the destination has 
   expect(inputs.get('one')).not.toHaveBeenCalled();
   fireEvent.keyDown(first, { key: 'z' });
   expect(inputs.get('two')).toHaveBeenCalledWith('z');
+});
+
+it('commits split focus before async xterm mounting or its writable baseline, and ignores inactive native focus', async () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  const inputs = new Map<string, ReturnType<typeof vi.fn>>();
+  fixture.mount.mockImplementation((options) => {
+    const input = vi.fn(); inputs.set(options.terminalId, input);
+    return { control: fixture.control, observe: fixture.observe, input, close: fixture.close, resize() {}, mouse() {}, scroll() {} };
+  });
+  const navigation = vi.fn();
+  function Split({ opened = false }: { opened?: boolean }) {
+    const [selected, select] = useState('one');
+    return <>
+      <button onClick={() => select('two')}>Next pane</button>
+      {(opened ? ['one', 'two'] : ['one']).map((id) => <TerminalPane key={id} pane={{ id, terminalId: id, title: id, kind: 'shell' }} machineId="fixture" threadId="fixture-thread" active={selected === id} canControl onFocus={() => { navigation(id); select(id); }} />)}
+    </>;
+  }
+  const view = render(<Split />);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
+  await act(async () => fixture.mount.mock.calls[0][0].onState('Input control is active.', true));
+  const first = screen.getByLabelText('Terminal input');
+  expect(document.activeElement).toBe(first);
+  view.rerender(<Split opened />);
+  fireEvent.click(screen.getByRole('button', { name: 'Next pane' }));
+  const second = screen.getAllByLabelText('Terminal input')[1] as HTMLTextAreaElement;
+  // The old input was focused before the destination even mounted xterm.
+  expect(document.activeElement).toBe(second); expect(second.readOnly).toBe(true);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(2));
+  const [oldMount, newMount] = fixture.mount.mock.calls.map(([options]) => options);
+  inputs.forEach((input) => input.mockClear());
+  fireEvent.change(second, { target: { value: 'before baseline' } });
+  expect(inputs.get('two')).not.toHaveBeenCalled(); expect(inputs.get('one')).not.toHaveBeenCalled();
+  await act(async () => newMount.onState('Input control is active.', true));
+  // xterm 5.5's _keyUp calls focus() even with disableStdin. A shortcut's
+  // queued keyup can still target the renderer belonging to the old pane.
+  fireEvent.keyUp(oldMount.terminal.textarea, { key: 'j', ctrlKey: true });
+  expect(document.activeElement).toBe(second); expect(navigation).not.toHaveBeenCalled();
+  for (const mount of [oldMount, newMount, oldMount]) {
+    await act(async () => { mount.terminal.focus(); });
+    expect(document.activeElement).toBe(second);
+    expect(navigation).not.toHaveBeenCalled();
+  }
+  first.focus(); expect(document.activeElement).toBe(second);
+  // Even an already queued focus event is not a user navigation request.
+  fireEvent.focusIn(oldMount.terminal.textarea);
+  expect(navigation).not.toHaveBeenCalled();
+  inputs.forEach((input) => input.mockClear());
+  fireEvent.change(document.activeElement!, { target: { value: 'chosen prompt' } });
+  fireEvent.keyDown(document.activeElement!, { key: 'Enter' });
+  expect(inputs.get('two')!.mock.calls).toEqual([['chosen prompt', undefined], ['\r', undefined]]);
+  expect(inputs.get('one')).not.toHaveBeenCalled();
+  expect(fixture.mount).toHaveBeenCalledTimes(2); expect(fixture.close).not.toHaveBeenCalled();
+});
+
+it('does not replay pending initial focus over an editor or dialog when a delayed baseline arrives', async () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
+  render(<><input aria-label="Editor" /><div role="dialog"><input aria-label="Dialog field" /></div><TerminalPane pane={{ id: 'one', terminalId: 'one', title: 'Agent', kind: 'agent' }} machineId="fixture" threadId="fixture-thread" active canControl onFocus={() => {}} /></>);
+  const dialog = screen.getByLabelText('Dialog field'); dialog.focus();
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
+  const { terminal, onState } = fixture.mount.mock.calls[0][0];
+  await act(async () => onState('Input control is active.', true));
+  terminal.focus(); expect(document.activeElement).toBe(dialog);
+  screen.getByRole('dialog').remove();
+  const editor = screen.getByLabelText('Editor'); editor.focus();
+  await act(async () => onState('Waiting for the resized full baseline.', false));
+  await act(async () => onState('Input control is active.', true));
+  terminal.focus(); expect(document.activeElement).toBe(editor);
+  fixture.input.mockClear(); fireEvent.change(editor, { target: { value: 'edit' } });
+  expect(fixture.input).not.toHaveBeenCalled();
+});
+
+it('keeps routing the visible owner while a speculative pane switch suspends before commit', async () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  const inputs = new Map<string, ReturnType<typeof vi.fn>>();
+  fixture.mount.mockImplementation((options) => {
+    const input = vi.fn(); inputs.set(options.terminalId, input);
+    return { control: fixture.control, observe: fixture.observe, input, close: fixture.close, resize() {}, mouse() {}, scroll() {} };
+  });
+  const attempted = vi.fn(); const never = new Promise<void>(() => {});
+  function PendingRender({ suspend }: { suspend: boolean }) { if (suspend) { attempted(); throw never; } return null; }
+  function ConcurrentPanes({ opened = false }: { opened?: boolean }) {
+    const [selected, select] = useState('one');
+    return <>
+      <button onClick={() => startTransition(() => select('two'))}>Deferred switch</button>
+      <Suspense fallback={<span>Pending render</span>}>
+        {(opened ? ['one', 'two'] : ['one']).map((id) => <TerminalPane key={id} pane={{ id, terminalId: id, title: id, kind: 'shell' }} machineId="fixture" threadId="fixture-thread" active={selected === id} canControl onFocus={() => select(id)} />)}
+        <PendingRender suspend={selected === 'two'} />
+      </Suspense>
+    </>;
+  }
+  const view = render(<ConcurrentPanes />);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(1));
+  view.rerender(<ConcurrentPanes opened />);
+  await waitFor(() => expect(fixture.mount).toHaveBeenCalledTimes(2));
+  await act(async () => { for (const [options] of fixture.mount.mock.calls) options.onState('Input control is active.', true); });
+  const first = screen.getAllByLabelText('Terminal input')[0];
+  fireEvent.click(screen.getByRole('button', { name: 'Deferred switch' }));
+  await waitFor(() => expect(attempted).toHaveBeenCalled());
+  expect(screen.queryByText('Pending render')).toBeNull(); expect(document.activeElement).toBe(first);
+  inputs.forEach((input) => input.mockClear());
+  fireEvent.change(document.activeElement!, { target: { value: 'still writing' } });
+  fireEvent.keyDown(document.activeElement!, { key: 'Enter' });
+  expect(inputs.get('one')!.mock.calls).toEqual([['still writing', undefined], ['\r', undefined]]);
+  expect(inputs.get('two')).not.toHaveBeenCalled();
 });
 
 it('does not queue a startup command while disconnected or replay it after reconnection', async () => {
