@@ -229,7 +229,8 @@ it('keeps an unknown terminal tab pending while its projection is stale', () => 
   };
 
   render(<App initialUrl={window.location.href} bootstrap={staleBootstrap} />);
-  expect(screen.getByRole('status').textContent).toContain('Waiting for this terminal tab to appear');
+  expect(screen.getByRole('heading', { name: 'Opening terminal' })).toBeDefined();
+  expect(screen.getByRole('status').textContent).toContain('Waiting for Herdr to reconnect');
   expect(window.location.pathname).toBe('/sessions/default/tabs/not-yet-observed');
   expect(fetchMock).not.toHaveBeenCalled();
 });
