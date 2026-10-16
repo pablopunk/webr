@@ -88,7 +88,7 @@ it('keeps accepting keystrokes while a resized baseline is pending and shows why
 });
 
 it('asks Herdr to focus the pane shown here once it is active and typeable, so the agent draws its cursor', async () => {
-  const fetchMock = vi.fn(async () => ({ ok: true, status: 200 })); vi.stubGlobal('fetch', fetchMock);
+  const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({ ok: true, status: 200 })); vi.stubGlobal('fetch', fetchMock);
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   fixture.mount.mockImplementation(() => ({ control: fixture.control, observe: fixture.observe, input: fixture.input, close: fixture.close, resize() {}, mouse() {}, scroll() {} }));
   const props = { pane: { id: 'w1:p2', terminalId: 'term_shell', title: 'Shell', kind: 'shell' as const }, machineId: 'local', threadId: 'fixture-thread', canControl: true, onFocus: () => {} };
