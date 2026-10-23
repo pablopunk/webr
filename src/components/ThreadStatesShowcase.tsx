@@ -1,6 +1,7 @@
 import { Archive, CircleCheck, CircleHelp, MessageCircleQuestion, TriangleAlert } from 'lucide-react';
-import { exampleThreads, type Thread } from '../lib/models';
+import { exampleThreads, projects, type Thread } from '../lib/models';
 import { ThreadAvatar } from './ThreadAvatar';
+import { ProjectIcon } from './ProjectIcon';
 import { HarnessIcon } from './HarnessIcon';
 
 const examples = exampleThreads();
@@ -32,10 +33,11 @@ function DemoRow({ thread, current = false, archivedState = false }: { thread: T
   const status = launch ? 'Starting the agent…' : launchFailed ? 'Launch stopped' : info.label;
   const context = launch || launchFailed ? status : 'Claude Code';
   const attention = launchFailed || thread.status === 'blocked' || thread.status === 'done';
+  const project = projects.find((item) => item.id === thread.projectId);
   return <div className="thread-item">
     <div className={`thread-row ${thread.status === 'unknown' ? 'status-unknown' : ''} ${current ? 'is-current' : ''} ${attention ? `needs-attention status-${launchFailed ? 'blocked' : thread.status}` : ''}`} aria-current={current ? 'page' : undefined}>
       <span className="thread-avatar" aria-hidden="true">
-        <ThreadAvatar thread={thread} working={thread.status === 'working' || launch} size={24} />
+        {project ? <ProjectIcon project={project} /> : <ThreadAvatar thread={thread} working={thread.status === 'working' || launch} size={24} />}
         {StatusIcon && <StatusIcon className={`thread-status status-${launchFailed ? 'blocked' : thread.status}`} size={14} strokeWidth={2.2} />}
         <span className="thread-avatar-harness"><HarnessIcon harness={thread.agent} size={14} /></span>
       </span>
@@ -50,11 +52,11 @@ function DemoRow({ thread, current = false, archivedState = false }: { thread: T
 }
 
 const mainStates: { label: string; thread: Thread; current?: boolean; note: string }[] = [
-  { label: 'Current · working', thread: working, current: true, note: 'Selected thread, neutral current indicator, working avatar.' },
+  { label: 'Current · working', thread: working, current: true, note: 'Selected thread, neutral current indicator, working project icon.' },
   { label: 'Working', thread: { ...working, id: 'working', title: 'Implement the new flow' }, note: 'Agent is actively working.' },
   { label: 'Needs input', thread: blocked, note: 'Blocked state gets a message badge and warm attention surface.' },
   { label: 'Done', thread: done, note: 'Completed state gets a check badge and done-tinted surface.' },
-  { label: 'Idle', thread: idle, note: 'No status badge; avatar is at rest.' },
+  { label: 'Idle', thread: idle, note: 'No status badge; project icon shown.' },
   { label: 'Unknown', thread: unknown, note: 'Unrecognized or unavailable status.' },
   { label: 'Launching', thread: launching, note: 'Progress replaces the normal project/harness context.' },
   { label: 'Launch stopped', thread: failed, note: 'Failed launch uses a warning badge and attention surface.' },

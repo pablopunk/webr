@@ -2,6 +2,7 @@ import { alertDialog, confirmDialog } from './dialogs';
 import { Tooltip } from './Tooltip';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ThreadAvatar } from './ThreadAvatar';
+import { ProjectIcon } from './ProjectIcon';
 import { Archive, ArchiveRestore, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, FolderTree, Gauge, LayoutList, Monitor, Moon, PanelLeft, Pencil, Settings2, SquarePen, SquareTerminal, Sun, TerminalSquare, X } from 'lucide-react';
 import type { Project, Thread } from '../lib/models';
 import type { FloatingTab } from '../lib/floating';
@@ -89,8 +90,15 @@ export function CommandPalette({ open, onClose, onNavigate, projects, threads, f
       { label: 'Previous pane', icon: <ArrowLeft size={16} />, shortcut: 'previousPane' as const, run: () => focusPane(-1) },
        ...thread.panes.map((pane, index) => ({ label: `Focus ${pane.title}`, icon: <TerminalSquare size={16} />, detail: `Pane ${index + 1}`, run: () => onFocusPane(pane.id) })),
     ] : []),
-    ...threads.map((item) => ({ label: threadDisplayTitle(item), icon: <ThreadAvatar thread={item} working={item.status === 'working'} size={22} />, detail: projects.find((project) => (project.machineId ?? 'local') === item.machineId && project.id === item.projectId)?.name,
-      run: () => { onNavigate?.(`/threads/${encodeURIComponent(item.id)}`); } })),
+    ...threads.map((item) => {
+      const itemProject = projects.find((project) => (project.machineId ?? 'local') === item.machineId && project.id === item.projectId);
+      return {
+        label: threadDisplayTitle(item),
+        icon: itemProject ? <ProjectIcon project={itemProject} /> : <ThreadAvatar thread={item} working={item.status === 'working'} size={22} />,
+        detail: itemProject?.name,
+        run: () => { onNavigate?.(`/threads/${encodeURIComponent(item.id)}`); },
+      };
+    }),
     ...floating.map((item) => {
       const machine = machines.find((entry) => entry.id === item.machineId);
       const session = item.session || machine?.session || 'default';
