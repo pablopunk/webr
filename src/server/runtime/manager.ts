@@ -379,11 +379,23 @@ export class RuntimeManager extends EventEmitter {
     });
   }
   clearDoneBadge(machineId: string, threadId: string) {
-    const supervisor = this.supervisors.get(machineId);
     const row = this.database.threadRows(machineId).find((row) => row.id === threadId);
-    if (!supervisor || !row || row.metadata.unseenDone !== true) return false;
+    if (!row || row.metadata.unseenDone !== true) return false;
     this.database.saveThread({ ...row.metadata, unseenDone: false }, row.anchors, row.alias);
+    const projection = this.projections.get(machineId);
+    if (projection) {
+      const next = { ...projection, threads: projection.threads.map((thread) => thread.id === threadId ? { ...thread, unseenDone: false } : thread) };
+      this.projections.set(machineId, next);
+      this.emit('projection', next);
+    }
     return true;
+  }
+  markThreadViewed(machineId: string, threadId: string) {
+    const row = this.database.threadRows(machineId).find((row) => row.id === threadId);
+    if (!row) throw new Error('thread_not_found');
+    const acked = this.clearDoneBadge(machineId, threadId);
+    this.supervisors.get(machineId)?.invalidate();
+    return { viewed: true, acked };
   }
   archive(machineId: string, threadId: string, archived: boolean): ThreadArchiveResponse {
     const supervisor = this.supervisors.get(machineId);

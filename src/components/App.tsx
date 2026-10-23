@@ -136,7 +136,7 @@ function RuntimeApp({ bootstrap }: Pick<Props, 'bootstrap'>) {
   const setFocusedPane = useCallback((paneId: string) => ui.getState().focus(scope, paneId), [ui, scope]);
   const latchInitialFocusedPane = () => { if (!storedFocus && focusedPane) ui.getState().focus(scope, focusedPane); };
   useEffect(latchInitialFocusedPane, [ui, scope, storedFocus, focusedPane]);
-  useClearDoneOnVisit(page === 'thread' ? thread : undefined, focusedPane, !!machines.find((machine) => machine.id === thread?.machineId)?.connected && !!machines.find((machine) => machine.id === thread?.machineId)?.writable);
+  useClearDoneOnVisit(page === 'thread' ? thread : undefined);
   useEffect(() => {
     if (page !== 'thread' || thread?.operation?.state !== 'ready') return;
     clearLaunchDraft(tickets.recoveryScope, thread.id);

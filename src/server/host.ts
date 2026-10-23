@@ -199,6 +199,11 @@ export async function createHost(manager: RuntimeManager, origin: string, ssr?: 
     const input = z.object({ machineId: opaqueId, paneId: opaqueId }).strict().parse(request.body);
     return manager.focusPane(input.machineId, id, input.paneId);
   });
+  app.post('/api/threads/:id/viewed', async (request) => {
+    const { id } = z.object({ id: z.uuid() }).parse(request.params);
+    const input = z.object({ machineId: opaqueId }).strict().parse(request.body);
+    return manager.markThreadViewed(input.machineId, id);
+  });
   app.post('/api/threads/:id/archive', async (request) => {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
     const input = z.object({ machineId: opaqueId, archived: z.boolean() }).strict().parse(request.body);

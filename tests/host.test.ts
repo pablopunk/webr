@@ -475,6 +475,18 @@ it('rejects thread focus on a read-only machine without clearing the latch', asy
   expect(manager.bootstrap().threads[0].unseenDone).toBe(true);
 });
 
+it('marks a thread viewed through its local acknowledgement even when terminal control is read-only', async () => {
+  const { app, headers, manager, target } = await setup();
+  target.state.panes[0].agent_status = 'done'; target.event!();
+  await expect.poll(() => manager.bootstrap().threads[0].unseenDone).toBe(true);
+  const thread = manager.bootstrap().threads[0];
+  target.writable = false;
+  const response = await app.inject({ method: 'POST', url: `/api/threads/${thread.id}/viewed`, headers, payload: { machineId: target.id } });
+  expect(response.statusCode).toBe(200); expect(response.json()).toEqual({ viewed: true, acked: true });
+  expect(target.focused).toHaveLength(0);
+  expect(manager.bootstrap().threads[0].unseenDone).toBe(false);
+});
+
 it('serves update status and starts updates only when a service is attached', async () => {
   const { app, headers } = await setup();
   expect((await app.inject({ method: 'GET', url: '/api/update', headers })).statusCode).toBe(404);

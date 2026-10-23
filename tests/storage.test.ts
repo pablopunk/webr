@@ -166,6 +166,19 @@ it('acks the done latch on visit without reordering the sidebar', async () => {
     expect(manager.bootstrap().threads[0].doneAt).not.toBe(doneAt);
   } finally { await manager.close(); database.close(); }
 });
+it('marks a done thread viewed without requiring writable terminal focus', async () => {
+  const database = new MetadataDatabase(':memory:'); const target = new FakeTarget(); const manager = new RuntimeManager(database, [target]);
+  try {
+    manager.start(); await expect.poll(() => manager.bootstrap().threads.length).toBe(1);
+    target.state.panes[0].agent_status = 'done'; target.event!();
+    await expect.poll(() => manager.bootstrap().threads[0].unseenDone).toBe(true);
+    const thread = manager.bootstrap().threads[0];
+    target.writable = false;
+    expect(manager.markThreadViewed(target.id, thread.id)).toEqual({ viewed: true, acked: true });
+    expect(target.focused).toEqual([]);
+    expect(manager.bootstrap().threads[0].unseenDone).toBe(false);
+  } finally { await manager.close(); database.close(); }
+});
 it('versions thread metadata only on editable changes and preserves it across reconciliation saves', () => {
   const database = new MetadataDatabase(':memory:'); const target = new FakeTarget();
   try {

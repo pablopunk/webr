@@ -9,37 +9,36 @@ const done = () => thread({ status: 'done', unseenDone: true, doneAt: '2026-10-1
 const render = (props: { t: Thread | undefined; pane: string; on: boolean }) =>
   renderHook(({ t, pane, on }) => useClearDoneOnVisit(t, pane, on), { initialProps: props });
 
-it('posts focus once for a latched done thread with a pane while enabled', async () => {
+it('acknowledges a latched done thread as viewed without requiring a pane or writable control', async () => {
   const fetch = vi.fn(async (_url: string, _init?: RequestInit) => ({ ok: true }));
   vi.stubGlobal('fetch', fetch);
-  const { rerender } = render({ t: done(), pane: 'w1:p1', on: true });
+  const { rerender } = render({ t: done(), pane: '', on: false });
   await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
   const [url, init] = fetch.mock.calls[0] as [string, RequestInit];
-  expect(url).toBe(`/api/threads/${encodeURIComponent(done().id)}/focus`);
-  expect(JSON.parse(String(init.body))).toEqual({ machineId: 'local', paneId: 'w1:p1' });
-  rerender({ t: done(), pane: 'w1:p1', on: true });
+  expect(url).toBe(`/api/threads/${encodeURIComponent(done().id)}/viewed`);
+  expect(JSON.parse(String(init.body))).toEqual({ machineId: 'local' });
+  rerender({ t: done(), pane: '', on: false });
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 
-it('does not post for live done without latch, without pane, or when disabled', async () => {
+it('does not post for live done without a latch', async () => {
   const fetch = vi.fn(async (_url: string, _init?: RequestInit) => ({ ok: true }));
   vi.stubGlobal('fetch', fetch);
   const seen = thread({ status: 'done', unseenDone: false });
   const { rerender } = render({ t: seen, pane: 'w1:p1', on: true });
-  rerender({ t: done(), pane: '', on: true });
-  rerender({ t: done(), pane: 'w1:p1', on: false });
+  rerender({ t: done(), pane: '', on: false });
   rerender({ t: undefined, pane: 'w1:p1', on: true });
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(fetch).not.toHaveBeenCalled();
 });
 
-it('retries when re-enabled after a failed post', async () => {
+it('retries when the same viewed acknowledgement fails', async () => {
   const fetch = vi.fn(async (_url: string, _init?: RequestInit): Promise<{ ok: boolean }> => { throw new Error('down'); });
   vi.stubGlobal('fetch', fetch);
   const { rerender } = render({ t: done(), pane: 'w1:p1', on: true });
   await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
-  rerender({ t: done(), pane: 'w1:p1', on: false });
-  rerender({ t: done(), pane: 'w1:p1', on: true });
+  rerender({ t: done(), pane: '', on: false });
+  rerender({ t: done(), pane: '', on: true });
   await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
 });
