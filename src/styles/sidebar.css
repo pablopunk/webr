@@ -40,11 +40,21 @@
 .thread-row { display: grid; grid-template-columns: 25px minmax(0, 1fr) auto; grid-template-rows: 17px 1fr; column-gap: 9px; min-height: 60px; padding: 7px 10px; border: 1px solid transparent; border-radius: 7px; color: var(--ink-soft); font-size: 13.5px; }
 .thread-item { position: relative; display: block; }
 .thread-item + .thread-item { margin-top: 4px; }
-.thread-archive { position: absolute; top: 50%; right: 9px; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--ink-soft); opacity: 0; pointer-events: none; transform: translateY(-50%); }
-.thread-item:hover .thread-archive, .thread-archive:focus-visible { opacity: 1; pointer-events: auto; }
-.thread-archive:hover { background: var(--surface-hover); color: var(--ink); }
+.thread-archive, .thread-pin { position: absolute; top: 50%; right: 9px; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--ink-soft); opacity: 0; pointer-events: none; transform: translateY(-50%); }
+.thread-item:has(.thread-pin) .thread-archive { right: 37px; }
+.thread-item:hover .thread-archive, .thread-item:hover .thread-pin, .thread-archive:focus-visible, .thread-pin:focus-visible, .thread-pin.is-pinned { opacity: 1; pointer-events: auto; }
+.thread-pin.is-pinned { color: var(--ink); }
+.thread-archive:hover, .thread-pin:hover { background: var(--surface-hover); color: var(--ink); }
+.thread-item.is-pinned .thread-archive, .thread-item.is-pinned .thread-pin { top: calc(50% + 8px); }
+.thread-item.is-pinned .thread-name { margin-right: 30px; }
+.thread-item.is-pinned { cursor: grab; }
+.thread-item.is-dragging { opacity: .5; }
+.thread-item.drop-before::before, .thread-item.drop-after::after { content: ''; position: absolute; left: 4px; right: 4px; z-index: 2; height: 2px; border-radius: 1px; background: var(--focus-ring); pointer-events: none; }
+.thread-item.drop-before::before { top: -3px; }
+.thread-item.drop-after::after { bottom: -3px; }
 .thread-item:hover .thread-time, .thread-item:focus-within .thread-time { visibility: hidden; }
-@media (hover: none) { .thread-archive { opacity: 1; pointer-events: auto; } .thread-item .thread-time { visibility: hidden; } }
+.thread-item.is-pinned:hover .thread-time, .thread-item.is-pinned:focus-within .thread-time { visibility: visible; }
+@media (hover: none) { .thread-archive, .thread-pin { opacity: 1; pointer-events: auto; } .thread-item .thread-time { visibility: hidden; } .thread-item.is-pinned .thread-time { visibility: visible; } .thread-item:has(.thread-pin) .thread-name { margin-right: 64px; } }
 .thread-menu-positioner { z-index: 30; }
 .thread-menu { min-width: 180px; padding: 4px; border: 1px solid var(--card-edge); border-radius: 8px; background: var(--surface-raised); color: var(--ink); box-shadow: var(--card-shadow-hover), 0 12px 32px rgb(0 0 0 / 18%); outline: 0; }
 .thread-menu-item { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 6px 8px; border-radius: 5px; font-size: 14px; cursor: pointer; outline: 0; }

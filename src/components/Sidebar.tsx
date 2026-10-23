@@ -1,6 +1,6 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { ContextMenu } from '@base-ui/react/context-menu';
-import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, Command, FolderTree, GitBranch, LayoutList, MessageCircleQuestion, TriangleAlert, PanelLeftClose, PanelLeftOpen, Settings2, SquarePen, SquareTerminal, ImageUp, Pencil, Plus, Trash2, Unplug, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ChevronDown, ChevronRight, CircleCheck, CircleHelp, Command, FolderTree, GitBranch, LayoutList, MessageCircleQuestion, TriangleAlert, Pin, PanelLeftClose, PanelLeftOpen, Settings2, SquarePen, SquareTerminal, ImageUp, Pencil, Plus, Trash2, Unplug, X } from 'lucide-react';
 import { type Project, type Thread, harnessName, hasUnseenDone, relativeTime } from '../lib/models';
 import { isLaunching, launchFailed, launchLabel } from '../lib/launch';
 import { selectTerminalMachine, type Machine } from '../lib/machines';
@@ -25,6 +25,7 @@ import { closeTerminalTab, deleteArchivedThreads, deleteArchivedWarning, deleteT
 import { projectNameFieldKey, threadArchiveFieldKey, threadDisplayTitle, threadIsArchived, threadTitleFieldKey, type PendingMetadataController } from '../client/pending-metadata';
 import type { MetadataFieldSnapshot } from '../client/store';
 import { sidebarTabKey, type FloatingTab } from '../lib/floating';
+import { movePin, pinKey, pinnedFirst, togglePin, usePinnedKeys, type DropEdge } from '../client/pinned-threads';
 import { SidebarMetrics } from './SidebarMetrics';
 
 export type SidebarMode = 'projects' | 'threads';
@@ -53,6 +54,13 @@ type Props = {
   updateAction?: ReactNode;
   metadata?: PendingMetadataController;
   metadataFields?: Record<string, MetadataFieldSnapshot>;
+};
+
+type PinDrag = { active: () => boolean; start: (key: string) => void; over: (key: string, edge: DropEdge) => void; drop: (key: string, edge: DropEdge) => void; end: () => void };
+type PinDragState = { key: string; target?: { key: string; edge: DropEdge } };
+const dropEdgeOf = (event: DragEvent<HTMLElement>): DropEdge => {
+  const box = event.currentTarget.getBoundingClientRect();
+  return event.clientY < box.top + box.height / 2 ? 'before' : 'after';
 };
 
 const statusLabel: Record<Thread['status'], string> = {
@@ -94,7 +102,7 @@ function NewTerminalButton({ machine, onNavigate }: { machine?: Machine; onNavig
   return <Tooltip label="New Terminal"><button type="button" className="sidebar-action-icon" aria-label="New Terminal" disabled={!machine || !machine.connected || !machine.writable || busy} onClick={() => void open()}><SquareTerminal size={16} aria-hidden="true" /></button></Tooltip>;
 }
 
-const ThreadRow = memo(function ThreadRow({ thread, project, machineName, current, showProject, href, connected, canDelete, metadata, metadataFields = {} }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean; href: string; connected: boolean; canDelete: boolean; metadata?: PendingMetadataController; metadataFields?: Record<string, MetadataFieldSnapshot> }) {
+const ThreadRow = memo(function ThreadRow({ thread, project, machineName, current, showProject, href, connected, canDelete, pinnable, pinned, pinDrag, dragging, dropEdge, metadata, metadataFields = {} }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean; href: string; connected: boolean; canDelete: boolean; pinnable: boolean; pinned: boolean; pinDrag: PinDrag; dragging: boolean; dropEdge?: DropEdge; metadata?: PendingMetadataController; metadataFields?: Record<string, MetadataFieldSnapshot> }) {
   const archived = threadIsArchived(thread, metadataFields);
   const ArchiveIcon = archived ? ArchiveRestore : Archive;
   const displayTitle = threadDisplayTitle(thread);
@@ -106,6 +114,9 @@ const ThreadRow = memo(function ThreadRow({ thread, project, machineName, curren
   const nativeSyncIsCurrent = !titleState || !['pending', 'uncertain', 'draft'].includes(titleState.status)
     && (titleState.canonical === undefined || thread.titleSync.version >= titleState.canonical.metadataVersion);
   const [renaming, setRenaming] = useState(false);
+  const key = pinKey(thread);
+  const draggable = pinned && !renaming;
+  const pinLabel = `${pinned ? 'Unpin' : 'Pin'} ${displayTitle}`;
   useEffect(() => {
     if (!current) return;
     const onRenameRequest = (event: Event) => {
@@ -126,8 +137,14 @@ const ThreadRow = memo(function ThreadRow({ thread, project, machineName, curren
     if (await confirmDialog(resaveMetadataWarning, { confirmLabel: 'Re-save anyway' })) void metadata.setThreadArchived(thread, archiveDraftValue, true).catch(reportFailure);
   };
   return <ContextMenu.Root>
-    <ContextMenu.Trigger className="thread-item" data-flip-id={flipId} data-sidebar-navigation-item="true" data-sidebar-navigation-href={href} data-sidebar-navigation-current={current ? 'true' : 'false'} onDoubleClick={(event) => { event.preventDefault(); setRenaming(true); }}>
-      <ThreadLink thread={thread} project={project} machineName={machineName} current={current} showProject={showProject} editor={editor} href={href} connected={connected} />
+    <ContextMenu.Trigger className={`thread-item${pinned ? ' is-pinned' : ''}${dragging ? ' is-dragging' : ''}${dropEdge ? ` drop-${dropEdge}` : ''}`} data-flip-id={flipId} data-sidebar-navigation-item="true" data-sidebar-navigation-href={href} data-sidebar-navigation-current={current ? 'true' : 'false'} onDoubleClick={(event) => { event.preventDefault(); setRenaming(true); }}
+      draggable={draggable}
+      onDragStart={draggable ? (event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', displayTitle); pinDrag.start(key); } : undefined}
+      onDragOver={pinned ? (event) => { if (!pinDrag.active()) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; pinDrag.over(key, dropEdgeOf(event)); } : undefined}
+      onDrop={pinned ? (event) => { if (!pinDrag.active()) return; event.preventDefault(); pinDrag.drop(key, dropEdgeOf(event)); pinDrag.end(); } : undefined}
+      onDragEnd={draggable ? pinDrag.end : undefined}>
+      <ThreadLink thread={thread} project={project} machineName={machineName} current={current} showProject={showProject} editor={editor} href={href} connected={connected} draggable={draggable ? false : undefined} />
+      {pinnable && <Tooltip label={pinned ? 'Unpin' : 'Pin'}><button type="button" className={`thread-pin${pinned ? ' is-pinned' : ''}`} aria-label={pinLabel} aria-pressed={pinned} onClick={() => togglePin(key)}><Pin size={15} strokeWidth={1.8} fill={pinned ? 'currentColor' : 'none'} aria-hidden="true" /></button></Tooltip>}
       <Tooltip label={archiveDraft ? archiveLabel : archived ? 'Unarchive' : 'Archive'}><button type="button" className="thread-archive" aria-label={archiveLabel} onClick={() => archiveDraft ? changeArchiveDraft() : void (metadata ? metadata.setThreadArchived(thread, !archived) : setThreadArchived(thread, !archived)).catch(reportFailure)}><ArchiveIcon size={15} strokeWidth={1.8} aria-hidden="true" /></button></Tooltip>
     </ContextMenu.Trigger>
     <MetadataFeedback label="thread title" field={titleState} onReconcile={titleState?.status === 'uncertain' ? () => reconcile('titleOverride') : undefined} onEdit={titleState?.status === 'draft' ? () => setRenaming(true) : undefined} />
@@ -162,7 +179,7 @@ const TerminalRow = memo(function TerminalRow({ tab, session, machineName, curre
   </div>;
 });
 
-function ThreadLink({ thread, project, machineName, current, showProject, editor, href, connected }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean; href: string; connected: boolean; editor?: ReactNode }) {
+function ThreadLink({ thread, project, machineName, current, showProject, editor, href, connected, draggable }: { thread: Thread; project?: Project; machineName: string; current: boolean; showProject: boolean; href: string; connected: boolean; editor?: ReactNode; draggable?: boolean }) {
   const avatar = useRef<HTMLSpanElement>(null);
   const projectSlot = useRef<HTMLSpanElement>(null);
   const launching = connected && isLaunching(thread); const failed = connected && launchFailed(thread);
@@ -195,7 +212,7 @@ function ThreadLink({ thread, project, machineName, current, showProject, editor
   const context = launching || failed ? status : showProject ? project?.name : harnessName(thread.agent);
   const hasProjectSlot = showProject && canReplaceAvatar;
   const Row = editor ? 'div' : 'a';
-  return <Tooltip label={`${displayTitle} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`} side="right"><Row className={`thread-row ${current ? 'is-current' : ''} ${hasProjectSlot ? 'has-project-slot' : ''} ${needsAttention ? `needs-attention status-${warning || thread.status === 'blocked' ? 'blocked' : 'done'}` : ''}`} href={editor ? undefined : href} aria-current={current ? 'page' : undefined} aria-label={`${displayTitle} · ${project?.name ?? ''} · ${machineName} · ${status}`}>
+  return <Tooltip label={`${displayTitle} · ${project?.name ?? ''} · ${machineName} · ${harnessName(thread.agent)} · ${thread.model} · ${status}`} side="right"><Row className={`thread-row ${current ? 'is-current' : ''} ${hasProjectSlot ? 'has-project-slot' : ''} ${needsAttention ? `needs-attention status-${warning || thread.status === 'blocked' ? 'blocked' : 'done'}` : ''}`} href={editor ? undefined : href} draggable={draggable} aria-current={current ? 'page' : undefined} aria-label={`${displayTitle} · ${project?.name ?? ''} · ${machineName} · ${status}`}>
     <span ref={avatar} className={`thread-avatar ${canReplaceAvatar ? 'has-project-avatar' : ''}`} aria-hidden="true"><span className="thread-bot-avatar"><ThreadAvatar thread={thread} working={thread.status === 'working' || launching} size={24} /></span>{canReplaceAvatar && !showProject && <span className="thread-selected-project"><ProjectIcon project={project!} /></span>}{StatusIcon && <StatusIcon className={`thread-status status-${warning || thread.status === 'blocked' ? 'blocked' : unseen ? 'done' : thread.status}`} size={14} strokeWidth={2.2} />}<span className="thread-avatar-harness"><HarnessIcon harness={thread.agent} size={14} /></span></span>
     <span className="thread-copy"><span className="thread-context">{hasProjectSlot && <span ref={projectSlot} className="thread-project-slot"><ProjectIcon project={project!} /></span>}{thread.worktree && !launching && !failed && <GitBranch className="thread-worktree" size={11} aria-label="Worktree" />}<span className="thread-context-text">{context}</span></span>{editor ?? <span className="thread-name">{displayTitle}</span>}</span>
     <span className="thread-time">{relativeTime(thread.updatedAt)}</span>
@@ -310,7 +327,19 @@ export function Sidebar({ projects, threads, archived = [], floating = [], detac
   };
   const navigation = useRef<HTMLElement>(null);
   useFlipList(navigation, collapseMotionVersion);
-  const threadLink = (thread: Thread, showProject: boolean) => {
+  const pinnedKeys = usePinnedKeys();
+  const orderedThreads = useMemo(() => pinnedFirst(threads, pinnedKeys), [threads, pinnedKeys]);
+  const [drag, setDrag] = useState<PinDragState>();
+  const dragKey = useRef<string>();
+  const pinDrag = useMemo<PinDrag>(() => ({
+    active: () => dragKey.current !== undefined,
+    start: (key) => { dragKey.current = key; setDrag({ key }); },
+    over: (key, edge) => setDrag((current) => !current || current.key === key || current.target?.key === key && current.target.edge === edge ? current : { ...current, target: { key, edge } }),
+    drop: (key, edge) => { if (dragKey.current) movePin(dragKey.current, key, edge); },
+    end: () => { dragKey.current = undefined; setDrag(undefined); },
+  }), []);
+  const threadLink = (thread: Thread, showProject: boolean, pinnable = true) => {
+    const key = pinKey(thread);
     const project = projects.find((item) => (item.machineId ?? 'local') === thread.machineId && item.id === thread.projectId);
     const ownedTab = ownedTabs.get(thread.id);
     const machine = machines.find((item) => item.id === thread.machineId);
@@ -318,7 +347,7 @@ export function Sidebar({ projects, threads, archived = [], floating = [], detac
     const viewingOwnedTab = !!ownedTab && currentTab?.machineId === ownedTab.machineId && currentTab?.tabId === ownedTab.tabId;
     const keyed = ownedTab || thread.bindingState === 'attached' && thread.tabId;
     const connected = machine?.connected === true;
-    return <ThreadRow key={keyed ? sidebarTabKey(thread.machineId, ownedTab?.tabId ?? thread.tabId) : JSON.stringify([thread.machineId, thread.id])} thread={thread} project={project} machineName={machine?.name ?? thread.machineId} current={currentId === thread.id && currentMachineId === thread.machineId || viewingOwnedTab} showProject={showProject} href={href} connected={connected} canDelete={connected} metadata={metadata} metadataFields={metadataFields} />;
+    return <ThreadRow key={keyed ? sidebarTabKey(thread.machineId, ownedTab?.tabId ?? thread.tabId) : JSON.stringify([thread.machineId, thread.id])} thread={thread} project={project} machineName={machine?.name ?? thread.machineId} current={currentId === thread.id && currentMachineId === thread.machineId || viewingOwnedTab} showProject={showProject} href={href} connected={connected} canDelete={connected} pinnable={pinnable} pinned={pinnable && pinnedKeys.includes(key)} pinDrag={pinDrag} dragging={drag?.key === key} dropEdge={drag?.target?.key === key ? drag.target.edge : undefined} metadata={metadata} metadataFields={metadataFields} />;
   };
   const terminalLink = (tab: FloatingTab) => {
     const machine = machines.find((item) => item.id === tab.machineId);
@@ -352,12 +381,12 @@ export function Sidebar({ projects, threads, archived = [], floating = [], detac
         <nav ref={navigation} className="thread-navigation" aria-label="Agent threads" data-sidebar-navigation="true">
           {mode === 'projects' ? <>{projectGroups.filter((group) => threads.some((thread) => group.locations.includes(thread.projectId))).sort((a, b) => (threads.find((thread) => b.locations.includes(thread.projectId))?.updatedAt ?? '').localeCompare(threads.find((thread) => a.locations.includes(thread.projectId))?.updatedAt ?? '')).map(({ id, project, locations }) => <section key={id} className="thread-group">
             <ProjectGroupHeader project={project} machine={machines.find((machine) => machine.id === (project.machineId ?? 'local'))} closed={closedProjects.includes(id)} onToggle={() => toggleProject(id)} onNavigate={onNavigate} metadata={metadata} metadataFields={metadataFields} />
-            {!closedProjects.includes(id) && threads.filter((thread) => locations.includes(thread.projectId)).map((thread) => threadLink(thread, false))}
-          </section>)}{terminalsDivider}{floating.map(terminalLink)}</> : <>{threads.map((thread) => threadLink(thread, true))}{terminalsDivider}{floating.map(terminalLink)}</>}
+            {!closedProjects.includes(id) && orderedThreads.filter((thread) => locations.includes(thread.projectId)).map((thread) => threadLink(thread, false))}
+          </section>)}{terminalsDivider}{floating.map(terminalLink)}</> : <>{orderedThreads.map((thread) => threadLink(thread, true))}{terminalsDivider}{floating.map(terminalLink)}</>}
           {!threads.length && !floating.length && !archived.length && !detached.length && <p className="sidebar-empty">No agents or terminals yet. Press {formatShortcut(paletteShortcut)} to start one.</p>}
         </nav>
-        {!!detached.length && <DetachedThreads threads={detached} renderThread={(thread) => threadLink(thread, true)} />}
-        {!!archived.length && <ArchivedThreads threads={archived} renderThread={(thread) => threadLink(thread, true)} />}
+        {!!detached.length && <DetachedThreads threads={detached} renderThread={(thread) => threadLink(thread, true, false)} />}
+        {!!archived.length && <ArchivedThreads threads={archived} renderThread={(thread) => threadLink(thread, true, false)} />}
         <div className="sidebar-footer">
           <a className="sidebar-settings" href="/settings"><Settings2 size={15} /> Settings</a>
           {updateAction}
