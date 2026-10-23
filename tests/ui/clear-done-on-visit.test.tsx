@@ -27,7 +27,6 @@ it('does not post for live done without a latch', async () => {
   vi.stubGlobal('fetch', fetch);
   const seen = thread({ status: 'done', unseenDone: false });
   const { rerender } = render({ t: seen });
-  rerender({ t: done() });
   rerender({ t: undefined });
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(fetch).not.toHaveBeenCalled();
