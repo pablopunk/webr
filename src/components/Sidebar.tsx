@@ -330,7 +330,7 @@ export function Sidebar({ projects, threads, archived = [], floating = [], detac
   const pinnedKeys = usePinnedKeys();
   const orderedThreads = useMemo(() => pinnedFirst(threads, pinnedKeys), [threads, pinnedKeys]);
   const [drag, setDrag] = useState<PinDragState>();
-  const dragKey = useRef<string>();
+  const dragKey = useRef<string | undefined>(undefined);
   const pinDrag = useMemo<PinDrag>(() => ({
     active: () => dragKey.current !== undefined,
     start: (key) => { dragKey.current = key; setDrag({ key }); },
